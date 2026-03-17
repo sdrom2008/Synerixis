@@ -11,27 +11,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Synerixis.Domain", "Synerix
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Synerixis.Infrastructure", "Synerixis.Infrastructure\Synerixis.Infrastructure.csproj", "{FEABE5A5-7351-9839-D395-3313CA867801}"
 EndProject
-Project("{E24C65DC-7377-472B-9ABA-BC803B73C61A}") = "frontend", "frontend\", "{BEC1AF4D-7070-47DE-541E-D6A8B557E3AB}"
-	ProjectSection(WebsiteProperties) = preProject
-		TargetFrameworkMoniker = ".NETFramework,Version%3Dv4.8"
-		Debug.AspNetCompiler.VirtualPath = "/localhost_50869"
-		Debug.AspNetCompiler.PhysicalPath = "frontend\"
-		Debug.AspNetCompiler.TargetPath = "PrecompiledWeb\localhost_50869\"
-		Debug.AspNetCompiler.Updateable = "true"
-		Debug.AspNetCompiler.ForceOverwrite = "true"
-		Debug.AspNetCompiler.FixedNames = "false"
-		Debug.AspNetCompiler.Debug = "True"
-		Release.AspNetCompiler.VirtualPath = "/localhost_50869"
-		Release.AspNetCompiler.PhysicalPath = "frontend\"
-		Release.AspNetCompiler.TargetPath = "PrecompiledWeb\localhost_50869\"
-		Release.AspNetCompiler.Updateable = "true"
-		Release.AspNetCompiler.ForceOverwrite = "true"
-		Release.AspNetCompiler.FixedNames = "false"
-		Release.AspNetCompiler.Debug = "False"
-		VWDPort = "50869"
-		SlnRelativePath = "frontend\"
-	EndProjectSection
-EndProject
+
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "解决方案项", "解决方案项", "{9FA3D6BD-1EC1-3BA5-80CB-CE02773A58D5}"
 	ProjectSection(SolutionItems) = preProject
 		.gitignore = .gitignore

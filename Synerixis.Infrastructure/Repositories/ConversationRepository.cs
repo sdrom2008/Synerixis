@@ -18,6 +18,25 @@ namespace Synerixis.Infrastructure.Repositories
         public ConversationRepository(AppDbContext context) : base(context) {
         }
 
+        // IConversationRepository implementation
+        public async Task<Conversation> GetByCustomerIdAsync(string customerId)
+        {
+            // Note: Using Title as customer identifier (temporary workaround - domain should have CustomerId field)
+            return await _dbSet
+                .FirstOrDefaultAsync(c => c.Title == customerId && !c.IsDeleted);
+        }
+
+        public async Task SaveAsync(Conversation conversation)
+        {
+            if (conversation == null) throw new ArgumentNullException(nameof(conversation));
+            var entry = _context.Entry(conversation);
+            if (entry.State == EntityState.Detached)
+            {
+                _dbSet.Add(conversation);
+            }
+            await _context.SaveChangesAsync();
+        }
+
         public async Task<Conversation?> GetWithMessagesAsync(Guid id)
         {
             return await _dbSet
@@ -41,7 +60,7 @@ namespace Synerixis.Infrastructure.Repositories
 
             if (conv == null)
             {
-                conv = Conversation.Create(sellerGuid);
+                conv = Conversation.Create(sellerGuid, string.Empty);
                 _dbSet.Add(conv);
                 await _context.SaveChangesAsync();  // 立即保存 Conversation，确保 Id 真实
             }

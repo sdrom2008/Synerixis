@@ -18,6 +18,7 @@ namespace Synerixis.Domain.Entities
         public DateTime? LastViewedAt { get; private set; }  // 最后查看时间
 
         // 外键：关联 Seller（商家）
+        public string Platform { get; private set; } // e.g., "TAOBAO", "DOUYIN"
         public Guid SellerId { get; private set; }
         // 导航属性（可选，但推荐加，便于查询）
         public Seller? Seller { get; private set; }
@@ -35,12 +36,13 @@ namespace Synerixis.Domain.Entities
 
         private Conversation() { }
 
-        public static Conversation Create(Guid sellerId, string? title = null)
+        public static Conversation Create(Guid sellerId, string platform, string? title = null)
         {
             var conv = new Conversation
             {
                 Id = Guid.NewGuid(),
                 SellerId = sellerId,
+                Platform = platform,
                 Title = title ?? "新对话"
             };
             Console.WriteLine("创建 Conversation，内存 Id = " + conv.Id);

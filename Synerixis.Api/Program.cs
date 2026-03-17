@@ -8,10 +8,13 @@ using Microsoft.SemanticKernel.Connectors.OpenAI;
 using Senparc.Weixin.RegisterServices;
 using Synerixis.Application.Agents;
 using Synerixis.Application.Interfaces;
+using Synerixis.Application.Interfaces.Ai;
+using Synerixis.Application.Interfaces.Infrastructure;
 using Synerixis.Application.Services;
 using Synerixis.Domain.Entities;
 using Synerixis.Infrastructure.Agent;
 using Synerixis.Infrastructure.AI;
+using Synerixis.Infrastructure.AIServices;
 using Synerixis.Infrastructure.Data;
 using Synerixis.Infrastructure.Payment;
 using Synerixis.Infrastructure.Repositories;
@@ -74,6 +77,23 @@ builder.Services.AddScoped<IChatCompletionService>(sp =>
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IGeneralChatAgent, GeneralChatAgent>();
 builder.Services.AddScoped<IIntentClassifier, IntentClassifier>();
+
+// --- NEWLY ADDED SERVICES FOR MVP ---
+builder.Services.AddScoped<IMarketingCopyService, MarketingCopyService>();
+builder.Services.AddScoped<ILlmClient, AliyunLlmClient>(); // Maps the interface to our Aliyun implementation
+// --- END OF NEWLY ADDED SERVICES ---
+
+// --- SERVICES FOR AI CUSTOMER SUPPORT ---
+builder.Services.AddScoped<IConversationService, ConversationService>();
+builder.Services.AddScoped<IECommercePlatformClient, ECommercePlatformClient>();
+
+// Register all agents. The DI container will provide them to the AgentRouter.
+// Temporarily commented out due to interface mismatch (these agents need to implement Synerixis.Application.Interfaces.IAgent)
+// builder.Services.AddScoped<IAgent, OrderAgent>();
+// builder.Services.AddScoped<IAgent, LogisticsAgent>();
+// --- END OF AI CUSTOMER SUPPORT SERVICES ---
+
+
 // 5. Agent 先注册（所有具体 Agent）
 builder.Services.AddScoped<IAgent, ProductOptimizationAgent>();
 // 如果有其他 Agent，在这里继续加
