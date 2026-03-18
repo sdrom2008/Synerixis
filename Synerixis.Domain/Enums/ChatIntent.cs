@@ -14,7 +14,8 @@ namespace Synerixis.Domain.Enums
         QueryOrder = 2,           // 别名：兼容旧代码
         LogisticsQuery = 3,       // 新增：物流查询
         QueryLogistics = 3,       // 别名：兼容旧代码
-        ProductOptimization = 4,
+        ProductOptimization = 4,  // 商品优化（已有）
+        CompetitorAnalysis = 100, // 竞品分析（新增）
         Appointment = 5,
         AfterSale = 6,
         MarketingFollowup = 7

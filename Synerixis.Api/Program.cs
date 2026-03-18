@@ -12,7 +12,6 @@ using Synerixis.Application.Interfaces.Ai;
 using Synerixis.Application.Interfaces.Infrastructure;
 using Synerixis.Application.Services;
 using Synerixis.Domain.Entities;
-using Synerixis.Infrastructure.Agent;
 using Synerixis.Infrastructure.AI;
 using Synerixis.Infrastructure.AIServices;
 using Synerixis.Infrastructure.Data;
@@ -97,8 +96,9 @@ builder.Services.AddScoped<IECommercePlatformClient, ECommercePlatformClient>();
 // --- END OF AI CUSTOMER SUPPORT SERVICES ---
 
 
-// 5. Agent 先注册（所有具体 Agent）
+// 5. Agent 注册（所有具体 Agent）
 builder.Services.AddScoped<IAgent, ProductOptimizationAgent>();
+builder.Services.AddScoped<IAgent, CompetitorAnalysisAgent>();
 // 如果有其他 Agent，在这里继续加
 builder.Services.AddSingleton<AliyunSmsService>();
 
