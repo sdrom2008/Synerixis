@@ -72,6 +72,9 @@ builder.Services.AddSingleton<Kernel>(sp => sp.GetRequiredService<SemanticKernel
 builder.Services.AddScoped<IChatCompletionService>(sp =>
     sp.GetRequiredService<Kernel>().GetRequiredService<IChatCompletionService>());
 
+// 注册 SemanticKernelService（AliyunLlmClient 依赖它）
+builder.Services.AddSingleton<SemanticKernelService>();
+
 
 // 4. 业务服务（顺序：先基础，后依赖）
 builder.Services.AddScoped<IAuthService, AuthService>();
