@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -11,10 +11,13 @@ namespace Synerixis.Domain.Enums
         Unknown = 0,
         GeneralChat = 1,          // 普通闲聊
         OrderQuery = 2,
-        ProductOptimization = 3,
-        Appointment = 4,
-        AfterSale = 5,
-        MarketingFollowup = 6
+        QueryOrder = 2,           // 别名：兼容旧代码
+        LogisticsQuery = 3,       // 新增：物流查询
+        QueryLogistics = 3,       // 别名：兼容旧代码
+        ProductOptimization = 4,
+        Appointment = 5,
+        AfterSale = 6,
+        MarketingFollowup = 7
     }
 
     public record ChatMessage(

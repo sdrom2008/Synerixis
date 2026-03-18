@@ -1,7 +1,9 @@
+using System.Collections.Generic;
 using System.Threading.Tasks;
-using Synerixis.Domain.Entities;
-using Synerixis.Application.Interfaces.Agents;
+using Synerixis.Application.Interfaces;
 using Synerixis.Application.Interfaces.Infrastructure;
+using Synerixis.Application.DTOs;
+using Synerixis.Domain.Enums;
 
 namespace Synerixis.Application.Agents
 {
@@ -10,7 +12,8 @@ namespace Synerixis.Application.Agents
     /// </summary>
     public class OrderAgent : IAgent
     {
-        public string Name => "QueryOrder";
+        public ChatIntent SupportedIntent => ChatIntent.QueryOrder;
+
         private readonly IECommercePlatformClient _platformClient;
 
         public OrderAgent(IECommercePlatformClient platformClient)
@@ -18,16 +21,12 @@ namespace Synerixis.Application.Agents
             _platformClient = platformClient;
         }
 
-        public async Task<AgentResult> ProcessAsync(Conversation conversation)
+        public async Task<AgentProcessResult> ProcessAsync(string userInput, ChatContext context)
         {
-            // In a real scenario, the AI (IntentClassifier) would extract parameters like order ID.
-            // For now, we'll simulate this.
-            var orderId = "SIMULATED_ORDER_12345"; // Placeholder
+            var orderId = "SIMULATED_ORDER_12345";
 
-            // Call the infrastructure layer to get data from the external platform (Taobao/Douyin)
-            var orderDetails = await _platformClient.GetOrderDetailsAsync(conversation.Platform, orderId);
+            var orderDetails = await _platformClient.GetOrderDetailsAsync(context.Platform, orderId);
 
-            // Format the raw data into a human-readable response
             string responseMessage;
             if (orderDetails != null)
             {
@@ -38,8 +37,12 @@ namespace Synerixis.Application.Agents
                 responseMessage = $"很抱歉，暂时没有查询到订单【{orderId}】的信息，请您核对一下订单号是否正确。";
             }
 
-            return new AgentResult(Name, responseMessage, true);
+            var messages = new List<ChatMessageDto>
+            {
+                new ChatMessageDto { IsFromUser = false, Content = responseMessage, MessageType = "text" }
+            };
+
+            return new AgentProcessResult(messages, Success: true);
         }
     }
-
 }

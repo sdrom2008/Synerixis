@@ -1,7 +1,9 @@
+using System.Collections.Generic;
 using System.Threading.Tasks;
-using Synerixis.Domain.Entities;
-using Synerixis.Application.Interfaces.Agents;
+using Synerixis.Application.Interfaces;
 using Synerixis.Application.Interfaces.Infrastructure;
+using Synerixis.Application.DTOs;
+using Synerixis.Domain.Enums;
 
 namespace Synerixis.Application.Agents
 {
@@ -10,7 +12,8 @@ namespace Synerixis.Application.Agents
     /// </summary>
     public class LogisticsAgent : IAgent
     {
-        public string Name => "QueryLogistics";
+        public ChatIntent SupportedIntent => ChatIntent.QueryLogistics;
+
         private readonly IECommercePlatformClient _platformClient;
 
         public LogisticsAgent(IECommercePlatformClient platformClient)
@@ -18,11 +21,11 @@ namespace Synerixis.Application.Agents
             _platformClient = platformClient;
         }
 
-        public async Task<AgentResult> ProcessAsync(Conversation conversation)
+        public async Task<AgentProcessResult> ProcessAsync(string userInput, ChatContext context)
         {
-            var trackingId = "SIMULATED_TRACKING_67890"; // Placeholder
+            var trackingId = "SIMULATED_TRACKING_67890";
 
-            var logisticsDetails = await _platformClient.GetLogisticsDetailsAsync(conversation.Platform, trackingId);
+            var logisticsDetails = await _platformClient.GetLogisticsDetailsAsync(context.Platform, trackingId);
 
             string responseMessage;
             if (logisticsDetails != null)
@@ -34,8 +37,12 @@ namespace Synerixis.Application.Agents
                 responseMessage = $"很抱歉，暂时没有查询到运单号【{trackingId}】的物流信息。";
             }
 
-            return new AgentResult(Name, responseMessage, true);
+            var messages = new List<ChatMessageDto>
+            {
+                new ChatMessageDto { IsFromUser = false, Content = responseMessage, MessageType = "text" }
+            };
+
+            return new AgentProcessResult(messages, Success: true);
         }
     }
-
 }
