@@ -11,7 +11,10 @@
       </view>
       <view class="form-item">
         <text class="label">目标平台</text>
-        <picker v-model="form.targetPlatform" :range="platforms">
+        <picker 
+          :value="selectedIndex" 
+          :range="platforms" 
+          @change="onPlatformChange">
           <view class="picker">{{ form.targetPlatform || '请选择平台' }}</view>
         </picker>
       </view>
@@ -73,6 +76,13 @@ const form = reactive<OptimizeRequest>({
   targetPlatform: ''
 })
 
+const selectedIndex = ref(0)
+
+const onPlatformChange = (e: any) => {
+  selectedIndex.value = Number(e.detail.value)
+  form.targetPlatform = platforms[selectedIndex.value]
+}
+
 const loading = ref(false)
 const result = ref<OptimizeResponse | null>(null)
 
@@ -88,7 +98,7 @@ const handleOptimize = async () => {
     if (token) headers.Authorization = `Bearer ${token}`
 
     const apiRes = await uni.request<OptimizeResponse>({
-      url: 'http://localhost:5001/api/agent/optimizeproduct',
+      url: 'http://localhost:7092/api/agent/optimizeproduct',
       method: 'POST',
       header: headers,
       data: form
@@ -107,7 +117,6 @@ const handleOptimize = async () => {
 
 const formatDesc = (desc?: string) => {
   if (!desc) return ''
-  // 将换行转为 rich-text 支持的格式
   return desc.replace(/\n/g, '<br/>')
 }
 </script>
@@ -119,7 +128,13 @@ const formatDesc = (desc?: string) => {
 .label { display: block; margin-bottom: 12rpx; font-weight: 600; color: #333; }
 .textarea { width: 100%; padding: 20rpx; border: 1px solid #e0e0e0; border-radius: 8rpx; font-size: 28rpx; min-height: 100rpx; }
 .textarea.big { min-height: 200rpx; }
-.picker { padding: 20rpx; border: 1px solid #e0e0e0; border-radius: 8rpx; font-size: 28rpx; }
+.picker { 
+  padding: 20rpx; 
+  border: 1px solid #e0e0e0; 
+  border-radius: 8rpx; 
+  font-size: 28rpx; 
+  background: #fff;
+}
 button { margin-top: 20rpx; background-color: #007AFF; color: #fff; }
 
 .result { margin-top: 30rpx; }

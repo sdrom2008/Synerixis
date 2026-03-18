@@ -1,8 +1,8 @@
 <template>
   <view class="wechat-login">
     <view class="header">
-      <image src="/static/logo.png" mode="widthFix" class="logo" />
-      <text class="title">微信登录</text>
+      <image src="/static/logo.png" mode="widthFix" class="logo" /><br/>
+      <text class="title">微信登录</text><br/>
       <text class="back" @tap="backToChoose">返回</text>
     </view>
 

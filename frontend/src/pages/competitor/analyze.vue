@@ -7,7 +7,10 @@
       </view>
       <view class="form-item">
         <text class="label">平台（可选）</text>
-        <picker v-model="form.platform" :range="platforms">
+        <picker 
+          :value="selectedIndex" 
+          :range="platforms" 
+          @change="onPlatformChange">
           <view class="picker">{{ form.platform || '请选择平台' }}</view>
         </picker>
       </view>
@@ -44,6 +47,13 @@ const form = reactive<AnalyzeRequest>({
   platform: ''
 })
 
+const selectedIndex = ref(0)
+
+const onPlatformChange = (e: any) => {
+  selectedIndex.value = Number(e.detail.value)
+  form.platform = platforms[selectedIndex.value]
+}
+
 const loading = ref(false)
 const result = ref<AnalyzeResponse | null>(null)
 
@@ -59,7 +69,7 @@ const handleAnalyze = async () => {
     if (token) headers.Authorization = `Bearer ${token}`
 
     const apiRes = await uni.request<AnalyzeResponse>({
-      url: 'http://localhost:5001/api/competitor/analyze',
+      url: 'http://localhost:7092/api/competitor/analyze',
       method: 'POST',
       header: headers,
       data: form
@@ -77,7 +87,6 @@ const handleAnalyze = async () => {
 }
 
 const formatReport = (report: string) => {
-  // 简单地将换行和 markdown 风格转换为 rich-text（实际可引入 marked 库）
   return report
     .replace(/\n/g, '<br/>')
     .replace(/\*\*(.*?)\*\*/g, '<b>$1</b>')
@@ -91,7 +100,13 @@ const formatReport = (report: string) => {
 .form-item { margin-bottom: 30rpx; }
 .label { display: block; margin-bottom: 12rpx; font-weight: 600; color: #333; }
 .input { width: 100%; padding: 20rpx; border: 1px solid #e0e0e0; border-radius: 8rpx; font-size: 28rpx; }
-.picker { padding: 20rpx; border: 1px solid #e0e0e0; border-radius: 8rpx; font-size: 28rpx; }
+.picker { 
+  padding: 20rpx; 
+  border: 1px solid #e0e0e0; 
+  border-radius: 8rpx; 
+  font-size: 28rpx; 
+  background: #fff;
+}
 button { margin-top: 20rpx; background-color: #007AFF; color: #fff; }
 
 .result { margin-top: 30rpx; }

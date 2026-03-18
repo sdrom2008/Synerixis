@@ -67,7 +67,7 @@ const sendMessage = async () => {
     if (token) headers.Authorization = `Bearer ${token}`
 
     const apiRes = await uni.request<any>({
-      url: 'http://localhost:5001/api/chat/send',
+      url: 'http://localhost:7092/api/chat/send',
       method: 'POST',
       header: headers,
       data: { message: text }

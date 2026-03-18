@@ -15,10 +15,16 @@
       </view>
       <view class="form-item">
         <text class="label">语气风格</text>
-        <radio-group v-model="form.tone">
-          <label class="radio-item"><radio value="professional" />专业严谨</label>
-          <label class="radio-item"><radio value="lively" />活泼年轻</label>
-          <label class="radio-item"><radio value="luxury" />高端奢华</label>
+        <radio-group @change="onToneChange">
+          <label class="radio-item">
+            <radio value="professional" :checked="form.tone === 'professional'" />专业严谨
+          </label>
+          <label class="radio-item">
+            <radio value="lively" :checked="form.tone === 'lively'" />活泼年轻
+          </label>
+          <label class="radio-item">
+            <radio value="luxury" :checked="form.tone === 'luxury'" />高端奢华
+          </label>
         </radio-group>
       </view>
       <button type="primary" :loading="loading" @click="handleGenerate">生成文案</button>
@@ -44,7 +50,6 @@
 
 <script setup lang="ts">
 import { ref, reactive } from 'vue'
-import { onMounted } from 'vue'
 
 interface GenerateRequest {
   productName: string
@@ -69,6 +74,10 @@ const form = reactive<GenerateRequest>({
 const loading = ref(false)
 const result = ref<GenerateResponse | null>(null)
 
+const onToneChange = (e: any) => {
+  form.tone = e.detail.value
+}
+
 const handleGenerate = async () => {
   if (!form.productName.trim()) {
     uni.showToast({ title: '请输入商品名称', icon: 'none' })
@@ -81,7 +90,7 @@ const handleGenerate = async () => {
     if (token) headers.Authorization = `Bearer ${token}`
 
     const apiRes = await uni.request<GenerateResponse>({
-      url: 'http://localhost:5001/api/marketing/generate-copy',
+      url: 'http://localhost:7092/api/marketing/generate-copy',
       method: 'POST',
       header: headers,
       data: {
@@ -135,6 +144,8 @@ const handleGenerate = async () => {
 .radio-item {
   margin-right: 30rpx;
   font-size: 28rpx;
+  display: inline-flex;
+  align-items: center;
 }
 button {
   margin-top: 20rpx;

@@ -1,6 +1,6 @@
 <template>
   <view class="choose-login">
-    <!-- 红圈结构完全不变（和启动页一样，三行） -->
+    <!-- 品牌区 -->
     <view class="brand">
       <image src="/static/logo.png" mode="widthFix" class="logo" />
       <br/>
@@ -9,9 +9,10 @@
       <text class="slogan">AI 智能伙伴</text>
     </view>
 
-    <!-- 按钮区（往下沉，上面留白大） -->
+    <!-- 按钮区 -->
     <view class="options">
-      <button class="option-btn wechat" hover-class="btn-hover" @tap="loginWechat">
+      <!-- 微信登录：只跳转页面 -->
+      <button class="option-btn wechat" hover-class="btn-hover" @tap="goToWechatLogin">
         <text>微信一键登录</text>
         <text class="tag">推荐</text>
       </button>
@@ -21,7 +22,7 @@
       </button>
     </view>
 
-    <!-- 协议跟按钮一起出现，在按钮正下方 -->
+    <!-- 协议 -->
     <view class="protocol">
       <checkbox size="24" :checked="agree" @change="toggleAgree" color="#3b82f6" />
       <text>我已阅读并同意</text>
@@ -33,12 +34,10 @@
 </template>
 
 <script>
-const testbase = 'http://192.168.1.254:7092';
-
 export default {
   data() {
     return {
-      agree: true  // 默认勾选
+      agree: true
     };
   },
 
@@ -55,41 +54,15 @@ export default {
       uni.navigateTo({ url: '/pages/protocol/privacy' });
     },
 
-    loginWechat() {
+    // 点击微信登录 → 跳转到微信登录专用页面
+    goToWechatLogin() {
       if (!this.agree) {
         uni.showToast({ title: '请先同意协议', icon: 'none' });
         return;
       }
-
-      uni.login({
-        success: res => {
-          if (res.code) {
-            uni.request({
-              url: `${testbase}/api/auth/wechat`,
-              method: 'POST',
-              data: { code: res.code },
-              success: loginRes => {
-                if (loginRes.data.success) {
-                  uni.setStorageSync('token', loginRes.data.token);
-                  uni.setStorageSync('openId', loginRes.data.openId);
-                  uni.setStorageSync('sellerId', loginRes.data.sellerId);
-                  uni.showToast({ title: '微信登录成功', icon: 'success' });
-                  uni.switchTab({ url: '/pages/dashboard/dashboard' });
-                } else {
-                  uni.showToast({ title: loginRes.data.message || '登录失败', icon: 'none' });
-                }
-              },
-              fail: err => {
-                uni.showToast({ title: '网络错误，请重试', icon: 'none' });
-              }
-            });
-          } else {
-            uni.showToast({ title: '获取微信code失败', icon: 'none' });
-          }
-        },
-        fail: err => {
-          uni.showToast({ title: '微信登录失败', icon: 'none' });
-        }
+      
+      uni.navigateTo({
+        url: '/pages/login/wechat-login'   // ← 这里改成你实际的微信登录页面路径
       });
     },
 
@@ -98,7 +71,7 @@ export default {
         uni.showToast({ title: '请先同意协议', icon: 'none' });
         return;
       }
-      uni.navigateTo({ url: '/pages/login/login' });
+      uni.navigateTo({ url: '/pages/login/login' });   // 手机号登录页面路径
     }
   }
 };
@@ -164,10 +137,6 @@ export default {
   position: relative;
 }
 
-.option-btn:hover {
-  transform: scale(1.04);
-}
-
 .wechat {
   background: linear-gradient(90deg, #22c55e, #16a34a);
   color: white;
@@ -196,13 +165,12 @@ export default {
   text-align: center;
 }
 
-/* 上浮动画 */
+/* 动画 */
 @keyframes brandFloat {
   0% { opacity: 0; transform: translateY(180rpx); }
   100% { opacity: 1; transform: translateY(0); }
 }
 
-/* 按钮 + 协议一起淡入 */
 @keyframes fadeIn {
   0% { opacity: 0; transform: translateY(40rpx); }
   100% { opacity: 1; transform: translateY(0); }
