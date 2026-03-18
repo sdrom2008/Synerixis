@@ -48,6 +48,18 @@
                 <view class="icon-wrapper chat-icon">💬</view>
                 <text class="label">智能客服</text>
             </view>
+            <view class="action-item" @tap="toMarketingCopy">
+                <view class="icon-wrapper copy-icon">📝</view>
+                <text class="label">营销文案</text>
+            </view>
+            <view class="action-item" @tap="toProductOptimize">
+                <view class="icon-wrapper optimize-icon">🔧</view>
+                <text class="label">商品优化</text>
+            </view>
+            <view class="action-item" @tap="toCompetitorAnalysis">
+                <view class="icon-wrapper competitor-icon">📊</view>
+                <text class="label">竞品分析</text>
+            </view>
             <view class="action-item" @tap="toProducts">
                 <view class="icon-wrapper product-icon">🛒</view>
                 <text class="label">商品管理</text>
@@ -55,10 +67,6 @@
             <view class="action-item" @tap="toProfile">
                 <view class="icon-wrapper profile-icon">👤</view>
                 <text class="label">我的设置</text>
-            </view>
-            <view class="action-item" @tap="toMarketing">
-                <view class="icon-wrapper marketing-icon">📈</view>
-                <text class="label">营销方案</text>
             </view>
         </view>
 
@@ -141,8 +149,23 @@
                 uni.navigateTo({ url: '/pages/profile/profile' });
             },
 
-            toMarketing() {
-                uni.navigateTo({ url: '/pages/marketing/marketing' });  // 后续实现
+            toChat() {
+                uni.navigateTo({ url: '/pages/chat/ai-chat' });
+            },
+            toMarketingCopy() {
+                uni.navigateTo({ url: '/pages/marketing/generate' });
+            },
+            toProductOptimize() {
+                uni.navigateTo({ url: '/pages/product/optimize' });
+            },
+            toCompetitorAnalysis() {
+                uni.navigateTo({ url: '/pages/competitor/analyze' });
+            },
+            toProducts() {
+                uni.switchTab({ url: '/pages/products/products' }); // 若未实现可暂略
+            },
+            toProfile() {
+                uni.navigateTo({ url: '/pages/profile/profile' });
             },
 
             toSubscribe() {
@@ -321,16 +344,24 @@
         background: #e6f7ff;
     }
 
-    .product-icon {
+    .copy-icon {
+        background: #f6ffed;
+    }
+
+    .optimize-icon {
         background: #fff7e6;
+    }
+
+    .competitor-icon {
+        background: #f9f0ff;
+    }
+
+    .product-icon {
+        background: #e6f7ff;
     }
 
     .profile-icon {
         background: #f0f5ff;
-    }
-
-    .marketing-icon {
-        background: #fff1f0;
     }
 
     .label {

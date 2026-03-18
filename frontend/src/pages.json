@@ -16,7 +16,11 @@
 	{ "path": "pages/profile/account-security", "style": { "navigationBarTitleText": "账号与安全" } },
 	{ "path": "pages/pay/subscribe", "style": { "navigationBarTitleText": "订单支付" } },
 	{ "path": "pages/products/products", "style": { "navigationBarTitleText": "商品管理" } },
-	{ "path": "pages/products/import", "style": { "navigationBarTitleText": "导入商品" } }
+	{ "path": "pages/products/import", "style": { "navigationBarTitleText": "导入商品" } },
+	{ "path": "pages/marketing/generate", "style": { "navigationBarTitleText": "营销文案生成" } },
+	{ "path": "pages/chat/ai-chat", "style": { "navigationBarTitleText": "智能客服" } },
+	{ "path": "pages/product/optimize", "style": { "navigationBarTitleText": "商品优化" } },
+	{ "path": "pages/competitor/analyze", "style": { "navigationBarTitleText": "竞品分析" } }
 //	{ "path": "pages/profile/components/SettingCard", "style": { "navigationBarTitleText": "复用卡片组件" } }
   ],
   "tabBar": {
