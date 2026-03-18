@@ -11,7 +11,7 @@
       </view>
       <view class="form-item">
         <text class="label">卖点（可选）</text>
-        <textarea v-model="form sellingPoints" placeholder="列举核心卖点，一行一个" class="textarea" auto-height />
+        <textarea v-model="form.sellingPoints" placeholder="列举核心卖点，一行一个" class="textarea" auto-height />
       </view>
       <view class="form-item">
         <text class="label">语气风格</text>
