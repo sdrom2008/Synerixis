@@ -11,73 +11,52 @@ namespace Synerixis.Domain.Entities
     public class ChatMessage
     {
         public Guid Id { get; private set; } = Guid.NewGuid();
-        public Guid ConversationId { get; private set; }  // 外键，必须保留
-        public Conversation? Conversation { get; private set; }  // 导航，可选
+        public Guid ChatSessionId { get; private set; }  // 外键，指向 ChatSession
+        public ChatSession? ChatSession { get; private set; }  // 导航属性
 
         public bool IsFromUser { get; private set; }
         public string Content { get; private set; } = string.Empty;
-
-        // 推荐改成 MessageType（更规范，与 DTO 一致）
-        public string MessageType { get; private set; } = "text";  // 改名：Type → MessageType
-
+        public string MessageType { get; private set; } = "text";
         public string? DataJson { get; private set; }
         public DateTime Timestamp { get; private set; } = DateTime.UtcNow;
 
         private ChatMessage() { }
 
-        public static ChatMessage FromUser(string content, Guid conversationId)
+        public static ChatMessage FromUser(string content, Guid chatSessionId)
         {
             var msg = new ChatMessage
             {
                 Id = Guid.NewGuid(),
-                ConversationId = conversationId,  // 手动设置
+                ChatSessionId = chatSessionId,
                 IsFromUser = true,
                 Content = content,
-                MessageType = "text"  // 显式设置
+                MessageType = "text"
             };
             Console.WriteLine("创建 user 消息 Id: " + msg.Id);
             return msg;
         }
 
-        public static ChatMessage FromAI(string content, string messageType = "text", object? data = null,Guid conversationId = default)
+        public static ChatMessage FromAI(string content, string messageType = "text", object? data = null, Guid chatSessionId = default)
         {
             var msg = new ChatMessage
             {
                 Id = Guid.NewGuid(),
-                ConversationId = conversationId,
+                ChatSessionId = chatSessionId,
                 IsFromUser = false,
                 Content = content,
                 MessageType = messageType,
                 DataJson = data != null ? System.Text.Json.JsonSerializer.Serialize(data) : null
             };
-            Console.WriteLine("创建1 AI 消息 Id: " + msg.Id);
+            Console.WriteLine("创建 AI 消息 Id: " + msg.Id);
             return msg;
         }
 
-        public static ChatMessage FromAI(string content, string messageType = "text", object? data = null, DateTime? timestamp = null)
+        public static ChatMessage FromAgent(string content, Guid chatSessionId)
         {
             var msg = new ChatMessage
             {
                 Id = Guid.NewGuid(),
-                IsFromUser = false,
-                Content = content,
-                MessageType = messageType,
-                DataJson = data != null ? JsonConvert.SerializeObject(data) : null, // 改用 Newtonsoft
-                Timestamp = timestamp ?? DateTime.UtcNow
-            };
-            Console.WriteLine("创建2 AI 消息 Id: " + msg.Id);
-            return msg;
-        }
-
-        /// <summary>
-        /// 创建客服回复消息
-        /// </summary>
-        public static ChatMessage FromAgent(string content, Guid conversationId)
-        {
-            var msg = new ChatMessage
-            {
-                Id = Guid.NewGuid(),
-                ConversationId = conversationId,
+                ChatSessionId = chatSessionId,
                 IsFromUser = false,
                 Content = content,
                 MessageType = "text"

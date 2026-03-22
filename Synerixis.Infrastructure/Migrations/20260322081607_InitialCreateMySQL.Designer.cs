@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Synerixis.Infrastructure.Data;
 
@@ -11,17 +12,15 @@ using Synerixis.Infrastructure.Data;
 namespace Synerixis.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260322081607_InitialCreateMySQL")]
+    partial class InitialCreateMySQL
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
-<<<<<<< HEAD
-                .HasAnnotation("ProductVersion", "9.0.14")
-=======
                 .HasAnnotation("ProductVersion", "9.0.12")
->>>>>>> aac0f43c35926d0822aab3791029abf1ea2de9a1
                 .HasAnnotation("Relational:MaxIdentifierLength", 64);
 
             MySqlModelBuilderExtensions.AutoIncrementColumns(modelBuilder);
@@ -222,10 +221,7 @@ namespace Synerixis.Infrastructure.Migrations
                         .HasColumnType("binary(16)");
 
                     b.Property<byte[]>("ChatSessionId")
-<<<<<<< HEAD
-=======
                         .IsRequired()
->>>>>>> aac0f43c35926d0822aab3791029abf1ea2de9a1
                         .HasColumnType("binary(16)");
 
                     b.Property<string>("Content")
@@ -233,10 +229,6 @@ namespace Synerixis.Infrastructure.Migrations
                         .HasColumnType("longtext");
 
                     b.Property<byte[]>("ConversationId")
-<<<<<<< HEAD
-                        .IsRequired()
-=======
->>>>>>> aac0f43c35926d0822aab3791029abf1ea2de9a1
                         .HasColumnType("binary(16)");
 
                     b.Property<string>("DataJson")
@@ -287,13 +279,8 @@ namespace Synerixis.Infrastructure.Migrations
 
                     b.Property<string>("CustomerId")
                         .IsRequired()
-<<<<<<< HEAD
-                        .HasMaxLength(191)
-                        .HasColumnType("varchar(191)");
-=======
                         .HasMaxLength(100)
                         .HasColumnType("varchar(100)");
->>>>>>> aac0f43c35926d0822aab3791029abf1ea2de9a1
 
                     b.Property<string>("CustomerName")
                         .HasColumnType("longtext");
@@ -401,13 +388,8 @@ namespace Synerixis.Infrastructure.Migrations
 
                     b.Property<string>("CustomerId")
                         .IsRequired()
-<<<<<<< HEAD
-                        .HasMaxLength(191)
-                        .HasColumnType("varchar(191)");
-=======
                         .HasMaxLength(100)
                         .HasColumnType("varchar(100)");
->>>>>>> aac0f43c35926d0822aab3791029abf1ea2de9a1
 
                     b.Property<string>("CustomerName")
                         .HasColumnType("longtext");
@@ -895,19 +877,6 @@ namespace Synerixis.Infrastructure.Migrations
 
             modelBuilder.Entity("Synerixis.Domain.Entities.ChatMessage", b =>
                 {
-<<<<<<< HEAD
-                    b.HasOne("Synerixis.Domain.Entities.ChatSession", null)
-                        .WithMany("Messages")
-                        .HasForeignKey("ChatSessionId");
-
-                    b.HasOne("Synerixis.Domain.Entities.Conversation", "Conversation")
-                        .WithMany("Messages")
-                        .HasForeignKey("ConversationId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Conversation");
-=======
                     b.HasOne("Synerixis.Domain.Entities.ChatSession", "ChatSession")
                         .WithMany("Messages")
                         .HasForeignKey("ChatSessionId")
@@ -919,7 +888,6 @@ namespace Synerixis.Infrastructure.Migrations
                         .HasForeignKey("ConversationId");
 
                     b.Navigation("ChatSession");
->>>>>>> aac0f43c35926d0822aab3791029abf1ea2de9a1
                 });
 
             modelBuilder.Entity("Synerixis.Domain.Entities.ChatSession", b =>

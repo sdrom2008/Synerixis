@@ -172,6 +172,11 @@ namespace Synerixis.Infrastructure.Data
                       .HasMaxLength(100)
                       .IsRequired();
 
+                entity.Property(s => s.CustomerId)
+                      .HasColumnType("varchar(100)")
+                      .HasMaxLength(100)
+                      .IsRequired();
+
                 entity.HasIndex(s => s.SessionId)
                       .IsUnique()
                       .HasDatabaseName("IX_chat_sessions_SessionId");
@@ -215,6 +220,12 @@ namespace Synerixis.Infrastructure.Data
                 entity.HasKey(o => o.Id);
 
                 entity.Property(o => o.OrderNo)
+                      .HasColumnType("varchar(100)")
+                      .HasMaxLength(100)
+                      .IsRequired();
+
+                // CustomerId 用于索引，需指定 varchar 长度
+                entity.Property(o => o.CustomerId)
                       .HasColumnType("varchar(100)")
                       .HasMaxLength(100)
                       .IsRequired();
@@ -277,9 +288,9 @@ namespace Synerixis.Infrastructure.Data
                 entity.ToTable("chat_messages");
                 entity.HasKey(m => m.Id);
 
-                entity.HasOne(m => m.Conversation)
+                entity.HasOne(m => m.ChatSession)
                       .WithMany(c => c.Messages)
-                      .HasForeignKey(m => m.ConversationId)
+                      .HasForeignKey(m => m.ChatSessionId)
                       .OnDelete(DeleteBehavior.Cascade);
             });
         }

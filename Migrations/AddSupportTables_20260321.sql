@@ -38,7 +38,7 @@ CREATE TABLE IF NOT EXISTS `agents` (
 CREATE TABLE IF NOT EXISTS `chat_sessions` (
   `Id` BINARY(16) NOT NULL,
   `SessionId` VARCHAR(100) NOT NULL,
-  `CustomerId` BINARY(16) NOT NULL,
+  `CustomerId` VARCHAR(100) NOT NULL,
   `CustomerName` VARCHAR(200) NULL,
   `CustomerAvatar` VARCHAR(500) NULL,
   `ShopId` BINARY(16) NOT NULL,
@@ -122,6 +122,26 @@ CREATE TABLE IF NOT EXISTS `quick_replies` (
   KEY `IX_quick_replies_Category` (`Category`),
   KEY `IX_quick_replies_Scope` (`Scope`),
   CONSTRAINT `FK_quick_replies_shops` FOREIGN KEY (`ShopId`) REFERENCES `sellers` (`Id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- =====================================================
+-- Table: chat_messages (客服消息记录)
+-- =====================================================
+CREATE TABLE IF NOT EXISTS `chat_messages` (
+  `Id` BINARY(16) NOT NULL,
+  `ChatSessionId` BINARY(16) NOT NULL,
+  `SenderType` INT NOT NULL COMMENT '1=Customer, 2=Agent, 3=System',
+  `SenderId` BINARY(16) NULL COMMENT 'AgentId if SenderType=2',
+  `Content` LONGTEXT NOT NULL,
+  `MessageType` INT NOT NULL DEFAULT 1 COMMENT '1=Text, 2=Image, 3=File, 4=OrderQuery, 5=LogisticsQuery',
+  `Metadata` TEXT NULL COMMENT 'JSON payload for special message types',
+  `IsRead` BOOLEAN NOT NULL DEFAULT FALSE,
+  `ReadAt` DATETIME NULL,
+  `CreatedAt` DATETIME NOT NULL,
+  PRIMARY KEY (`Id`),
+  KEY `IX_chat_messages_ChatSessionId` (`ChatSessionId`),
+  KEY `IX_chat_messages_CreatedAt` (`CreatedAt`),
+  CONSTRAINT `FK_chat_messages_chat_sessions` FOREIGN KEY (`ChatSessionId`) REFERENCES `chat_sessions` (`Id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- =====================================================
