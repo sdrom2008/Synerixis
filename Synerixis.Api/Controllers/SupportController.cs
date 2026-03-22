@@ -64,21 +64,20 @@ namespace Synerixis.Api.Controllers
             [FromQuery] int page = 1,
             [FromQuery] int pageSize = 20)
         {
-            var userId = GetCurrentUserId();
-            if (userId == null) return Unauthorized();
+            var agent = GetCurrentAgent(_db);  // 必须是 Agent 或 Supervisor
 
-            var userRole = GetCurrentRole();
             var query = _db.ChatSessions
                 .Include(s => s.Shop)
                 .Include(s => s.AssignedAgent)
+                .Where(s => s.ShopId == agent.ShopId)  // 同店
                 .AsQueryable();
 
-            if (userRole == "Agent")
+            // Agent 只能看分配到自己的会话；Supervisor 可看全店
+            if (agent.Role == 1) // Agent
             {
-                var agent = await _db.Agents.FirstOrDefaultAsync(a => a.Id == userId.Value);
-                if (agent == null) return NotFound("Agent not found");
-                query = query.Where(s => s.ShopId == agent.ShopId);
+                query = query.Where(s => s.AssignedAgentId == agent.Id);
             }
+            // Supervisor (Role=2) 不加限制，看全店
 
             if (!string.IsNullOrEmpty(status))
             {
@@ -206,21 +205,17 @@ namespace Synerixis.Api.Controllers
         [HttpGet("tickets/{sessionId}/messages")]
         public async Task<IActionResult> GetTicketMessages(string sessionId)
         {
-            var userId = GetCurrentUserId();
-            if (userId == null) return Unauthorized();
+            var agent = GetCurrentAgent(_db);
 
             var session = await _db.ChatSessions
                 .FirstOrDefaultAsync(s => s.SessionId == sessionId);
 
             if (session == null) return NotFound("Session not found");
 
-            // 权限检查： either assigned agent or supervisor of the shop
-            var userRole = GetCurrentRole();
-            if (userRole == "Agent" && session.AssignedAgentId != userId.Value)
+            // 权限：Agent 只能看分配到自己的会话；Supervisor 可看本店所有
+            if (agent.Role == 1 && session.AssignedAgentId != agent.Id)
             {
-                var agent = await _db.Agents.FirstOrDefaultAsync(a => a.Id == userId.Value);
-                if (agent == null || agent.ShopId != session.ShopId)
-                    return Forbid("Not authorized to view this session");
+                return Forbid("Not authorized to view this session");
             }
 
             var messages = await _db.ChatMessages
@@ -230,7 +225,8 @@ namespace Synerixis.Api.Controllers
                 {
                     id = m.Id,
                     content = m.Content,
-                    senderType = m.SenderType == 1 ? "Customer" : (m.SenderType == 2 ? "Agent" : "System")
+                    senderType = m.SenderType == 1 ? "Customer" : (m.SenderType == 2 ? "Agent" : "System"),
+                    createdAt = m.CreatedAt
                 })
                 .ToListAsync();
 

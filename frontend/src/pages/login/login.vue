@@ -136,14 +136,30 @@ export default {
 
         // 保存 token 和用户信息
         uni.setStorageSync('token', res.token);
-        uni.setStorageSync('sellerId', res.sellerId);
-        uni.setStorageSync('role', 'Seller'); // 手机登录是卖家身份
+        uni.setStorageSync('userId', res.userId);
+        uni.setStorageSync('userType', res.userType); // Seller / Agent / Supervisor
+
+        // 兼容 Seller 旧字段
+        if (res.userType === 'Seller') {
+          uni.setStorageSync('sellerId', res.sellerId);
+          uni.setStorageSync('nickname', res.nickname);
+        } else if (res.userType === 'Agent' || res.userType === 'Supervisor') {
+          uni.setStorageSync('agentId', res.userId);
+          uni.setStorageSync('shopId', res.shopId);
+          uni.setStorageSync('agentName', res.name);
+        }
 
         uni.showToast({ title: '登录成功', icon: 'success' });
 
-        // 跳转到首页
+        // 根据角色跳转
         setTimeout(() => {
-          uni.switchTab({ url: '/pages/conversations/conversations' });
+          if (res.userType === 'Seller') {
+            uni.switchTab({ url: '/pages/merchant/sessions' });
+          } else if (res.userType === 'Agent' || res.userType === 'Supervisor') {
+            uni.switchTab({ url: '/pages/support/workbench' });
+          } else {
+            uni.switchTab({ url: '/pages/conversations/conversations' }); // fallback
+          }
         }, 1000);
       } catch (err) {
         // 错误已在 request 中处理

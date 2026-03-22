@@ -5,31 +5,28 @@
     { "path": "pages/login/login", "style": { "navigationBarTitleText": "手机号短信验证登录" } }, 
 	{ "path": "pages/login/wechat-login", "style": { "navigationBarTitleText": "微信登录" } }, 
 	{ "path": "pages/login/bind-phone", "style": { "navigationBarTitleText": "绑定电话" } },
-    { "path": "pages/conversations/conversations", "style": { "navigationBarTitleText": "会话列表" } },
-    { "path": "pages/chat/chat", "style": { "navigationBarTitleText": "聊天" } },
-	{ "path": "pages/chat/list", "style": { "navigationBarTitleText": "会话列表" } },
-	{ "path": "pages/dashboard/dashboard", "style": { "navigationBarTitleText": "仪表盘" } },
-	{ "path": "pages/profile/index", "style": { "navigationBarTitleText": "入口页" } },
-//	{ "path": "pages/profile/profile-info", "style": { "navigationBarTitleText": "您的个人信息" } },
-	{ "path": "pages/profile/shop-setting", "style": { "navigationBarTitleText": "店铺信息设置" } },
-	{ "path": "pages/profile/ai-preference", "style": { "navigationBarTitleText": "AI 偏好设置" } },
-	{ "path": "pages/profile/account-security", "style": { "navigationBarTitleText": "账号与安全" } },
-	{ "path": "pages/pay/subscribe", "style": { "navigationBarTitleText": "订单支付" } },
-	{ "path": "pages/products/products", "style": { "navigationBarTitleText": "商品管理" } },
-	{ "path": "pages/products/import", "style": { "navigationBarTitleText": "导入商品" } },
-	{ "path": "pages/marketing/generate", "style": { "navigationBarTitleText": "营销文案生成" } },
-	{ "path": "pages/chat/ai-chat", "style": { "navigationBarTitleText": "智能客服" } },
-	{ "path": "pages/product/optimize", "style": { "navigationBarTitleText": "商品优化" } },
-	{ "path": "pages/competitor/analyze", "style": { "navigationBarTitleText": "竞品分析" } },
-	{ "path": "pages/support/workbench", "style": { "navigationBarTitleText": "客服工作台" } },
-	{ "path": "pages/support/supervisor", "style": { "navigationBarTitleText": "主管监控" } }
-//	{ "path": "pages/profile/components/SettingCard", "style": { "navigationBarTitleText": "复用卡片组件" } }
+    { "path": "pages/merchant/sessions", "style": { "navigationBarTitleText": "我的会话" } },
+    { "path": "pages/merchant/session-detail", "style": { "navigationBarTitleText": "会话详情" } },
+    { "path": "pages/support/workbench", "style": { "navigationBarTitleText": "客服工作台" } },
+    { "path": "pages/support/supervisor", "style": { "navigationBarTitleText": "主管监控" } },
+    { "path": "pages/dashboard/dashboard", "style": { "navigationBarTitleText": "仪表盘" } },
+    { "path": "pages/profile/index", "style": { "navigationBarTitleText": "我的" } },
+    { "path": "pages/profile/shop-setting", "style": { "navigationBarTitleText": "店铺信息设置" } },
+    { "path": "pages/profile/ai-preference", "style": { "navigationBarTitleText": "AI 偏好设置" } },
+    { "path": "pages/profile/account-security", "style": { "navigationBarTitleText": "账号与安全" } },
+    { "path": "pages/pay/subscribe", "style": { "navigationBarTitleText": "订单支付" } },
+    { "path": "pages/products/products", "style": { "navigationBarTitleText": "商品管理" } },
+    { "path": "pages/products/import", "style": { "navigationBarTitleText": "导入商品" } },
+    { "path": "pages/marketing/generate", "style": { "navigationBarTitleText": "营销文案生成" } },
+    { "path": "pages/product/optimize", "style": { "navigationBarTitleText": "商品优化" } },
+    { "path": "pages/competitor/analyze", "style": { "navigationBarTitleText": "竞品分析" } }
   ],
   "tabBar": {
-  "list": [
-    { "pagePath": "pages/conversations/conversations", "text": "会话" },
-	{ "pagePath": "pages/dashboard/dashboard", "text": "仪表盘" },
-    { "pagePath": "pages/profile/index", "text": "我的" }
-  ]
-}
+    "list": [
+      { "pagePath": "pages/merchant/sessions", "text": "会话", "icon": "message" },
+      { "pagePath": "pages/support/workbench", "text": "工作台", "icon": "work" },
+      { "pagePath": "pages/dashboard/dashboard", "text": "仪表盘", "icon": "dashboard" },
+      { "pagePath": "pages/profile/index", "text": "我的", "icon": "user" }
+    ]
+  }
 }

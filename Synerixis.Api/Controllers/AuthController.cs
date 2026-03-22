@@ -108,15 +108,58 @@ namespace Synerixis.Api.Controllers
                     return BadRequest("验证码错误或已过期");
             }
 
+            // 先尝试作为 Seller 登录
             var seller = await _db.Sellers.FirstOrDefaultAsync(s => s.Phone == dto.Phone);
-
-            bool isNew = false;
-            if (seller == null)
+            if (seller != null)
             {
-                isNew = true;
-                seller = Seller.CreateWithPhone(dto.Phone);
-                _db.Sellers.Add(seller);
+                bool isNew = false;
+                if (!seller.PhoneConfirmed)
+                {
+                    seller.ConfirmPhone();
+                    isNew = true;
+                }
+                seller.RecordLogin("phone");
+                await _db.SaveChangesAsync();
+
+                var token = _authService.GenerateJwt(seller.Id, "Seller");
+                return Ok(new
+                {
+                    token,
+                    userId = seller.Id,
+                    userType = "Seller",
+                    nickname = seller.Nickname,
+                    freeQuota = seller.FreeQuota,
+                    subscriptionLevel = seller.SubscriptionLevel,
+                    isNewRegistration = isNew
+                });
             }
+
+            // 再尝试作为 Agent 登录
+            var agent = await _db.Agents.FirstOrDefaultAsync(a => a.Phone == dto.Phone);
+            if (agent != null)
+            {
+                if (!agent.IsActive)
+                    return BadRequest("账号已被禁用");
+
+                agent.RecordLogin();
+                await _db.SaveChangesAsync();
+
+                var userType = agent.Role == 2 ? "Supervisor" : "Agent";
+                var token = _authService.GenerateJwt(agent.Id, userType);  // 只传两个参数
+                return Ok(new
+                {
+                    token,
+                    userId = agent.Id,
+                    userType = userType,
+                    name = agent.Name,
+                    role = (int)agent.Role,
+                    shopId = agent.ShopId
+                });
+            }
+
+            // 都找不到，返回未注册
+            return Unauthorized(new { message = "用户不存在" });
+        }
 
             seller.RecordLogin("phone");
             await _db.SaveChangesAsync();
