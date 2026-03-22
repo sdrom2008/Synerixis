@@ -1,12 +1,14 @@
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using MySqlConnector;
 using Synerixis.Application.DTOs;
 using Synerixis.Application.Interfaces;
 using Synerixis.Domain.Entities;
 using Synerixis.Domain.Enums;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using System;
 
 namespace Synerixis.Infrastructure.Services
 {
@@ -87,8 +89,24 @@ namespace Synerixis.Infrastructure.Services
             session.Messages.Add(aiMsg);
             session.AddAiMessage();
 
-            await _conversationRepository.SaveAsync(session);
-            _logger.LogInformation("Session {SessionId} saved with new messages.", session.Id);
+            //await _conversationRepository.SaveAsync(session);
+            //_logger.LogInformation("Session {SessionId} saved with new messages.", session.Id);
+            try
+            {
+                await _conversationRepository.SaveAsync(session);
+                _logger.LogInformation("Session {SessionId} saved with new messages.", session.Id);
+            }
+            catch (DbUpdateException ex) when (ex.InnerException is MySqlException mysqlEx)
+            {
+                _logger.LogError(ex, "MySQL 保存失败 - ErrorCode: {ErrorCode}, Message: {Message}, SQL State: {SqlState}",
+                    mysqlEx.Number, mysqlEx.Message, mysqlEx.SqlState);
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "保存 session 失败，SessionId: {SessionId}", session.Id);
+                throw;
+            }
 
             return new ChatMessageReplyDto
             {

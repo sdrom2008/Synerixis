@@ -1,6 +1,7 @@
 using Synerixis.Domain.Common;
 using System;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -16,6 +17,8 @@ namespace Synerixis.Domain.Entities
         public string OrderNo { get; private set; } = string.Empty;           // 电商平台订单号
         public string? ExternalOrderId { get; private set; }                 // 外部系统订单ID（如淘宝订单ID）
         public Guid ShopId { get; private set; }                              // 所属店铺
+
+        [MaxLength(191)]
         public string CustomerId { get; private set; }                          // 买家ID（与ChatSession的CustomerId对应）
         public string? CustomerName { get; private set; }                     // 买家昵称
         public string? CustomerPhone { get; private set; }                    // 买家手机

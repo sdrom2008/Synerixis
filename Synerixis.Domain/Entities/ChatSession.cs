@@ -1,6 +1,7 @@
 using Synerixis.Domain.Common;
 using System;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -15,6 +16,8 @@ namespace Synerixis.Domain.Entities
     public class ChatSession : AggregateRoot<Guid>
     {
         public string SessionId { get; private set; } = string.Empty;  // 业务唯一标识（可用于前端）
+
+        [MaxLength(191)]
         public string CustomerId { get; private set; }                  // 买家ID（来自电商平台，字符串）
         public string? CustomerName { get; private set; }             // 买家昵称
         public string? CustomerAvatar { get; private set; }           // 买家头像

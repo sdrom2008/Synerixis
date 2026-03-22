@@ -172,7 +172,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 builder.Services.AddAuthorization();
 
 // 开发模式: 强制使用 SQLite 自动创建数据库
-var dbProvider = "sqlite";  // 强制
+var dbProvider = "mysql";  // 强制
 if (dbProvider == "sqlite")
 {
     var sqlitePath = Path.Combine(AppContext.BaseDirectory, "dev.db");
