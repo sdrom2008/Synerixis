@@ -71,9 +71,9 @@
 import { ref, onMounted } from 'vue'
 import { request } from '@/utils/request.js'
 
-const tickets = ref<any[]>([])
+const tickets = ref([])
 const currentTicket = ref(null)
-const messages = ref<any[]>([])
+const messages = ref([])
 const newMessage = ref('')
 const sending = ref(false)
 const lastMessageId = ref('')
