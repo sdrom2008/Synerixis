@@ -170,15 +170,9 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 
 builder.Services.AddAuthorization();
 
-<<<<<<< HEAD
-// 开发模式: 强制使用 SQLite 自动创建数据库
-var dbProvider = "mysql";  // 强制
-if (dbProvider == "sqlite")
-=======
 // 数据库配置：MySQL
 var conn = builder.Configuration.GetConnectionString("MySqlConnection");
 if (string.IsNullOrEmpty(conn))
->>>>>>> aac0f43c35926d0822aab3791029abf1ea2de9a1
 {
     conn = builder.Configuration["Database:ConnectionString"];
 }
