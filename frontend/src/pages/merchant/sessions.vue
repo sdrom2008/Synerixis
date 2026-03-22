@@ -29,7 +29,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 
-const sessions = ref<any[]>([])
+const sessions = ref([])
 const BASE_URL = 'http://192.168.1.254:7092'
 
 onMounted(() => {

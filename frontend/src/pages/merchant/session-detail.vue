@@ -15,7 +15,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 
-const messages = ref<any[]>([])
+const messages = ref([])
 const sessionId = ref('')
 const sessionStatus = ref('')
 const lastMsgId = ref('')

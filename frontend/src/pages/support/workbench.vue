@@ -72,7 +72,7 @@ import { ref, onMounted } from 'vue'
 import { request } from '@/utils/request.js'
 
 const tickets = ref<any[]>([])
-const currentTicket = ref<any>(null)
+const currentTicket = ref(null)
 const messages = ref<any[]>([])
 const newMessage = ref('')
 const sending = ref(false)
