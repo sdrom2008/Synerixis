@@ -68,7 +68,13 @@ namespace Synerixis.Infrastructure.Services
             session.Messages.Add(userMsg);
             session.AddUserMessage();
 
-            var historyDtos = session.Messages.Select(m => new ChatMessageDto { IsFromUser = m.IsFromUser, Content = m.Content }).ToList();
+            var historyDtos = session.Messages.Select(m => new ChatMessageDto
+            {
+                IsFromUser = m.SenderType == 1,  // SenderType 1 = Customer
+                Content = m.Content,
+                MessageType = m.MessageType == 1 ? "text" : "other",
+                Timestamp = m.CreatedAt
+            }).ToList();
             var intent = await _intentClassifier.ClassifyAsync(message, historyDtos);
 
             string replyContent;
@@ -113,7 +119,7 @@ namespace Synerixis.Infrastructure.Services
                 ConversationId = session.Id,
                 MessageId = aiMsg.Id,
                 Content = aiMsg.Content,
-                MessageType = aiMsg.MessageType
+                MessageType = aiMsg.MessageType == 1 ? "text" : "other"
             };
         }
 
