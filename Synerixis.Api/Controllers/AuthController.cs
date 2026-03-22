@@ -73,7 +73,7 @@ namespace Synerixis.Api.Controllers
                 seller.RecordLogin("wechat");
                 await _db.SaveChangesAsync();
 
-                var token = _authService.GenerateJwt(seller.Id, "Seller");
+                var token = _authService.GenerateJwt(seller.Id, "Seller", null);
                 return Ok(new
                 {
                     token,
@@ -121,7 +121,7 @@ namespace Synerixis.Api.Controllers
                 seller.RecordLogin("phone");
                 await _db.SaveChangesAsync();
 
-                var token = _authService.GenerateJwt(seller.Id, "Seller");
+                var token = _authService.GenerateJwt(seller.Id, "Seller", null);
                 return Ok(new
                 {
                     token,
@@ -145,7 +145,7 @@ namespace Synerixis.Api.Controllers
                 await _db.SaveChangesAsync();
 
                 var userType = agent.Role == AgentRole.Supervisor ? "Supervisor" : "Agent";
-                var token = _authService.GenerateJwt(agent.Id, userType);  // 只传两个参数
+                var token = _authService.GenerateJwt(agent.Id, userType, agent.ShopId);
                 return Ok(new
                 {
                     token,
@@ -180,7 +180,7 @@ namespace Synerixis.Api.Controllers
             seller.RecordLogin("wechat");
             await _db.SaveChangesAsync();
 
-            var token = _authService.GenerateJwt(seller.Id, "Seller");
+            var token = _authService.GenerateJwt(seller.Id, "Seller", null);
             return Ok(new
             {
                 token,
@@ -241,7 +241,7 @@ namespace Synerixis.Api.Controllers
             seller.RecordLogin("phone");
             await _db.SaveChangesAsync();
 
-            var token = _authService.GenerateJwt(seller.Id, "Seller");
+            var token = _authService.GenerateJwt(seller.Id, "Seller", null);
             return Ok(new
             {
                 code = 200,
@@ -304,7 +304,7 @@ namespace Synerixis.Api.Controllers
                 seller.RecordLogin("wechat-bind");
                 await _db.SaveChangesAsync();
 
-                var token = _authService.GenerateJwt(seller.Id, "Seller");
+                var token = _authService.GenerateJwt(seller.Id, "Seller", null);
 
                 return Ok(new
                 {
@@ -351,7 +351,7 @@ namespace Synerixis.Api.Controllers
             agent.RecordLogin();
             await _db.SaveChangesAsync();
 
-            var token = _authService.GenerateJwt(agent.Id, agent.Role.ToString());
+            var token = _authService.GenerateJwt(agent.Id, agent.Role.ToString(), agent.ShopId);
 
             return Ok(new
             {
@@ -378,7 +378,7 @@ namespace Synerixis.Api.Controllers
             var existing = await _db.Agents.FirstOrDefaultAsync();
             if (existing != null)
             {
-                var existingToken = _authService.GenerateJwt(existing.Id, existing.Role.ToString());
+                var existingToken = _authService.GenerateJwt(existing.Id, existing.Role.ToString(), existing.ShopId);
                 return Ok(new { token = existingToken, agentId = existing.Id, name = existing.Name, message = "Already exists" });
             }
 
@@ -398,7 +398,7 @@ namespace Synerixis.Api.Controllers
             _db.Agents.Add(agent);
             await _db.SaveChangesAsync();
 
-            var token = _authService.GenerateJwt(agent.Id, agent.Role.ToString());
+            var token = _authService.GenerateJwt(agent.Id, agent.Role.ToString(), agent.ShopId);
             return Ok(new { token, agentId = agent.Id, name = agent.Name });
         }
     }

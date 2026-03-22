@@ -16,19 +16,25 @@ namespace Synerixis.Infrastructure.Services
             _config = config;
         }
 
-        public string GenerateJwt(Guid userId, string role)
+        public string GenerateJwt(Guid userId, string userType, Guid? shopId = null)
         {
-            Console.WriteLine($"GenerateJwt: userId={userId}, role={role}");
+            Console.WriteLine($"GenerateJwt: userId={userId}, userType={userType}, shopId={shopId}");
 
             var claims = new List<Claim>
             {
                 new Claim(ClaimTypes.NameIdentifier, userId.ToString()),
-                new Claim(ClaimTypes.Role, role), // 使用标准的Role Claim
-                new Claim("uid", userId.ToString()) // 自定义一个uid，方便前端解析
+                new Claim("userType", userType),                    // 前端用
+                new Claim("role", userType),                       // 后端用（简单字符串）
+                new Claim("uid", userId.ToString())
             };
 
+            if (shopId.HasValue)
+            {
+                claims.Add(new Claim("shopId", shopId.Value.ToString()));
+            }
+
             // 为了向后兼容，如果角色是Seller，我们额外添加一个sellerId claim
-            if (role.Equals("Seller", StringComparison.OrdinalIgnoreCase))
+            if (userType.Equals("Seller", StringComparison.OrdinalIgnoreCase))
             {
                 claims.Add(new Claim("sellerId", userId.ToString()));
             }

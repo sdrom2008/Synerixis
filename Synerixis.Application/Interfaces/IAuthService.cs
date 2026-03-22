@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -8,7 +8,7 @@ namespace Synerixis.Application.Interfaces
 {
     public interface IAuthService
     {
-        string GenerateJwt(Guid userId, string role);
+        string GenerateJwt(Guid userId, string userType, Guid? shopId = null);
         // 未来可扩展：RefreshToken、ValidateToken 等
     }
 }
