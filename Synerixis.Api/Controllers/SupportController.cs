@@ -196,7 +196,7 @@ namespace Synerixis.Api.Controllers
             {
                 message = "Reply sent successfully",
                 messageId = message.Id,
-                timestamp = message.Timestamp
+                timestamp = message.CreatedAt
             });
         }
 

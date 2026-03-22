@@ -139,7 +139,7 @@ namespace Synerixis.Api.Controllers
             {
                 id = c.Id,
                 title = c.Title,
-                lastMessage = c.Messages.OrderByDescending(m => m.Timestamp).FirstOrDefault()?.Content ?? "暂无消息",
+                lastMessage = c.Messages.OrderByDescending(m => m.CreatedAt).FirstOrDefault()?.Content ?? "暂无消息",
                 lastActiveAt = c.LastActiveAt?.ToString("yyyy-MM-dd HH:mm")
             });
 
@@ -180,14 +180,14 @@ namespace Synerixis.Api.Controllers
             }
 
             var messages = conversation.Messages
-                .OrderBy(m => m.Timestamp)
+                .OrderBy(m => m.CreatedAt)
                 .Select(m => new
                 {
-                    isFromUser = m.IsFromUser,
+                    isFromUser = m.SenderType == 1,
                     content = m.Content,
-                    messageType = m.MessageType,
-                    data = m.DataJson != null
-                        ? JsonSerializer.Deserialize<object>(m.DataJson)
+                    messageType = m.MessageType == 1 ? "text" : "other",
+                    data = m.Metadata != null
+                        ? JsonSerializer.Deserialize<object>(m.Metadata)
                         : null
                 });
 

@@ -19,7 +19,7 @@ namespace Synerixis.Domain.Entities
         public Guid? SenderId { get; private set; }  // 可选，AgentId 当 SenderType=2
 
         public string Content { get; private set; } = string.Empty;
-        public int MessageType { get; private set; } = 1  // 1=Text, 2=Image, etc.
+        public int MessageType { get; private set; } = 1;  // 1=Text, 2=Image, etc.
         public string? Metadata { get; private set; }
         public bool IsRead { get; private set; } = false;
         public DateTime? ReadAt { get; private set; }

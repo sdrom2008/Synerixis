@@ -119,7 +119,7 @@ namespace Synerixis.Infrastructure.Services
                 ConversationId = session.Id,
                 MessageId = aiMsg.Id,
                 Content = aiMsg.Content,
-                MessageType = aiMsg.MessageType
+                MessageType = aiMsg.MessageType == 1 ? "text" : "other"
             };
         }
 

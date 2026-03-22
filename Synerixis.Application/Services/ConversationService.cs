@@ -44,7 +44,12 @@ namespace Synerixis.Application.Services
 
             // Classify intent based on history
             var historyDtos = session.Messages
-                .Select(m => new ChatMessageDto { IsFromUser = m.IsFromUser, Content = m.Content })
+                .Select(m => new ChatMessageDto
+                {
+                    IsFromUser = m.SenderType == 1,  // 1 = Customer
+                    Content = m.Content,
+                    Timestamp = m.CreatedAt
+                })
                 .ToList();
             var intent = await _intentClassifier.ClassifyAsync(messageContent, historyDtos);
 
