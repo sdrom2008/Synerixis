@@ -42,16 +42,16 @@ const loadConversations = async () => {
     header: { 'Authorization': `Bearer ${token}` }
   }) as any
 
-  if (res.statusCode === 200) {
-    conversations.value = res.data
+  if (res.statusCode === 200 && res.data.items) {
+    conversations.value = res.data.items
   } else {
-    uni.showToast({ title: res.data?.message || '加载会话失败', icon: 'error' })
+    uni.showToast({ title: res.data?.message || '加载会话失败', icon: 'none' })
   }
 }
 
 const openConversation = (id: string) => {
   uni.setStorageSync('currentConversationId', id)
-  uni.navigateTo({ url: '/pages/chat/index' })
+  uni.navigateTo({ url: '/pages/chat/chat' })  // 跳转到 chat.vue
 }
 
 const createNew = () => {

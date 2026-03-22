@@ -201,6 +201,43 @@ namespace Synerixis.Api.Controllers
         }
 
         // ============================================
+        // 3b. 获取会话消息列表（用于客服工作台）
+        // ============================================
+        [HttpGet("tickets/{sessionId}/messages")]
+        public async Task<IActionResult> GetTicketMessages(string sessionId)
+        {
+            var userId = GetCurrentUserId();
+            if (userId == null) return Unauthorized();
+
+            var session = await _db.ChatSessions
+                .FirstOrDefaultAsync(s => s.SessionId == sessionId);
+
+            if (session == null) return NotFound("Session not found");
+
+            // 权限检查： either assigned agent or supervisor of the shop
+            var userRole = GetCurrentRole();
+            if (userRole == "Agent" && session.AssignedAgentId != userId.Value)
+            {
+                var agent = await _db.Agents.FirstOrDefaultAsync(a => a.Id == userId.Value);
+                if (agent == null || agent.ShopId != session.ShopId)
+                    return Forbid("Not authorized to view this session");
+            }
+
+            var messages = await _db.ChatMessages
+                .Where(m => m.ChatSessionId == session.Id)
+                .OrderBy(m => m.CreatedAt)
+                .Select(m => new
+                {
+                    id = m.Id,
+                    content = m.Content,
+                    senderType = m.SenderType == 1 ? "Customer" : (m.SenderType == 2 ? "Agent" : "System")
+                })
+                .ToListAsync();
+
+            return Ok(messages);
+        }
+
+        // ============================================
         // 4. 标记会话已解决
         // ============================================
         [HttpPost("tickets/{sessionId}/resolve")]

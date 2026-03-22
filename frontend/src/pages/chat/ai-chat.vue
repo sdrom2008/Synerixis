@@ -23,7 +23,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed } from 'vue'
 
 interface Message {
   id: string
@@ -37,6 +37,7 @@ const inputText = ref('')
 const loading = ref(false)
 const userAvatar = '/static/avatar-user.png'
 const aiAvatar = '/static/avatar-ai.png'
+const conversationId = ref<string>('')  // 保存当前会话ID
 
 const lastMsgId = computed(() => {
   if (messages.value.length > 0) {
@@ -52,7 +53,7 @@ const sendMessage = async () => {
   if (!text) return
   inputText.value = ''
 
-  // 添加用户消息
+  // 添加用户消息（前端临时ID）
   messages.value.push({
     id: generateId(),
     isFromUser: true,
@@ -66,22 +67,34 @@ const sendMessage = async () => {
     const headers: UniApp.RequestOptions['header'] = { 'Content-Type': 'application/json' }
     if (token) headers.Authorization = `Bearer ${token}`
 
+    // 构造请求体：conversationId 可为空字符串（新建会话）
+    const payload: any = { message: text }
+    if (conversationId.value) {
+      payload.conversationId = conversationId.value
+    }
+
     const apiRes = await uni.request<any>({
       url: 'http://localhost:7092/api/chat/send',
       method: 'POST',
       header: headers,
-      data: { message: text }
+      data: payload
     })
     if (apiRes.statusCode === 200) {
-      const reply = apiRes.data?.reply || apiRes.data?.message || '无响应'
+      const data = apiRes.data
+      // 保存/更新会话ID
+      if (data.conversationId && (!conversationId.value || conversationId.value !== data.conversationId)) {
+        conversationId.value = data.conversationId
+        uni.setStorageSync('conversationId', data.conversationId)
+      }
+      // 添加AI回复
       messages.value.push({
-        id: generateId(),
+        id: data.messageId || generateId(),
         isFromUser: false,
-        content: reply,
+        content: data.content,
         timestamp: Date.now()
       })
     } else {
-      throw new Error(apiRes.data?.message || '发送失败')
+      throw new Error(data?.message || '发送失败')
     }
   } catch (err: any) {
     uni.showToast({ title: err.message || '请求失败', icon: 'none' })

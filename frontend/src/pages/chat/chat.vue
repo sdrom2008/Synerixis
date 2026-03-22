@@ -104,9 +104,9 @@ onLoad(options) {
   
           if (res.statusCode === 200 && res.data.messages) {
             this.messages = res.data.messages.map(m => ({
-              role: m.isFromUser ? 'user' : 'assistant',
-              type: m.messageType,
-              content: m.content,
+              role: m.SenderType === 1 ? 'user' : 'assistant',
+              type: m.MessageType === 1 ? 'text' : 'other',
+              content: m.Content,
               id: Date.now() + Math.random()
             }));
             this.scrollToBottom();
@@ -130,8 +130,7 @@ onLoad(options) {
         this.sending = true;
   
         try {
-          const sendId = this.id || '00000000-0000-0000-0000-000000000000';
-
+          const sendId = this.id || '';
   
           const res = await uni.request({
             url: `${testbase}/api/chat/send`,
@@ -141,8 +140,8 @@ onLoad(options) {
               'Authorization': `Bearer ${uni.getStorageSync('token')}`
             },
             data: {
-              ConversationId: sendId,
-              Message: text
+              conversationId: sendId || undefined,  // undefined 会被序列化为 null，不发送
+              message: text
             }
           });
   
@@ -157,16 +156,15 @@ onLoad(options) {
               this.isNewChat = false;
             }
   
-            const aiMsgs = res.data.messages
-              .filter(m => !m.isFromUser)
-              .map(m => ({
-                role: 'assistant',
-                type: m.messageType || 'text',
-                content: m.content,
-                id: Date.now() + Math.random()
-              }));
+            // 响应直接是 AI 消息，不是数组
+            const aiMsg = {
+              role: 'assistant',
+              type: res.data.messageType === 'text' ? 'text' : 'other',
+              content: res.data.content,
+              id: res.data.messageId || Date.now()
+            };
   
-            this.messages.push(...aiMsgs);
+            this.messages.push(aiMsg);
             this.scrollToBottom();
           } else {
             uni.showToast({ title: res.data?.message || '发送失败', icon: 'none' });
