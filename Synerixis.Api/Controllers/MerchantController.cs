@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Synerixis.Api.Helpers;
 using Synerixis.Domain.Entities;
+using Synerixis.Application.Interfaces;
 using Synerixis.Infrastructure.Data;
 using Synerixis.Infrastructure.Repositories;
 using System;
@@ -144,11 +145,7 @@ namespace Synerixis.Api.Controllers
                 if (session.Status == SessionStatus.Closed)
                     return BadRequest(new { message = "已关闭的会话不能转人工" });
 
-                // 重置为待分配状态
-                session.AssignedAgentId = null;
-                session.Status = SessionStatus.Pending;
-                session.UpdatedAt = DateTime.UtcNow;
-
+                session.TransferToAgent();
                 await _db.SaveChangesAsync();
 
                 return Ok(new { message = "已转人工，等待客服接入" });

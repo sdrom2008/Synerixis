@@ -1,6 +1,7 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
 using Synerixis.Api.Helpers;
+using Synerixis.Domain.Entities;
 using Synerixis.Infrastructure.Data;
 
 namespace Synerixis.Api.Controllers

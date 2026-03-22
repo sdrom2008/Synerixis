@@ -113,9 +113,9 @@ namespace Synerixis.Api.Controllers
             if (seller != null)
             {
                 bool isNew = false;
-                if (!seller.PhoneConfirmed)
+                if (string.IsNullOrEmpty(seller.Phone))
                 {
-                    seller.ConfirmPhone();
+                    seller.BindPhone(dto.Phone);
                     isNew = true;
                 }
                 seller.RecordLogin("phone");
@@ -144,7 +144,7 @@ namespace Synerixis.Api.Controllers
                 agent.RecordLogin();
                 await _db.SaveChangesAsync();
 
-                var userType = agent.Role == 2 ? "Supervisor" : "Agent";
+                var userType = agent.Role == AgentRole.Supervisor ? "Supervisor" : "Agent";
                 var token = _authService.GenerateJwt(agent.Id, userType);  // 只传两个参数
                 return Ok(new
                 {
@@ -159,21 +159,6 @@ namespace Synerixis.Api.Controllers
 
             // 都找不到，返回未注册
             return Unauthorized(new { message = "用户不存在" });
-        }
-
-            seller.RecordLogin("phone");
-            await _db.SaveChangesAsync();
-
-            var token = _authService.GenerateJwt(seller.Id, "Seller");
-            return Ok(new
-            {
-                token,
-                sellerId = seller.Id,
-                nickname = seller.Nickname,
-                freeQuota = seller.FreeQuota,
-                subscriptionLevel = seller.SubscriptionLevel,
-                isNewRegistration = isNew
-            });
         }
 
         [HttpPost("bind-wechat")]

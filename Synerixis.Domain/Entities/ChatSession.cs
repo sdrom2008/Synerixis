@@ -110,6 +110,20 @@ namespace Synerixis.Domain.Entities
             }
         }
 
+        /// <summary>
+        /// 商户手动转人工（解除分配，回到待处理状态）
+        /// </summary>
+        public void TransferToAgent()
+        {
+            // 任何非 Closed 状态都可转人工
+            if (Status == SessionStatus.Closed)
+                throw new InvalidOperationException("已关闭的会话不能转人工");
+
+            AssignedAgentId = null;
+            Status = SessionStatus.Pending;
+            UpdatedAt = DateTime.UtcNow;
+        }
+
         public void AddUserMessage()
         {
             MessageCount++;

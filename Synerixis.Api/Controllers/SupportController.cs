@@ -73,7 +73,7 @@ namespace Synerixis.Api.Controllers
                 .AsQueryable();
 
             // Agent 只能看分配到自己的会话；Supervisor 可看全店
-            if (agent.Role == 1) // Agent
+            if (agent.Role == AgentRole.Agent) // Agent
             {
                 query = query.Where(s => s.AssignedAgentId == agent.Id);
             }
@@ -213,7 +213,7 @@ namespace Synerixis.Api.Controllers
             if (session == null) return NotFound("Session not found");
 
             // 权限：Agent 只能看分配到自己的会话；Supervisor 可看本店所有
-            if (agent.Role == 1 && session.AssignedAgentId != agent.Id)
+            if (agent.Role == AgentRole.Agent && session.AssignedAgentId != agent.Id)
             {
                 return Forbid("Not authorized to view this session");
             }
