@@ -1,6 +1,5 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Sqlite;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi;
 using Microsoft.SemanticKernel;
@@ -171,21 +170,20 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 
 builder.Services.AddAuthorization();
 
-// 开发模式: 强制使用 SQLite 自动创建数据库
-var dbProvider = "sqlite";  // 强制
-if (dbProvider == "sqlite")
+// 数据库配置：MySQL
+var conn = builder.Configuration.GetConnectionString("MySqlConnection");
+if (string.IsNullOrEmpty(conn))
 {
-    var sqlitePath = Path.Combine(AppContext.BaseDirectory, "dev.db");
-    builder.Services.AddDbContext<AppDbContext>(opt =>
-        opt.UseSqlite($"Data Source={sqlitePath}"));
+    conn = builder.Configuration["Database:ConnectionString"];
 }
-else
-{
-    // 默认 MySQL
-    var conn = builder.Configuration.GetConnectionString("MySqlConnection");
-    builder.Services.AddDbContext<AppDbContext>(opt =>
-        opt.UseMySql(conn, ServerVersion.AutoDetect(conn), mysql => mysql.EnableRetryOnFailure()));
-}
+if (string.IsNullOrEmpty(conn))
+    throw new InvalidOperationException("MySQL connection string not configured");
+
+builder.Services.AddDbContext<AppDbContext>(opt =>
+    opt.UseMySql(conn, ServerVersion.AutoDetect(conn), mysql =>
+    {
+        mysql.EnableRetryOnFailure();
+    }));
 
 // 泛型仓储（推荐只注册一次）
 builder.Services.AddScoped(typeof(IRepository<>), typeof(Repository<>));
@@ -201,6 +199,13 @@ builder.Services.AddHealthChecks()
 builder.Services.AddScoped<IAiChatService, AiChatService>();
 
 var app = builder.Build();
+
+// 开发环境自动建表（确保所有表存在）
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    db.Database.EnsureCreated();  // 根据当前模型创建所有表（开发环境用）
+}
 
 //配置静态文件服务
 app.UseStaticFiles();
