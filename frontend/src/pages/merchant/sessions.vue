@@ -60,7 +60,7 @@ const loadSessions = async () => {
   }
 }
 
-const viewSession = (id: string) => {
+const viewSession = (id) => {
   uni.navigateTo({ url: `/pages/merchant/session-detail?id=${id}` })
 }
 

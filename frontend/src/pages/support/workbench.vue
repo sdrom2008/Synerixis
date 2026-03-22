@@ -100,13 +100,13 @@ const loadTickets = async () => {
   }
 }
 
-const selectTicket = async (ticket: any) => {
+const selectTicket = async (ticket) => {
   currentTicket.value = ticket
   messages.value = []
   await loadMessages(ticket.sessionId)
 }
 
-const loadMessages = async (sessionId: string) => {
+const loadMessages = async (sessionId) => {
   const token = uni.getStorageSync('token')
   try {
     const res = await uni.request({
