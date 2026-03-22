@@ -1,136 +1,266 @@
-﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Synerixis.Application.DTOs;
-using System.Net.Http.Json;
+using Microsoft.EntityFrameworkCore;
+using Synerixis.Domain.Entities;
+using Synerixis.Infrastructure.Data;
+using System.Security.Claims;
 
 namespace Synerixis.Api.Controllers
 {
     [ApiController]
-    [Route("api/agent")]
-    [Authorize]  // 需要登录（JWT）
+    [Route("api/support")]
+    [Authorize(Roles = "Supervisor,Admin")] // 只有主管和管理员可以访问
     public class AgentController : BaseApiController
     {
-        private readonly IConfiguration _config;
-        private readonly HttpClient _httpClient;
+        private readonly AppDbContext _db;
 
-        public AgentController(IConfiguration config, IHttpClientFactory factory)
+        public AgentController(AppDbContext db)
         {
-            _config = config;
-            _httpClient = factory.CreateClient();
+            _db = db;
         }
 
-        [HttpPost("optimizeproduct")]
-        public async Task<IActionResult> OptimizeProduct([FromBody] OptimizeProductRequest request)
+        private Guid? GetCurrentUserId()
         {
-            if (string.IsNullOrEmpty(request.Intent))
-                return BadRequest("意图不能为空");
+            var userIdClaim = User.FindFirst("userId") ?? User.FindFirst(ClaimTypes.NameIdentifier);
+            if (userIdClaim != null && Guid.TryParse(userIdClaim.Value, out var userId))
+                return userId;
+            return null;
+        }
 
-            // 获取通义千问 API Key（从配置或环境变量）
-            var apiKey = _config["Tongyi:Qianwen:ApiKey"] ?? Environment.GetEnvironmentVariable("TONGYI_API_KEY");
-            if (string.IsNullOrEmpty(apiKey))
-                return StatusCode(500, "未配置通义千问 API Key");
+        // ============================================
+        // 1. 获取客服列表
+        // ============================================
+        /// <summary>
+        /// 获取店铺下的客服列表（主管查看）
+        /// </summary>
+        [HttpGet("agents")]
+        public async Task<IActionResult> GetAgents()
+        {
+            var userId = GetCurrentUserId();
+            if (userId == null) return Unauthorized();
 
-            // 构建 Prompt（核心！）
-            var prompt = $@"你是一个中国顶级电商运营专家，精通淘宝/拼多多/抖音详情页优化。
-用户意图：{request.Intent}
+            var currentAgent = await _db.Agents.FirstOrDefaultAsync(a => a.Id == userId.Value);
+            if (currentAgent == null) return NotFound("Agent not found");
 
-原始商品信息：
-标题：{request.OriginalTitle ?? "未提供"}
-描述：{request.OriginalDescription ?? "未提供"}
-图片数量：{request.OriginalImageUrls?.Count ?? 0}
-类目：{request.Category ?? "未指定"}
-目标平台：{request.TargetPlatform}
-
-任务：
-1. 优化标题和详情描述：重写标题（SEO + 高转化），描述结构化（卖点 bullet + 图文建议 + 关键词自然融入）
-2. 生成营销方案：短视频脚本、种草文案、直播话术、关键卖点列表
-3. 图片优化建议：为每张图生成 AI 生图 prompt（用于通义万相等模型）
-
-输出严格 JSON 格式：
-{{
-  ""optimizedtitle"": ""..."",
-  ""optimizeddescription"": ""... (Markdown)"",
-  ""imageprompts"": [""prompt1"", ""prompt2""],
-  ""marketingplan"": {{
-    ""shortvideoscript"": ""..."",
-    ""plantingtext"": ""..."",
-    ""livescript"": ""..."",
-    ""keysellingpoints"": [""点1"", ""点2""]
-  }}
-}}
-
-确保中文自然、促销语气强、合规（无虚假宣传）。";
-
-            // 调用通义千问 API（兼容 OpenAI 格式）
-            var requestBody = new
-            {
-                model = "qwen-max",
-                messages = new[]
+            // 只能查看自己店铺的客服
+            var agents = await _db.Agents
+                .Where(a => a.ShopId == currentAgent.ShopId)
+                .OrderBy(a => a.Role) // Supervisor在前，Agent在后
+                .ThenBy(a => a.Name)
+                .Select(a => new
                 {
-                new { role = "system", content = "你是专业电商优化助手" },
-                new { role = "user", content = prompt }
-            },
-                temperature = 0.7,
-                max_tokens = 2000
-            };
+                    a.Id,
+                    a.Name,
+                    a.Email,
+                    a.Role,
+                    a.IsActive,
+                    a.IsOnline,
+                    a.MaxConcurrentSessions,
+                    a.CurrentSessionCount,
+                    a.LastLoginAt,
+                    a.CreatedAt
+                })
+                .ToListAsync();
 
-            _httpClient.DefaultRequestHeaders.Authorization = new("Bearer", apiKey);
-            var response = await _httpClient.PostAsJsonAsync("https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation", requestBody);
+            return Ok(agents);
+        }
 
-            if (!response.IsSuccessStatusCode)
-                return StatusCode((int)response.StatusCode, await response.Content.ReadAsStringAsync());
+        // ============================================
+        // 2. 获取单个客服绩效
+        // ============================================
+        /// <summary>
+        /// 获取指定客服的绩效统计（按日期）
+        /// </summary>
+        [HttpGet("agents/{agentId}/stats")]
+        public async Task<IActionResult> GetAgentStats(
+            Guid agentId,
+            [FromQuery] DateTime? date = null)
+        {
+            var userId = GetCurrentUserId();
+            if (userId == null) return Unauthorized();
 
-            var result = await response.Content.ReadFromJsonAsync<TongyiResponse>();
+            var currentAgent = await _db.Agents.FirstOrDefaultAsync(a => a.Id == userId.Value);
+            if (currentAgent == null) return NotFound("Agent not found");
 
-            // 解析 JSON 输出（假设通义返回 choices[0].message.content 是 JSON 字符串）
-            var jsonContent = result?.Choices?[0]?.Message?.Content;
-            if (string.IsNullOrEmpty(jsonContent))
-                return BadRequest("AI 返回内容为空");
+            // 验证 agent 属于同一店铺
+            var targetAgent = await _db.Agents.FirstOrDefaultAsync(a => a.Id == agentId);
+            if (targetAgent == null) return NotFound("Agent not found");
+            if (targetAgent.ShopId != currentAgent.ShopId)
+                return Forbid("Cannot view stats of agents from other shops");
 
-            // 简单解析（实际可加 TryParse 或 JsonSerializer）
-            try
+            var statDate = date?.Date ?? DateTime.UtcNow.Date;
+
+            // 尝试从数据库获取当日统计
+            var stat = await _db.AgentStats
+                .FirstOrDefaultAsync(s => s.AgentId == agentId && s.StatDate == statDate);
+
+            if (stat == null)
             {
-                var optimized = System.Text.Json.JsonSerializer.Deserialize<OptimizeProductResponse>(jsonContent);
-                return Ok(optimized);
+                // 如果还没有统计数据，返回空数据或计算
+                return Ok(new
+                {
+                    agentId,
+                    statDate,
+                    message = "No stats for this date yet"
+                });
             }
-            catch
+
+            return Ok(new
             {
-                return BadRequest("AI 输出格式不正确：" + jsonContent);
+                stat.AgentId,
+                stat.StatDate,
+                stat.TotalConversations,
+                stat.PendingCount,
+                stat.ActiveCount,
+                stat.ResolvedCount,
+                stat.ClosedCount,
+                stat.AvgResponseTimeSeconds,
+                stat.AvgFirstResponseTimeSeconds,
+                stat.TotalMessages,
+                stat.AgentMessages,
+                stat.AiMessages,
+                stat.SatisfactionCount,
+                stat.AvgSatisfaction,
+                stat.ResolutionRate
+            });
+        }
+
+        // ============================================
+        // 3. 获取质检对话列表
+        // ============================================
+        /// <summary>
+        /// 获取需要质检的对话（通常为已解决的会话）
+        /// </summary>
+        [HttpGet("quality")]
+        public async Task<IActionResult> GetQualitySessions(
+            [FromQuery] DateTime? startDate = null,
+            [FromQuery] DateTime? endDate = null,
+            [FromQuery] int page = 1,
+            [FromQuery] int pageSize = 20)
+        {
+            var userId = GetCurrentUserId();
+            if (userId == null) return Unauthorized();
+
+            var currentAgent = await _db.Agents.FirstOrDefaultAsync(a => a.Id == userId.Value);
+            if (currentAgent == null) return NotFound("Agent not found");
+
+            var query = _db.ChatSessions
+                .Include(s => s.AssignedAgent)
+                .Where(s => s.ShopId == currentAgent.ShopId && s.Status == SessionStatus.Resolved);
+
+            if (startDate.HasValue)
+                query = query.Where(s => s.ResolvedAt >= startDate);
+            if (endDate.HasValue)
+                query = query.Where(s => s.ResolvedAt <= endDate);
+
+            var total = await query.CountAsync();
+            var sessions = await query
+                .OrderByDescending(s => s.ResolvedAt)
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .Select(s => new
+                {
+                    s.SessionId,
+                    s.CustomerId,
+                    s.CustomerName,
+                    s.AssignedAgentId,
+                    AgentName = s.AssignedAgent != null ? s.AssignedAgent.Name : "Unknown",
+                    s.ResolvedAt,
+                    s.Satisfaction,
+                    s.ResolutionTime,
+                    s.MessageCount,
+                    s.AgentMessageCount,
+                    s.AiMessageCount
+                })
+                .ToListAsync();
+
+            return Ok(new { total, page, pageSize, sessions });
+        }
+
+        // ============================================
+        // 4. 提交质检评分
+        // ============================================
+        /// <summary>
+        /// 为已解决的会话提交质检评分
+        /// </summary>
+        [HttpPost("quality/{sessionId}/review")]
+        public async Task<IActionResult> SubmitQualityReview(
+            string sessionId,
+            [FromBody] QualityReviewDto dto)
+        {
+            var userId = GetCurrentUserId();
+            if (userId == null) return Unauthorized();
+
+            var currentAgent = await _db.Agents.FirstOrDefaultAsync(a => a.Id == userId.Value);
+            if (currentAgent == null) return NotFound("Agent not found");
+
+            var session = await _db.ChatSessions
+                .FirstOrDefaultAsync(s => s.SessionId == sessionId && s.ShopId == currentAgent.ShopId);
+
+            if (session == null) return NotFound("Session not found");
+            if (session.Status != SessionStatus.Resolved)
+                return BadRequest("Only resolved sessions can be reviewed");
+
+            if (dto.Satisfaction.HasValue && dto.Satisfaction >= 1 && dto.Satisfaction <= 5)
+            {
+                session.SetSatisfaction((byte)dto.Satisfaction.Value);
+                await _db.SaveChangesAsync();
             }
+
+            return Ok(new { message = "Review submitted successfully" });
+        }
+
+        // ============================================
+        // 5. 手动分配会话（主管分配）
+        // ============================================
+        /// <summary>
+        /// 主管手动将会话分配给指定客服
+        /// </summary>
+        [HttpPost("assign")]
+        public async Task<IActionResult> AssignSession(
+            [FromBody] AssignSessionDto dto)
+        {
+            var userId = GetCurrentUserId();
+            if (userId == null) return Unauthorized();
+
+            var currentAgent = await _db.Agents.FirstOrDefaultAsync(a => a.Id == userId.Value);
+            if (currentAgent == null) return NotFound("Agent not found");
+
+            var session = await _db.ChatSessions
+                .FirstOrDefaultAsync(s => s.SessionId == dto.SessionId && s.ShopId == currentAgent.ShopId);
+
+            if (session == null) return NotFound("Session not found");
+            if (session.Status != SessionStatus.Pending)
+                return BadRequest($"Cannot assign a session with status {session.Status}");
+
+            var targetAgent = await _db.Agents.FirstOrDefaultAsync(a => a.Id == dto.AgentId && a.ShopId == currentAgent.ShopId);
+            if (targetAgent == null) return BadRequest("Target agent not found or not in same shop");
+
+            session.AssignToAgent(dto.AgentId.Value);
+            await _db.SaveChangesAsync();
+
+            return Ok(new
+            {
+                message = "Session assigned successfully",
+                session = new
+                {
+                    session.SessionId,
+                    agentId = session.AssignedAgentId,
+                    session.AssignedAt
+                }
+            });
         }
     }
 
-    // 通义千问响应结构（简化）
-    public class TongyiResponse
+    public class QualityReviewDto
     {
-        public List<TongyiChoice>? Choices { get; set; }
+        public int? Satisfaction { get; set; } // 1-5
+        public string? Notes { get; set; }     // 质检备注
     }
 
-    public class TongyiChoice
+    public class AssignSessionDto
     {
-        public TongyiMessage? Message { get; set; }
-    }
-
-    public class TongyiMessage
-    {
-        public string? Content { get; set; }
-    }
-
-    // 响应 DTO：商品优化结果
-    public class OptimizeProductResponse
-    {
-        public string? OptimizedTitle { get; set; }
-        public string? OptimizedDescription { get; set; }
-        public List<string>? ImagePrompts { get; set; }
-        public MarketingPlan? MarketingPlan { get; set; }
-    }
-
-    public class MarketingPlan
-    {
-        public string? ShortVideoScript { get; set; }
-        public string? PlantingText { get; set; }
-        public string? LiveScript { get; set; }
-        public List<string>? KeySellingPoints { get; set; }
+        public string SessionId { get; set; } = null!;
+        public Guid? AgentId { get; set; }
     }
 }
-

@@ -20,7 +20,9 @@
 	{ "path": "pages/marketing/generate", "style": { "navigationBarTitleText": "营销文案生成" } },
 	{ "path": "pages/chat/ai-chat", "style": { "navigationBarTitleText": "智能客服" } },
 	{ "path": "pages/product/optimize", "style": { "navigationBarTitleText": "商品优化" } },
-	{ "path": "pages/competitor/analyze", "style": { "navigationBarTitleText": "竞品分析" } }
+	{ "path": "pages/competitor/analyze", "style": { "navigationBarTitleText": "竞品分析" } },
+	{ "path": "pages/support/workbench", "style": { "navigationBarTitleText": "客服工作台" } },
+	{ "path": "pages/support/supervisor", "style": { "navigationBarTitleText": "主管监控" } }
 //	{ "path": "pages/profile/components/SettingCard", "style": { "navigationBarTitleText": "复用卡片组件" } }
   ],
   "tabBar": {

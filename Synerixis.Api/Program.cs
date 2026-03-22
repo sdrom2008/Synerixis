@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Sqlite;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi;
 using Microsoft.SemanticKernel;
@@ -88,6 +89,7 @@ builder.Services.AddScoped<ILlmClient, AliyunLlmClient>(); // Maps the interface
 // --- SERVICES FOR AI CUSTOMER SUPPORT ---
 builder.Services.AddScoped<IConversationService, ConversationService>();
 builder.Services.AddScoped<IECommercePlatformClient, ECommercePlatformClient>();
+builder.Services.AddScoped<IAgentStatsService, AgentStatsService>();
 
 // Register all agents. The DI container will provide them to the AgentRouter.
 // Temporarily commented out due to interface mismatch (these agents need to implement Synerixis.Application.Interfaces.IAgent)
@@ -102,30 +104,23 @@ builder.Services.AddScoped<IAgent, CompetitorAnalysisAgent>();
 // 如果有其他 Agent，在这里继续加
 builder.Services.AddSingleton<AliyunSmsService>();
 
-//注册微信支付
-builder.Services.AddScoped<WeChatPayV3Client>(serviceProvider =>
-{
-    var config = serviceProvider.GetRequiredService<IConfiguration>();
-    var dbContext = serviceProvider.GetRequiredService<AppDbContext>();  // 如果需要 db
+// 微信支付（生产环境才启用，开发环境暂时注释）
+// builder.Services.AddScoped<WeChatPayV3Client>(serviceProvider =>
+// {
+//     var config = serviceProvider.GetRequiredService<IConfiguration>();
+//     var dbContext = serviceProvider.GetRequiredService<AppDbContext>();
+//     return new WeChatPayV3Client(
+//         config["WeChatPay:MchId"],
+//         config["WeChatPay:AppId"],
+//         config["WeChatPay:ApiV3Key"],
+//         config["WeChatPay:CertPath"],
+//         config["WeChatPay:CertPassword"],
+//         dbContext);
+// });
 
-    return new WeChatPayV3Client(
-        config["WeChatPay:MchId"],
-        config["WeChatPay:AppId"],
-        config["WeChatPay:ApiV3Key"],
-        config["WeChatPay:CertPath"],
-        config["WeChatPay:CertPassword"],
-        dbContext  // 如果你的 WeChatPayV3Client 构造函数需要 db
-                   // 如果不需要 db，就删掉 dbContext 参数
-    );
-});
-
-
-builder.Services.AddScoped<WechatPaymentProvider>();  // 直接注册具体类
-builder.Services.AddScoped<AlipayPaymentProvider>();  // 直接注册具体类
-
-builder.Services.AddScoped<IPaymentProviderFactory, PaymentProviderFactory>();
-//builder.Services.AddScoped<IPaymentProvider, WechatPaymentProvider>();
-//builder.Services.AddScoped<IPaymentProvider, AlipayPaymentProvider>();
+// builder.Services.AddScoped<WechatPaymentProvider>();
+// builder.Services.AddScoped<AlipayPaymentProvider>();
+// builder.Services.AddScoped<IPaymentProviderFactory, PaymentProviderFactory>();
 
 builder.Services.AddScoped<ProductService>();
 
@@ -176,12 +171,21 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 
 builder.Services.AddAuthorization();
 
-// EF Core + MySQL
-builder.Services.AddDbContext<AppDbContext>(opt =>
+// 开发模式: 强制使用 SQLite 自动创建数据库
+var dbProvider = "sqlite";  // 强制
+if (dbProvider == "sqlite")
 {
+    var sqlitePath = Path.Combine(AppContext.BaseDirectory, "dev.db");
+    builder.Services.AddDbContext<AppDbContext>(opt =>
+        opt.UseSqlite($"Data Source={sqlitePath}"));
+}
+else
+{
+    // 默认 MySQL
     var conn = builder.Configuration.GetConnectionString("MySqlConnection");
-    opt.UseMySql(conn, ServerVersion.AutoDetect(conn), mysql => mysql.EnableRetryOnFailure());
-});
+    builder.Services.AddDbContext<AppDbContext>(opt =>
+        opt.UseMySql(conn, ServerVersion.AutoDetect(conn), mysql => mysql.EnableRetryOnFailure()));
+}
 
 // 泛型仓储（推荐只注册一次）
 builder.Services.AddScoped(typeof(IRepository<>), typeof(Repository<>));

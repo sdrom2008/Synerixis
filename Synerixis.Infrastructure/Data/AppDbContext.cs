@@ -17,6 +17,13 @@ namespace Synerixis.Infrastructure.Data
         public DbSet<Category> Categories { get; set; }
         public DbSet<Brand> Brands { get; set; }
 
+        // 新增实体
+        public DbSet<Agent> Agents { get; set; }
+        public DbSet<ChatSession> ChatSessions { get; set; }
+        public DbSet<Order> Orders { get; set; }
+        public DbSet<QuickReply> QuickReplies { get; set; }
+        public DbSet<AgentStat> AgentStats { get; set; }
+
         public AppDbContext(DbContextOptions<AppDbContext> options) : base(options)
         {
         }
@@ -155,14 +162,102 @@ namespace Synerixis.Infrastructure.Data
                       .OnDelete(DeleteBehavior.Restrict);
             });
 
-            modelBuilder.Entity<PayOrder>(entity =>
+            modelBuilder.Entity<ChatSession>(entity =>
             {
-                entity.ToTable("pay_orders");
-                entity.HasKey(e => e.Id);
+                entity.ToTable("chat_sessions");
+                entity.HasKey(s => s.Id);
 
-                entity.HasOne<Seller>()
+                entity.Property(s => s.SessionId)
+                      .HasColumnType("varchar(100)")
+                      .HasMaxLength(100)
+                      .IsRequired();
+
+                entity.HasIndex(s => s.SessionId)
+                      .IsUnique()
+                      .HasDatabaseName("IX_chat_sessions_SessionId");
+
+                entity.HasIndex(s => s.CustomerId);
+
+                entity.HasOne(s => s.Shop)
                       .WithMany()
-                      .HasForeignKey(e => e.SellerId)
+                      .HasForeignKey(s => s.ShopId)
+                      .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasOne(s => s.AssignedAgent)
+                      .WithMany()
+                      .HasForeignKey(s => s.AssignedAgentId)
+                      .OnDelete(DeleteBehavior.SetNull);
+            });
+
+            modelBuilder.Entity<Agent>(entity =>
+            {
+                entity.ToTable("agents");
+                entity.HasKey(a => a.Id);
+
+                entity.Property(a => a.Email)
+                      .HasColumnType("varchar(255)")
+                      .HasMaxLength(255)
+                      .IsRequired();
+
+                entity.HasIndex(a => a.Email)
+                      .IsUnique()
+                      .HasDatabaseName("IX_agents_Email");
+
+                entity.HasOne(a => a.Shop)
+                      .WithMany()
+                      .HasForeignKey(a => a.ShopId)
+                      .OnDelete(DeleteBehavior.Restrict);
+            });
+
+            modelBuilder.Entity<Order>(entity =>
+            {
+                entity.ToTable("orders");
+                entity.HasKey(o => o.Id);
+
+                entity.Property(o => o.OrderNo)
+                      .HasColumnType("varchar(100)")
+                      .HasMaxLength(100)
+                      .IsRequired();
+
+                entity.HasIndex(o => o.OrderNo)
+                      .IsUnique()
+                      .HasDatabaseName("IX_orders_OrderNo");
+
+                entity.HasIndex(o => new { o.ShopId, o.CustomerId });
+
+                entity.HasOne(o => o.Shop)
+                      .WithMany()
+                      .HasForeignKey(o => o.ShopId)
+                      .OnDelete(DeleteBehavior.Restrict);
+            });
+
+            modelBuilder.Entity<QuickReply>(entity =>
+            {
+                entity.ToTable("quick_replies");
+                entity.HasKey(q => q.Id);
+
+                entity.Property(q => q.Title)
+                      .HasColumnType("varchar(200)")
+                      .HasMaxLength(200)
+                      .IsRequired();
+
+                entity.Property(q => q.Content)
+                      .HasColumnType("longtext");
+            });
+
+            modelBuilder.Entity<AgentStat>(entity =>
+            {
+                entity.ToTable("agent_stats");
+                entity.HasKey(a => a.Id);
+
+                // 组合唯一索引：AgentId + StatDate
+                entity.HasIndex(a => new { a.AgentId, a.StatDate })
+                      .IsUnique()
+                      .HasDatabaseName("IX_agent_stats_Agent_Date");
+
+                entity.HasOne(a => a.Agent)
+                      .WithMany()
+                      .HasForeignKey(a => a.AgentId)
                       .OnDelete(DeleteBehavior.Cascade);
             });
 

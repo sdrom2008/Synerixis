@@ -8,7 +8,7 @@ namespace Synerixis.Application.Interfaces
 {
     public interface IAuthService
     {
-        string GenerateJwt(Guid sellerId);
+        string GenerateJwt(Guid userId, string role);
         // 未来可扩展：RefreshToken、ValidateToken 等
     }
 }

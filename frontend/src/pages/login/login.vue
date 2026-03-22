@@ -51,7 +51,7 @@
 </template>
 
 <script>
-const testbase = 'http://192.168.1.254:7092';
+import { request } from '@/utils/request.js';
 
 export default {
   data() {
@@ -88,24 +88,19 @@ export default {
       this.sendCodeLoading = true;
 
       try {
-        const res = await uni.request({
-          url: `${testbase}/api/auth/send-code`,
+        const res = await request({
+          url: '/api/auth/send-code',
           method: 'POST',
-          data: { phone: this.phone }
+          data: { Phone: this.phone }
         });
-
-        if (res.statusCode === 200) {
-          uni.showToast({ title: '验证码已发送', icon: 'success' });
-          this.countdown = 60;
-          const timer = setInterval(() => {
-            this.countdown--;
-            if (this.countdown <= 0) clearInterval(timer);
-          }, 1000);
-        } else {
-          uni.showToast({ title: res.data?.message || '发送失败', icon: 'none' });
-        }
+        uni.showToast({ title: res.message || '验证码已发送', icon: 'success' });
+        this.countdown = 60;
+        const timer = setInterval(() => {
+          this.countdown--;
+          if (this.countdown <= 0) clearInterval(timer);
+        }, 1000);
       } catch (err) {
-        uni.showToast({ title: '网络错误', icon: 'none' });
+        // 错误已在 request 中处理
       } finally {
         this.sendCodeLoading = false;
       }
@@ -117,31 +112,41 @@ export default {
         return;
       }
 
-      if (!this.phone || !this.code) {
-        uni.showToast({ title: '请输入完整信息', icon: 'none' });
+      if (!this.phone || this.phone.length !== 11) {
+        uni.showToast({ title: '手机号格式错误', icon: 'none' });
+        return;
+      }
+
+      if (!this.code || this.code.length !== 6) {
+        uni.showToast({ title: '请输入6位验证码', icon: 'none' });
         return;
       }
 
       this.loginLoading = true;
 
       try {
-        const res = await uni.request({
-          url: `${testbase}/api/auth/phone-login`,
+        const res = await request({
+          url: '/api/auth/phone-login',
           method: 'POST',
-          data: { phone: this.phone, code: this.code }
+          data: {
+            Phone: this.phone,
+            Code: this.code
+          }
         });
 
-        if (res.statusCode === 200 && res.data?.token) {
-          uni.setStorageSync('token', res.data.token);
-          uni.setStorageSync('sellerId', res.data.sellerId);
-          uni.setStorageSync('openId', res.data.openId);
-          uni.showToast({ title: '登录成功', icon: 'success' });
-          uni.switchTab({ url: '/pages/dashboard/dashboard' });
-        } else {
-          uni.showToast({ title: res.data?.message || '登录失败', icon: 'none' });
-        }
+        // 保存 token 和用户信息
+        uni.setStorageSync('token', res.token);
+        uni.setStorageSync('sellerId', res.sellerId);
+        uni.setStorageSync('role', 'Seller'); // 手机登录是卖家身份
+
+        uni.showToast({ title: '登录成功', icon: 'success' });
+
+        // 跳转到首页
+        setTimeout(() => {
+          uni.switchTab({ url: '/pages/conversations/conversations' });
+        }, 1000);
       } catch (err) {
-        uni.showToast({ title: '网络错误', icon: 'none' });
+        // 错误已在 request 中处理
       } finally {
         this.loginLoading = false;
       }

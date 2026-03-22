@@ -12,8 +12,8 @@ namespace Synerixis.Application.Services
     {
         private readonly IConversationRepository _conversationRepo;
         private readonly IIntentClassifier _intentClassifier;
-        private readonly IAgentRouter _agentRouter; // A router to call the correct agent
-        private readonly IGeneralChatAgent _generalChatAgent; // For simple chat
+        private readonly IAgentRouter _agentRouter;
+        private readonly IGeneralChatAgent _generalChatAgent;
 
         public ConversationService(
             IConversationRepository conversationRepo,
@@ -29,44 +29,49 @@ namespace Synerixis.Application.Services
 
         public async Task<string> ProcessIncomingMessageAsync(string platform, string customerId, string messageContent)
         {
-            // 1. Find existing conversation or create a new one
-            // We'll need a way to get the current SellerId, maybe from the customerId or platform context.
-            // For now, we'll use a placeholder Guid.
-            var sellerId = Guid.NewGuid(); // Placeholder
+            var sellerId = Guid.Empty; // TODO: This must be resolved from the platform/customer context
             
-            var conversation = await _conversationRepo.GetByCustomerIdAsync(customerId)
-                               ?? Conversation.Create(sellerId, platform, customerId);
+            var session = await _conversationRepo.GetByCustomerIdAsync(customerId);
+            if (session == null)
+            {
+                session = ChatSession.Create(sellerId, platform, customerId);
+            }
 
-            // 2. Add the new user message to the conversation history
-            conversation.AddMessage(ChatMessage.FromUser(messageContent, conversation.Id));
+            // Add user message and update stats
+            var userMsg = ChatMessage.FromUser(messageContent, session.Id);
+            session.Messages.Add(userMsg);
+            session.AddUserMessage(); // This method needs to be added to ChatSession entity
 
-            // 3. Classify the user's intent
-            // The interface expects a string and a list of DTOs, we'll adapt to it.
-            var historyDtos = conversation.Messages
+            // Classify intent based on history
+            var historyDtos = session.Messages
                 .Select(m => new ChatMessageDto { IsFromUser = m.IsFromUser, Content = m.Content })
                 .ToList();
             var intent = await _intentClassifier.ClassifyAsync(messageContent, historyDtos);
 
             string replyContent;
             var chatContext = new ChatContext { Messages = historyDtos };
-
             var agent = _agentRouter.GetAgent(intent);
+
+            // Route to specific agent or general chat
             if (agent != null)
             {
                 var agentResult = await agent.ProcessAsync(messageContent, chatContext);
-                // We'll just take the last message as the reply for now.
                 replyContent = agentResult.Messages.LastOrDefault()?.Content ?? "抱歉，我暂时无法处理这个问题。";
             }
             else
             {
                 replyContent = await _generalChatAgent.GenerateReplyAsync(messageContent, chatContext);
             }
-            
-            conversation.AddMessage(ChatMessage.FromAI(replyContent, conversationId: conversation.Id));
-            await _conversationRepo.SaveAsync(conversation);
+
+            // Add AI response and update stats
+            var aiMsg = ChatMessage.FromAI(replyContent, "text", null, session.Id);
+            session.Messages.Add(aiMsg);
+            session.AddAiMessage(); // This method already exists
+
+            // Persist changes
+            await _conversationRepo.SaveAsync(session);
 
             return replyContent;
         }
     }
-
 }

@@ -68,5 +68,22 @@ namespace Synerixis.Domain.Entities
             Console.WriteLine("创建2 AI 消息 Id: " + msg.Id);
             return msg;
         }
+
+        /// <summary>
+        /// 创建客服回复消息
+        /// </summary>
+        public static ChatMessage FromAgent(string content, Guid conversationId)
+        {
+            var msg = new ChatMessage
+            {
+                Id = Guid.NewGuid(),
+                ConversationId = conversationId,
+                IsFromUser = false,
+                Content = content,
+                MessageType = "text"
+            };
+            Console.WriteLine("创建 agent 消息 Id: " + msg.Id);
+            return msg;
+        }
     }
 }

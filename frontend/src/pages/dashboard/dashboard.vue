@@ -78,29 +78,27 @@
 </template>
 
 <script>
-    const testbase = 'http://192.168.1.254:7092';
+    import { request } from '@/utils/request.js';
 
     export default {
         data() {
             return {
                 profile: {
-                    nickname: '',
+                    nickname: '加载中...',
                     freeQuota: 0,
                     subscriptionLevel: '免费版',
                     subscriptionEnd: null,
                     avatarUrl: ''
                 },
-                usedQuota: 0,           // 本月已用（示例，可后端返回）
-                progress: 0,            // 进度条百分比
+                usedQuota: 0,
+                progress: 0,
                 currentDate: ''
             };
         },
 
-        onLoad() {
+        onShow() {
             this.updateDate();
             this.loadProfile();
-            // 每分钟更新一次日期（可选）
-            setInterval(this.updateDate, 60000);
         },
 
         methods: {
@@ -110,24 +108,15 @@
             },
 
             async loadProfile() {
-                const token = uni.getStorageSync('token');
-                if (!token) {
-                    uni.navigateTo({ url: '/pages/login/login' });
-                    return;
-                }
-
-                const res = await uni.request({
-                    url: `${testbase}/api/seller/profile`,
-                    header: { Authorization: `Bearer ${token}` }
-                });
-
-                if (res.statusCode === 200) {
-                    this.profile = res.data;
-                    // 示例：计算已用额度（实际应后端返回）
-                    this.usedQuota = 100 - (this.profile.freeQuota || 0);
-                    this.progress = this.usedQuota > 0 ? Math.min(100, (this.usedQuota / 100) * 100) : 0;
-                } else {
-                    uni.showToast({ title: '加载信息失败', icon: 'none' });
+                try {
+                    const data = await request({ url: '/api/seller/profile' });
+                    this.profile = data;
+                    // 假设总额度是100，计算已用
+                    const totalQuota = 100; // 或者从API获取
+                    this.usedQuota = totalQuota - (this.profile.freeQuota || 0);
+                    this.progress = this.usedQuota > 0 ? Math.min(100, (this.usedQuota / totalQuota) * 100) : 0;
+                } catch (error) {
+                    // 错误已在request.js中统一处理
                 }
             },
 
@@ -140,18 +129,6 @@
             toChat() {
                 uni.switchTab({ url: '/pages/conversations/conversations' });
             },
-
-            toProducts() {
-                uni.navigateTo({ url: '/pages/products/products' });  // 后续实现
-            },
-
-            toProfile() {
-                uni.navigateTo({ url: '/pages/profile/profile' });
-            },
-
-            toChat() {
-                uni.navigateTo({ url: '/pages/chat/ai-chat' });
-            },
             toMarketingCopy() {
                 uni.navigateTo({ url: '/pages/marketing/generate' });
             },
@@ -162,14 +139,13 @@
                 uni.navigateTo({ url: '/pages/competitor/analyze' });
             },
             toProducts() {
-                uni.switchTab({ url: '/pages/products/products' }); // 若未实现可暂略
+                uni.navigateTo({ url: '/pages/products/products' });
             },
             toProfile() {
                 uni.navigateTo({ url: '/pages/profile/profile' });
             },
-
             toSubscribe() {
-                uni.navigateTo({ url: '/pages/pay/subscribe' });  // 后续支付页
+                uni.navigateTo({ url: '/pages/pay/subscribe' });
             }
         }
     };

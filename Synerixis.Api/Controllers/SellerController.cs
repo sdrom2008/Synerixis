@@ -1,4 +1,4 @@
-﻿using Humanizer;
+using Humanizer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -16,11 +16,11 @@ namespace Synerixis.Api.Controllers
 {
     [ApiController]
     [Route("api/seller")]
-    [Authorize]  // 需要 JWT 认证
+    [Authorize]
     public class SellerController : BaseApiController
     {
         private readonly AppDbContext _db;
-        private readonly IAuthService _authService;  // 如果需要
+        private readonly IAuthService _authService;
         private readonly ProductService _productService;
 
         public SellerController(AppDbContext db, IAuthService authService, ProductService productService)
@@ -53,6 +53,14 @@ namespace Synerixis.Api.Controllers
                     await _db.SaveChangesAsync();
                 }
 
+                // 获取客服团队统计
+                var agentCount = await _db.Agents
+                    .CountAsync(a => a.ShopId == sellerId);
+                var onlineAgentCount = await _db.Agents
+                    .CountAsync(a => a.ShopId == sellerId && a.IsOnline);
+                var activeAgentCount = await _db.Agents
+                    .CountAsync(a => a.ShopId == sellerId && a.IsActive);
+
                 return Ok(new
                 {
                     seller.Id,
@@ -62,12 +70,17 @@ namespace Synerixis.Api.Controllers
                     seller.FreeQuota,
                     seller.SubscriptionLevel,
                     seller.SubscriptionEnd,
-                    Config = seller.Config
+                    Config = seller.Config,
+                    TeamStats = new
+                    {
+                        TotalAgents = agentCount,
+                        OnlineAgents = onlineAgentCount,
+                        ActiveAgents = activeAgentCount
+                    }
                 });
             }
             catch (Exception ex)
             {
-                // 加日志
                 Console.WriteLine("GetProfile 异常: " + ex.Message);
                 return StatusCode(500, "服务器内部错误，请检查日志");
             }
@@ -91,8 +104,10 @@ namespace Synerixis.Api.Controllers
             config.TargetCustomerDesc = dto.TargetCustomerDesc ?? config.TargetCustomerDesc;
             config.DefaultReplyTone = dto.DefaultReplyTone ?? config.DefaultReplyTone;
             config.PreferredLanguage = dto.PreferredLanguage ?? config.PreferredLanguage;
-            config.EnableAutoMarketingReminder = dto.EnableAutoMarketingReminder;
-            config.MemoryRetentionDays = dto.MemoryRetentionDays > 0 ? dto.MemoryRetentionDays : config.MemoryRetentionDays;
+            config.EnableAutoMarketingReminder = dto.EnableAutoMarketingReminder ?? config.EnableAutoMarketingReminder;
+            config.MemoryRetentionDays = dto.MemoryRetentionDays.HasValue && dto.MemoryRetentionDays.Value > 0
+                ? dto.MemoryRetentionDays.Value
+                : config.MemoryRetentionDays;
             config.UpdatedAt = DateTime.UtcNow;
 
             await _db.SaveChangesAsync();
@@ -100,7 +115,6 @@ namespace Synerixis.Api.Controllers
             return Ok(new { message = "配置更新成功" });
         }
 
-        // 更新个人信息（昵称、头像等）
         [HttpPut("profile")]
         public async Task<IActionResult> UpdateProfile([FromBody] ProfileUpdateDto dto)
         {
@@ -109,7 +123,6 @@ namespace Synerixis.Api.Controllers
                 return Unauthorized();
 
             var seller = await _db.Sellers.FirstOrDefaultAsync(s => s.Id == sellerId);
-
             if (seller == null)
                 return NotFound("商户不存在");
 
@@ -148,9 +161,6 @@ namespace Synerixis.Api.Controllers
             return Ok(new { url });
         }
 
-
-
-        // 统一商品列表接口（支持分页 + 搜索）
         [HttpGet("products")]
         public async Task<IActionResult> GetProducts(
             [FromQuery] int page = 1,
@@ -191,7 +201,6 @@ namespace Synerixis.Api.Controllers
             }
         }
 
-        // 删除商品（调用 Service 层更好，但这里保持简单）
         [HttpDelete("products/{id}")]
         public async Task<IActionResult> DeleteProduct(Guid id)
         {
@@ -209,12 +218,6 @@ namespace Synerixis.Api.Controllers
             return Ok(new { message = "删除成功" });
         }
 
-
-
-
-
-
-        // AI 优化（保存优化结果）
         [HttpPut("products/{id}/optimize")]
         public async Task<IActionResult> OptimizeProduct(Guid id, [FromBody] OptimizedProductDto dto)
         {
@@ -226,7 +229,6 @@ namespace Synerixis.Api.Controllers
             if (sellerProduct == null)
                 return NotFound("商品不存在或无权限");
 
-            // 假设 SellerProduct 有这些字段（需加到实体类）
             sellerProduct.OptimizedTitle = dto.OptimizedTitle;
             sellerProduct.OptimizedDescription = dto.OptimizedDescription;
             sellerProduct.OptimizedTagsJson = dto.OptimizedTagsJson;
@@ -244,7 +246,6 @@ namespace Synerixis.Api.Controllers
             if (!Guid.TryParse(sellerIdStr, out var sellerId))
                 return Unauthorized();
 
-            // 模拟抓取逻辑（实际可加爬虫）
             var product = new
             {
                 title = "抓取商品 - 示例",
@@ -256,6 +257,14 @@ namespace Synerixis.Api.Controllers
             };
 
             return Ok(product);
+        }
+
+        // ============================================
+        // DTOs
+        // ============================================
+        public class FetchUrlDto
+        {
+            public string Url { get; set; } = null!;
         }
 
         [HttpPost("products/import")]
@@ -273,7 +282,6 @@ namespace Synerixis.Api.Controllers
                 if (string.IsNullOrWhiteSpace(dto.Title))
                     return BadRequest("商品标题不能为空");
 
-                // 设置默认值
                 dto.Description ??= "";
                 dto.ImagesJson ??= "[]";
                 dto.TagsJson ??= "[]";
@@ -291,30 +299,168 @@ namespace Synerixis.Api.Controllers
             }
         }
 
-        //测试
-        //[HttpPost("products/import")]
-        //public IActionResult ImportProduct([FromBody] TestDto dto)
-        //{
-        //    Console.WriteLine("[TEST] 进入方法，Title: " + dto?.Title + ", Desc: " + dto?.Description + ",Price:" +dto.Price.ToString());
-        //    return Ok(new { message = "收到" });
-        //}
+        // ============================================
+        // 客服团队管理
+        // ============================================
+        [HttpGet("team")]
+        public async Task<IActionResult> GetTeam()
+        {
+            var sellerIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (!Guid.TryParse(sellerIdStr, out var sellerId))
+                return Unauthorized();
+
+            var agents = await _db.Agents
+                .Where(a => a.ShopId == sellerId)
+                .OrderBy(a => a.Role)
+                .ThenBy(a => a.CreatedAt)
+                .Select(a => new
+                {
+                    a.Id,
+                    a.Name,
+                    a.Email,
+                    a.Role,
+                    a.IsActive,
+                    a.IsOnline,
+                    a.MaxConcurrentSessions,
+                    a.CurrentSessionCount,
+                    a.LastLoginAt,
+                    a.CreatedAt
+                })
+                .ToListAsync();
+
+            return Ok(agents);
+        }
+
+        [HttpPost("team")]
+        public async Task<IActionResult> AddTeamMember([FromBody] AddAgentDto dto)
+        {
+            var sellerIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (!Guid.TryParse(sellerIdStr, out var sellerId))
+                return Unauthorized();
+
+            var existing = await _db.Agents.FirstOrDefaultAsync(a => a.Email == dto.Email);
+            if (existing != null)
+                return BadRequest("该邮箱已被使用");
+
+            var agent = Agent.Create(
+                shopId: sellerId,
+                email: dto.Email,
+                name: dto.Name,
+                passwordHash: dto.Password,
+                role: dto.Role ?? AgentRole.Agent
+            );
+
+            _db.Agents.Add(agent);
+            await _db.SaveChangesAsync();
+
+            return Ok(new
+            {
+                message = "客服添加成功",
+                agentId = agent.Id
+            });
+        }
+
+        [HttpPut("team/{agentId}")]
+        public async Task<IActionResult> UpdateTeamMember(
+            Guid agentId,
+            [FromBody] UpdateAgentDto dto)
+        {
+            var sellerIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (!Guid.TryParse(sellerIdStr, out var sellerId))
+                return Unauthorized();
+
+            var agent = await _db.Agents.FirstOrDefaultAsync(a => a.Id == agentId && a.ShopId == sellerId);
+            if (agent == null)
+                return NotFound("客服不存在或无权限");
+
+            if (!string.IsNullOrEmpty(dto.Name))
+                agent.UpdateProfile(dto.Name, null);
+            if (dto.MaxConcurrentSessions.HasValue)
+                agent.SetMaxConcurrentSessions(dto.MaxConcurrentSessions.Value);
+            if (dto.IsActive.HasValue)
+                agent.SetActive(dto.IsActive.Value);
+
+            await _db.SaveChangesAsync();
+
+            return Ok(new { message = "客服信息更新成功" });
+        }
+
+        [HttpDelete("team/{agentId}")]
+        public async Task<IActionResult> RemoveTeamMember(Guid agentId)
+        {
+            var sellerIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (!Guid.TryParse(sellerIdStr, out var sellerId))
+                return Unauthorized();
+
+            var agent = await _db.Agents.FirstOrDefaultAsync(a => a.Id == agentId && a.ShopId == sellerId);
+            if (agent == null)
+                return NotFound("客服不存在或无权限");
+
+            agent.SetActive(false);
+            await _db.SaveChangesAsync();
+
+            return Ok(new { message = "客服已移除" });
+        }
+
+        [HttpPost("team/{agentId}/reset-password")]
+        public async Task<IActionResult> ResetTeamMemberPassword(
+            Guid agentId,
+            [FromBody] ResetPasswordDto dto)
+        {
+            var sellerIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (!Guid.TryParse(sellerIdStr, out var sellerId))
+                return Unauthorized();
+
+            var agent = await _db.Agents.FirstOrDefaultAsync(a => a.Id == agentId && a.ShopId == sellerId);
+            if (agent == null)
+                return NotFound("客服不存在或无权限");
+
+            agent.UpdatePassword(dto.NewPassword);
+            await _db.SaveChangesAsync();
+
+            return Ok(new { message = "密码重置成功" });
+        }
     }
 
-    public class FetchUrlDto
+    public class AddAgentDto
     {
-        public string Url { get; set; }
+        public string Email { get; set; } = null!;
+        public string Password { get; set; } = null!;
+        public string Name { get; set; } = null!;
+        public AgentRole? Role { get; set; } = AgentRole.Agent;
     }
 
-    //测试用
-    public class TestDto
+    public class UpdateAgentDto
     {
-        public string? ExternalId { get; set; }
-        public string? Title { get; set; }
-        public string? Description { get; set; }
-        public decimal? Price { get; set; }  // string
-        public string? ImagesJson { get; set; }
-        public string? Category { get; set; }
-        public string? TagsJson { get; set; }
-        //public string Source { get; set; }
+        public string? Name { get; set; }
+        public AgentRole? Role { get; set; }
+        public int? MaxConcurrentSessions { get; set; }
+        public bool? IsActive { get; set; }
+    }
+
+    public class ResetPasswordDto
+    {
+        public string NewPassword { get; set; } = null!;
+    }
+
+    // ============================================
+    // 其他业务 DTOs (本地定义)
+    // ============================================
+    public class ProfileUpdateDto
+    {
+        public string? Nickname { get; set; }
+        public string? AvatarUrl { get; set; }
+    }
+
+    public class SellerConfigUpdateDto
+    {
+        public string? ShopName { get; set; }
+        public string? ShopLogo { get; set; }
+        public string? MainCategory { get; set; }
+        public string? TargetCustomerDesc { get; set; }
+        public string? DefaultReplyTone { get; set; }
+        public string? PreferredLanguage { get; set; }
+        public bool? EnableAutoMarketingReminder { get; set; }
+        public int? MemoryRetentionDays { get; set; }
     }
 }

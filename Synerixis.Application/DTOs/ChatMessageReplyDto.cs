@@ -1,14 +1,14 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Synerixis.Application.DTOs
 {
     public class ChatMessageReplyDto
     {
         public Guid ConversationId { get; set; }
-        public List<ChatMessageDto> Messages { get; set; } = new();  // 统一用 ChatMessageDto
+        public Guid MessageId { get; set; }
+        public string Content { get; set; } = string.Empty;
+        public string MessageType { get; set; } = "text";
+        public object? Data { get; set; }
     }
 }

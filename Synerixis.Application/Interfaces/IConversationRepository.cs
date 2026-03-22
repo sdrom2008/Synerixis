@@ -8,14 +8,14 @@ namespace Synerixis.Application.Interfaces
     /// <summary>
     /// Defines the contract for a repository that handles conversation data.
     /// </summary>
-    public interface IConversationRepository : IRepository<Conversation>
+    public interface IConversationRepository : IRepository<ChatSession>
     {
-        Task<Conversation> GetByCustomerIdAsync(string customerId);
+        Task<ChatSession> GetByCustomerIdAsync(string customerId);
 
         Task<ChatContext> GetContextAsync(string conversationId, string sellerId);
 
         Task<Guid> AppendMessagesAsync(string conversationId, string sellerId, IEnumerable<ChatMessageDto> messages);
 
-        Task SaveAsync(Conversation conversation);
+        Task SaveAsync(ChatSession session);
     }
 }
