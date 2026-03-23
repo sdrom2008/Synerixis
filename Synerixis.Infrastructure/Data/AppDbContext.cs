@@ -23,6 +23,7 @@ namespace Synerixis.Infrastructure.Data
         public DbSet<Order> Orders { get; set; }
         public DbSet<QuickReply> QuickReplies { get; set; }
         public DbSet<AgentStat> AgentStats { get; set; }
+        public DbSet<PlatformConnection> PlatformConnections { get; set; }
 
         public AppDbContext(DbContextOptions<AppDbContext> options) : base(options)
         {
