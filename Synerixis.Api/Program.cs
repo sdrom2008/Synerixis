@@ -14,6 +14,7 @@ using Synerixis.Application.Services;
 using Synerixis.Domain.Entities;
 using Synerixis.Infrastructure.AI;
 using Synerixis.Infrastructure.AIServices;
+using Synerixis.Infrastructure.Clients;
 using Synerixis.Infrastructure.Data;
 using Synerixis.Infrastructure.Payment;
 using Synerixis.Infrastructure.Repositories;
@@ -96,12 +97,18 @@ builder.Services.AddScoped<IAgentStatsService, AgentStatsService>();
 // builder.Services.AddScoped<IAgent, LogisticsAgent>();
 // --- END OF AI CUSTOMER SUPPORT SERVICES ---
 
-
 // 5. Agent 注册（所有具体 Agent）
 builder.Services.AddScoped<IAgent, ProductOptimizationAgent>();
 builder.Services.AddScoped<IAgent, CompetitorAnalysisAgent>();
 // 如果有其他 Agent，在这里继续加
 builder.Services.AddSingleton<AliyunSmsService>();
+
+// --- PLATFORM CLIENTS (Shopee, Taobao, Douyin) ---
+builder.Services.AddScoped<TaobaoPlatformClient>();
+builder.Services.AddScoped<ShopeePlatformClient>();
+// builder.Services.AddScoped<DouyinPlatformClient>(); // 待创建
+builder.Services.AddScoped<PlatformClientRouter>();
+// --- END PLATFORM CLIENTS ---
 
 // 微信支付（生产环境才启用，开发环境暂时注释）
 // builder.Services.AddScoped<WeChatPayV3Client>(serviceProvider =>
@@ -152,7 +159,11 @@ builder.Services.AddCors(options =>
     options.AddPolicy("AllowAll", p => p.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader());
 });
 
-// JWT 认证
+// JWT 认证（开发环境使用默认密钥，生产环境必须配置）
+var jwtKey = builder.Configuration["Jwt:Key"] ?? "dev-secret-key-please-change-in-production";
+var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "Synerixis.Dev";
+var jwtAudience = builder.Configuration["Jwt:Audience"] ?? "Synerixis.Client";
+
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
@@ -162,28 +173,40 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidateAudience = true,
             ValidateLifetime = true,
             ValidateIssuerSigningKey = true,
-            ValidIssuer = builder.Configuration["Jwt:Issuer"],
-            ValidAudience = builder.Configuration["Jwt:Audience"],
-            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"]!))
+            ValidIssuer = jwtIssuer,
+            ValidAudience = jwtAudience,
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey))
         };
     });
 
 builder.Services.AddAuthorization();
 
-// 数据库配置：MySQL
+// 数据库配置：优先 MySQL，开发环境无配置时降级到 SQLite
 var conn = builder.Configuration.GetConnectionString("MySqlConnection");
 if (string.IsNullOrEmpty(conn))
 {
     conn = builder.Configuration["Database:ConnectionString"];
 }
 if (string.IsNullOrEmpty(conn))
-    throw new InvalidOperationException("MySQL connection string not configured");
+{
+    // 开发演示模式：使用本地 SQLite 数据库（无需外部服务）
+    var dbPath = Path.Combine(AppContext.BaseDirectory, "dev.db");
+    conn = $"Data Source={dbPath}";
+}
 
-builder.Services.AddDbContext<AppDbContext>(opt =>
-    opt.UseMySql(conn, ServerVersion.AutoDetect(conn), mysql =>
-    {
-        mysql.EnableRetryOnFailure();
-    }));
+// 智能选择数据库提供程序
+if (conn.StartsWith("Data Source=", StringComparison.OrdinalIgnoreCase))
+{
+    builder.Services.AddDbContext<AppDbContext>(opt => opt.UseSqlite(conn));
+}
+else
+{
+    builder.Services.AddDbContext<AppDbContext>(opt =>
+        opt.UseMySql(conn, ServerVersion.AutoDetect(conn), mysql =>
+        {
+            mysql.EnableRetryOnFailure();
+        }));
+}
 
 // 泛型仓储（推荐只注册一次）
 builder.Services.AddScoped(typeof(IRepository<>), typeof(Repository<>));
