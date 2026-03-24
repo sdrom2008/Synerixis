@@ -143,9 +143,35 @@ namespace Synerixis.Api.Controllers
             if (!Guid.TryParse(sellerIdStr, out var sellerId))
                 return Unauthorized();
 
+            // 1. 验证文件扩展名
             var extension = Path.GetExtension(file.FileName).ToLowerInvariant();
             if (!new[] { ".jpg", ".jpeg", ".png", ".gif" }.Contains(extension))
                 return BadRequest("仅支持 JPG/PNG/GIF 格式");
+
+            // 2. 验证 MIME 类型
+            var allowedTypes = new[] { "image/jpeg", "image/png", "image/gif" };
+            if (!allowedTypes.Contains(file.ContentType.ToLowerInvariant()))
+                return BadRequest("文件类型不正确");
+
+            // 3. 验证文件大小（5MB 限制）
+            if (file.Length > 5 * 1024 * 1024)
+                return BadRequest("文件大小不能超过 5MB");
+
+            // 4. 验证文件头（Magic Number）防止伪装
+            using var binaryReader = new BinaryReader(file.OpenReadStream());
+            var header = binaryReader.ReadBytes(4);
+            file.OpenReadStream().Seek(0, SeekOrigin.Begin); // 重置流位置
+
+            bool isValidHeader = file.ContentType.ToLowerInvariant() switch
+            {
+                "image/jpeg" => header.Take(3).SequenceEqual(new byte[] { 0xFF, 0xD8, 0xFF }),
+                "image/png" => header.Take(4).SequenceEqual(new byte[] { 0x89, 0x50, 0x4E, 0x47 }),
+                "image/gif" => header.Take(3).SequenceEqual(new byte[] { 0x47, 0x49, 0x46 }),
+                _ => false
+            };
+
+            if (!isValidHeader)
+                return BadRequest("文件内容与格式不匹配，可能已损坏或被篡改");
 
             var fileName = $"{Guid.NewGuid()}{extension}";
             var dir = Path.Combine("wwwroot", "uploads", "logo");
