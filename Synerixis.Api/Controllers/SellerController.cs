@@ -184,6 +184,18 @@ namespace Synerixis.Api.Controllers
             }
 
             var url = $"/uploads/logo/{fileName}";
+
+            // 自动保存到 SellerConfig
+            var config = await _db.SellerConfigs.FirstOrDefaultAsync(c => c.SellerId == sellerId);
+            if (config == null)
+            {
+                config = new SellerConfig { SellerId = sellerId };
+                _db.SellerConfigs.Add(config);
+            }
+            config.ShopLogo = url;
+            config.UpdatedAt = DateTime.UtcNow;
+            await _db.SaveChangesAsync();
+
             return Ok(new { url });
         }
 

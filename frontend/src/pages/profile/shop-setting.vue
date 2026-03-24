@@ -134,7 +134,9 @@ export default {
         success: res => {
           const data = JSON.parse(res.data);
           if (data.url) {
-            this.form.shopLogo = data.url;
+            // 拼接完整 URL 并直接更新表单和显示
+            const fullUrl = `${testbase}${data.url}`;
+            this.form.shopLogo = fullUrl;
             uni.showToast({ title: 'LOGO上传成功', icon: 'success' });
           } else {
             uni.showToast({ title: data.msg || '上传失败', icon: 'none' });
