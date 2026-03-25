@@ -97,6 +97,9 @@ namespace Synerixis.Api.Controllers
             if (string.IsNullOrEmpty(dto.Phone) || string.IsNullOrEmpty(dto.Code))
                 return BadRequest("手机号和验证码不能为空");
 
+            // 拼接完整国际号码：+{CountryCode}{Phone}
+            var fullPhone = $"+{dto.CountryCode}{dto.Phone}".Replace(" ", "");
+
             // 开发环境：跳过验证码检查，直接登录
             if (_env.IsDevelopment())
             {
@@ -104,18 +107,18 @@ namespace Synerixis.Api.Controllers
             }
             else
             {
-                if (!_cache.TryGetValue($"sms:{dto.Phone}", out string cachedCode) || cachedCode != dto.Code)
+                if (!_cache.TryGetValue($"sms:{fullPhone}", out string cachedCode) || cachedCode != dto.Code)
                     return BadRequest("验证码错误或已过期");
             }
 
             // 先尝试作为 Seller 登录
-            var seller = await _db.Sellers.FirstOrDefaultAsync(s => s.Phone == dto.Phone);
+            var seller = await _db.Sellers.FirstOrDefaultAsync(s => s.Phone == fullPhone);
             if (seller != null)
             {
                 bool isNew = false;
                 if (string.IsNullOrEmpty(seller.Phone))
                 {
-                    seller.BindPhone(dto.Phone);
+                    seller.BindPhone(fullPhone);
                     isNew = true;
                 }
                 seller.RecordLogin("phone");
@@ -135,7 +138,7 @@ namespace Synerixis.Api.Controllers
             }
 
             // 再尝试作为 Agent 登录
-            var agent = await _db.Agents.FirstOrDefaultAsync(a => a.Phone == dto.Phone);
+            var agent = await _db.Agents.FirstOrDefaultAsync(a => a.Phone == fullPhone);
             if (agent != null)
             {
                 if (!agent.IsActive)
@@ -194,25 +197,28 @@ namespace Synerixis.Api.Controllers
         [AllowAnonymous]
         public async Task<IActionResult> SendCode([FromBody] SendCodeDto dto)
         {
-            if (string.IsNullOrEmpty(dto.Phone) || dto.Phone.Length != 11 || !dto.Phone.StartsWith("1"))
-                return BadRequest("手机号格式错误");
+            if (string.IsNullOrEmpty(dto.Phone))
+                return BadRequest("手机号不能为空");
+
+            // 拼接完整国际号码：+{CountryCode}{Phone}
+            var fullPhone = $"+{dto.CountryCode}{dto.Phone}".Replace(" ", "");
 
             // 开发环境：固定验证码 "123456"
             var code = "123456";
 
             if (_env.IsDevelopment())
             {
-                _cache.Set($"sms:{dto.Phone}", code, TimeSpan.FromMinutes(5));
+                _cache.Set($"sms:{fullPhone}", code, TimeSpan.FromMinutes(5));
                 return Ok(new { message = "验证码已发送（开发环境固定为 123456）" });
             }
 
             var realCode = new Random().Next(100000, 999999).ToString();
-            var success = await _smsService.SendVerificationCodeAsync(dto.Phone, realCode);
+            var success = await _smsService.SendVerificationCodeAsync(fullPhone, realCode);
 
             if (!success)
                 return StatusCode(500, "发送验证码失败，请稍后重试");
 
-            _cache.Set($"sms:{dto.Phone}", realCode, TimeSpan.FromMinutes(5));
+            _cache.Set($"sms:{fullPhone}", realCode, TimeSpan.FromMinutes(5));
 
             return Ok(new { message = "验证码已发送，5分钟内有效" });
         }
@@ -225,11 +231,14 @@ namespace Synerixis.Api.Controllers
 
             // TODO: 校验验证码
 
-            var seller = await _db.Sellers.FirstOrDefaultAsync(s => s.Phone == dto.Phone);
+            // 拼接完整国际号码
+            var fullPhone = $"+{dto.CountryCode}{dto.Phone}".Replace(" ", "");
+
+            var seller = await _db.Sellers.FirstOrDefaultAsync(s => s.Phone == fullPhone);
 
             if (seller == null)
             {
-                seller = Seller.CreateWithPhone(dto.Phone);
+                seller = Seller.CreateWithPhone(fullPhone);
                 seller.BindWechat(dto.OpenId);
                 _db.Sellers.Add(seller);
             }
@@ -280,7 +289,7 @@ namespace Synerixis.Api.Controllers
             try
             {
                 var phoneInfo = WxDecryptHelper.DecryptPhone(dto.EncryptedData, dto.Iv, sessionKey, appId);
-                var phone = phoneInfo.PurePhoneNumber;
+                var phone = $"+86{phoneInfo.PurePhoneNumber}"; // 微信手机号为中国，添加 +86
 
                 var seller = await _db.Sellers.FirstOrDefaultAsync(s => s.OpenId == dto.OpenId);
 

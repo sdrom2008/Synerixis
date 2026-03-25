@@ -7,11 +7,20 @@
     </view>
 
     <view class="form">
+      <!-- 国家/区号选择 -->
+      <picker class="country-picker" mode="selector" :value="countryIndex" :range="countries" range-key="name" @change="onCountryChange">
+        <view class="picker-content">
+          <text class="picker-flag">{{ countries[countryIndex].flag }}</text>
+          <text class="picker-text">+{{ countries[countryIndex].code }}</text>
+          <text class="picker-arrow">▼</text>
+        </view>
+      </picker>
+
+      <!-- 手机号输入框 -->
       <input 
         v-model="phone" 
-        placeholder="+86 请输入手机号" 
-        type="tel" 
-        maxlength="11" 
+        placeholder="请输入手机号" 
+        type="number" 
         class="input" 
       />
 
@@ -58,6 +67,21 @@ export default {
     return {
       phone: '',
       code: '',
+      countryCode: '86',
+      countryIndex: 0,
+      countries: [
+        { name: '中国', code: '86', flag: '🇨🇳' },
+        { name: '美国', code: '1', flag: '🇺🇸' },
+        { name: '香港', code: '852', flag: '🇭🇰' },
+        { name: '新加坡', code: '65', flag: '🇸🇬' },
+        { name: '英国', code: '44', flag: '🇬🇧' },
+        { name: '日本', code: '81', flag: '🇯🇵' },
+        { name: '韩国', code: '82', flag: '🇰🇷' },
+        { name: '澳大利亚', code: '61', flag: '🇦🇺' },
+        { name: '加拿大', code: '1', flag: '🇨🇦' },
+        { name: '德国', code: '49', flag: '🇩🇪' },
+        { name: '法国', code: '33', flag: '🇫🇷' }
+      ],
       countdown: 0,
       sendCodeLoading: false,
       loginLoading: false,
@@ -74,14 +98,19 @@ export default {
       uni.navigateBack();
     },
 
+    onCountryChange(e) {
+      this.countryIndex = parseInt(e.detail.value);
+      this.countryCode = this.countries[this.countryIndex].code;
+    },
+
     async sendCode() {
       if (!this.agree) {
         uni.showToast({ title: '请先同意协议', icon: 'none' });
         return;
       }
 
-      if (!this.phone || this.phone.length !== 11) {
-        uni.showToast({ title: '手机号格式错误', icon: 'none' });
+      if (!this.phone) {
+        uni.showToast({ title: '请输入手机号', icon: 'none' });
         return;
       }
 
@@ -91,7 +120,10 @@ export default {
         const res = await request({
           url: '/api/auth/send-code',
           method: 'POST',
-          data: { Phone: this.phone }
+          data: { 
+            Phone: this.phone,
+            CountryCode: this.countryCode
+          }
         });
         uni.showToast({ title: res.message || '验证码已发送', icon: 'success' });
         this.countdown = 60;
@@ -112,13 +144,13 @@ export default {
         return;
       }
 
-      if (!this.phone || this.phone.length !== 11) {
-        uni.showToast({ title: '手机号格式错误', icon: 'none' });
+      if (!this.phone) {
+        uni.showToast({ title: '请输入手机号', icon: 'none' });
         return;
       }
 
-      if (!this.code || this.code.length !== 6) {
-        uni.showToast({ title: '请输入6位验证码', icon: 'none' });
+      if (!this.code) {
+        uni.showToast({ title: '请输入验证码', icon: 'none' });
         return;
       }
 
@@ -130,7 +162,8 @@ export default {
           method: 'POST',
           data: {
             Phone: this.phone,
-            Code: this.code
+            Code: this.code,
+            CountryCode: this.countryCode
           }
         });
 
@@ -206,6 +239,39 @@ export default {
 
 .form {
   margin-top: 60rpx;
+}
+
+.country-picker {
+  background: #1e293b;
+  border-radius: 24rpx;
+  padding: 0 32rpx;
+  height: 100rpx;
+  line-height: 100rpx;
+  margin-bottom: 32rpx;
+  display: flex;
+  align-items: center;
+}
+
+.picker-content {
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+.picker-flag {
+  font-size: 40rpx;
+  margin-right: 16rpx;
+}
+
+.picker-text {
+  font-size: 36rpx;
+  color: #e2e8f0;
+  flex: 1;
+}
+
+.picker-arrow {
+  font-size: 24rpx;
+  color: #94a3b8;
 }
 
 .input {

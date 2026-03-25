@@ -17,6 +17,7 @@ namespace Synerixis.Api.Controllers
     {
         public string Phone { get; set; } = null!;
         public string Code { get; set; } = null!;
+        public string CountryCode { get; set; } = "86"; // 国际区号，默认中国
     }
 
     // 绑定微信
@@ -30,6 +31,7 @@ namespace Synerixis.Api.Controllers
     public class SendCodeDto
     {
         public string Phone { get; set; } = null!;
+        public string CountryCode { get; set; } = "86"; // 国际区号，默认中国
     }
 
     // 绑定手机
@@ -38,6 +40,7 @@ namespace Synerixis.Api.Controllers
         public string OpenId { get; set; } = null!;
         public string Phone { get; set; } = null!;
         public string Code { get; set; } = null!;
+        public string CountryCode { get; set; } = "86"; // 国际区号，默认中国
     }
 
     // 解密手机号
