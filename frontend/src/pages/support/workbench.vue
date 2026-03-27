@@ -3,7 +3,7 @@
     <!-- 左侧：会话列表 -->
     <view class="sidebar-left">
       <view class="header">
-        <text class="title">会话列表</text>
+        <text class="title">{{ t('merchant.sessions') }}</text>
         <text class="count">{{ tickets.length }}</text>
       </view>
       <scroll-view scroll-y class="ticket-list">
@@ -15,13 +15,13 @@
           @click="selectTicket(ticket)"
         >
           <view class="customer-info">
-            <text class="customer-name">{{ ticket.customerName || '未知' }}</text>
+            <text class="customer-name">{{ ticket.customerName || (currentLang === 'zh-CN' ? '未知' : 'Unknown') }}</text>
             <text class="platform">{{ ticket.platform }}</text>
           </view>
           <view class="info-row">
             <text class="status" :class="ticket.status">{{ ticket.status }}</text>
             <text class="agent" v-if="ticket.assignedAgent">{{ ticket.assignedAgent.name }}</text>
-            <text class="agent" v-else>未分配</text>
+            <text class="agent" v-else>{{ currentLang === 'zh-CN' ? '未分配' : 'Unassigned' }}</text>
           </view>
           <view class="time">{{ formatTime(ticket.createdAt) }}</view>
         </view>
@@ -31,13 +31,15 @@
     <!-- 中间：聊天窗口 -->
     <view class="chat-panel">
       <view v-if="!currentTicket" class="empty-state">
-        <text>选择一个会话开始聊天</text>
+        <text>{{ currentLang === 'zh-CN' ? '选择一个会话开始聊天' : 'Select a session to start chatting' }}</text>
       </view>
       <template v-else>
         <view class="chat-header">
           <text class="customer-name">{{ currentTicket.customerName }}</text>
           <text class="session-id">{{ currentTicket.sessionId }}</text>
-          <button v-if="currentTicket.status === 'Pending'" class="take-btn" @click="takeTicket">接管</button>
+          <button v-if="currentTicket.status === 'Pending'" class="take-btn" @click="takeTicket">
+            {{ currentLang === 'zh-CN' ? '接管' : 'Take over' }}
+          </button>
         </view>
         <scroll-view scroll-y class="messages" :scroll-into-view="lastMessageId">
           <view 
@@ -56,11 +58,13 @@
           <input 
             v-model="newMessage" 
             class="input" 
-            placeholder="输入回复..." 
+            :placeholder="currentLang === 'zh-CN' ? '输入回复...' : 'Enter reply...'"
             confirm-type="send"
             @confirm="sendMessage"
           />
-          <button class="send-btn" @click="sendMessage" size="mini" :loading="sending">发送</button>
+          <button class="send-btn" @click="sendMessage" size="mini" :loading="sending">
+            {{ currentLang === 'zh-CN' ? '发送' : 'Send' }}
+          </button>
         </view>
       </template>
     </view>
@@ -70,6 +74,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { request } from '@/utils/request.js'
+import { getLanguage } from '@/utils/i18n'
 
 const tickets = ref([])
 const currentTicket = ref(null)
@@ -78,6 +83,7 @@ const newMessage = ref('')
 const sending = ref(false)
 const lastMessageId = ref('')
 const BASE_URL = 'http://192.168.1.254:7092'
+const currentLang = getLanguage()
 
 onMounted(() => {
   loadTickets()
@@ -93,10 +99,10 @@ const loadTickets = async () => {
     if (res.statusCode === 200 && res.data.items) {
       tickets.value = res.data.items
     } else {
-      uni.showToast({ title: '加载失败', icon: 'none' })
+      uni.showToast({ title: currentLang === 'zh-CN' ? '加载失败' : 'Load failed', icon: 'none' })
     }
   } catch (e) {
-    uni.showToast({ title: '网络错误', icon: 'none' })
+    uni.showToast({ title: currentLang === 'zh-CN' ? '网络错误' : 'Network error', icon: 'none' })
   }
 }
 
@@ -117,10 +123,10 @@ const loadMessages = async (sessionId) => {
       messages.value = res.data
       scrollToBottom()
     } else {
-      uni.showToast({ title: '加载消息失败', icon: 'none' })
+      uni.showToast({ title: currentLang === 'zh-CN' ? '加载消息失败' : 'Failed to load messages', icon: 'none' })
     }
   } catch (e) {
-    uni.showToast({ title: '网络错误', icon: 'none' })
+    uni.showToast({ title: currentLang === 'zh-CN' ? '网络错误' : 'Network error', icon: 'none' })
   }
 }
 
@@ -134,14 +140,14 @@ const takeTicket = async () => {
       header: { Authorization: `Bearer ${token}` }
     })
     if (res.statusCode === 200) {
-      uni.showToast({ title: '已接管', icon: 'success' })
+      uni.showToast({ title: currentLang === 'zh-CN' ? '已接管' : 'Taken over', icon: 'success' })
       currentTicket.value.status = 'Active'
       await loadTickets()
     } else {
-      uni.showToast({ title: res.data?.message || '接管失败', icon: 'none' })
+      uni.showToast({ title: res.data?.message || (currentLang === 'zh-CN' ? '接管失败' : 'Take over failed'), icon: 'none' })
     }
   } catch (e) {
-    uni.showToast({ title: '网络错误', icon: 'none' })
+    uni.showToast({ title: currentLang === 'zh-CN' ? '网络错误' : 'Network error', icon: 'none' })
   }
 }
 
@@ -160,10 +166,10 @@ const sendMessage = async () => {
       newMessage.value = ''
       await loadMessages(currentTicket.value.sessionId)
     } else {
-      uni.showToast({ title: res.data?.message || '发送失败', icon: 'none' })
+      uni.showToast({ title: res.data?.message || (currentLang === 'zh-CN' ? '发送失败' : 'Send failed'), icon: 'none' })
     }
   } catch (e) {
-    uni.showToast({ title: '网络错误', icon: 'none' })
+    uni.showToast({ title: currentLang === 'zh-CN' ? '网络错误' : 'Network error', icon: 'none' })
   } finally {
     sending.value = false
   }

@@ -61,6 +61,16 @@ export default {
     stats: 'Statistics',
     agents: 'Agents',
     active: 'Active',
-    inactive: 'Inactive'
+    inactive: 'Inactive',
+    selectSession: 'Select a session to start chatting',
+    takeOver: 'Take over',
+    takeOverSuccess: 'Taken over',
+    takeOverFailed: 'Take over failed',
+    sendMessage: 'Send',
+    loadFailed: 'Load failed',
+    loadMessagesFailed: 'Failed to load messages',
+    networkError: 'Network error',
+    sendFailed: 'Send failed',
+    pleaseLogin: 'Please login'
   }
 };

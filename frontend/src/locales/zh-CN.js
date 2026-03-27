@@ -61,6 +61,16 @@ export default {
     stats: '统计数据',
     agents: '客服列表',
     active: '活跃',
-    inactive: '禁用'
+    inactive: '禁用',
+    selectSession: '选择一个会话开始聊天',
+    takeOver: '接管',
+    takeOverSuccess: '已接管',
+    takeOverFailed: '接管失败',
+    sendMessage: '发送',
+    loadFailed: '加载失败',
+    loadMessagesFailed: '加载消息失败',
+    networkError: '网络错误',
+    sendFailed: '发送失败',
+    pleaseLogin: '请先登录'
   }
 };
