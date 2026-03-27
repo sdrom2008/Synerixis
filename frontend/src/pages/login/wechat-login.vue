@@ -35,7 +35,7 @@
 
     <!-- 页脚备案信息 -->
     <view class="footer">
-      <text class="icp">蜀ICP备2026123456号-1</text>
+      <text class="icp">湘ICP备2026009564号</text>
       <text class="copyright">© 2024-2026 Synerixis All Rights Reserved</text>
     </view>
   </view>
