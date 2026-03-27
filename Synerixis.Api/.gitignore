@@ -1,5 +1,6 @@
 # 忽略所有 appsettings 文件（开发/生产/测试环境配置）
 appsettings.json
+appsettings.Development.json
 appsettings.*.json
 
 # 忽略用户机密文件（User Secrets 生成的 secrets.json 不会提交，但保险起见）
