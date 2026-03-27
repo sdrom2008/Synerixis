@@ -234,7 +234,7 @@ using (var scope = app.Services.CreateScope())
 app.UseStaticFiles();
 
 // 中间件管道
-//app.UseCors("AllowAll");
+app.UseCors("AllowAll");
 
 //if (app.Environment.IsDevelopment())
 //{
