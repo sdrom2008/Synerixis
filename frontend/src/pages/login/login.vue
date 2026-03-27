@@ -2,8 +2,11 @@
   <view class="phone-login">
     <view class="header">
       <image src="/static/logo.png" mode="widthFix" class="logo" /><br/>
-      <text class="title">手机号登录</text><br/>
-      <text class="back" @tap="backToChoose">返回</text>
+      <text class="title">{{ title }}</text><br/>
+      <view class="header-actions">
+        <text class="lang-switch" @tap="switchLanguage">{{ currentLang === 'zh-CN' ? 'English' : '中文' }}</text>
+        <text class="back" @tap="backToChoose">← {{ currentLang === 'zh-CN' ? '返回' : 'Back' }}</text>
+      </view>
     </view>
 
     <view class="form">
@@ -19,7 +22,7 @@
       <!-- 手机号输入框 -->
       <input 
         v-model="phone" 
-        placeholder="请输入手机号" 
+        :placeholder="placeholderPhone" 
         type="number" 
         class="input" 
       />
@@ -27,7 +30,7 @@
       <view class="code-row">
         <input 
           v-model="code" 
-          placeholder="验证码" 
+          :placeholder="placeholderCode" 
           type="number" 
           maxlength="6" 
           class="input" 
@@ -38,7 +41,7 @@
           @tap="sendCode"
           :loading="sendCodeLoading"
         >
-          {{ countdown > 0 ? countdown + '秒' : '获取验证码' }}
+          {{ countdown > 0 ? countdown + '秒' : t('common.sendCode') }}
         </button>
       </view>
 
@@ -48,19 +51,20 @@
         :loading="loginLoading"
         :disabled="loginLoading || !agree"
       >
-        登录 / 注册
+        {{ loginBtnText }}
       </button>
     </view>
 
     <view class="protocol">
       <checkbox size="22" :checked="agree" @change="toggleAgree" color="#22c55e" />
-      <text>同意《用户协议》和《隐私政策》</text>
+      <text>{{ t('common.agree') }} 《{{ t('common.terms') }}》 {{ t('common.and') }} 《{{ t('common.privacy') }}》</text>
     </view>
   </view>
 </template>
 
 <script>
 import { request } from '@/utils/request.js';
+import { t, getLanguage, setLanguage } from '@/utils/i18n';
 
 export default {
   data() {
@@ -69,6 +73,7 @@ export default {
       code: '',
       countryCode: '86',
       countryIndex: 0,
+      currentLang: getLanguage(),
       countries: [
         { name: '中国', code: '86', flag: '🇨🇳' },
         { name: '美国', code: '1', flag: '🇺🇸' },
@@ -89,6 +94,21 @@ export default {
     };
   },
 
+  computed: {
+    title() {
+      return t('login.title');
+    },
+    placeholderPhone() {
+      return t('login.placeholderPhone');
+    },
+    placeholderCode() {
+      return t('login.placeholderCode');
+    },
+    loginBtnText() {
+      return t('login.loginBtn');
+    }
+  },
+
   methods: {
     toggleAgree(e) {
       this.agree = e.detail.value;
@@ -98,6 +118,12 @@ export default {
       uni.navigateBack();
     },
 
+    switchLanguage() {
+      const newLang = this.currentLang === 'zh-CN' ? 'en-US' : 'zh-CN';
+      setLanguage(newLang);
+      this.currentLang = newLang;
+    },
+
     onCountryChange(e) {
       this.countryIndex = parseInt(e.detail.value);
       this.countryCode = this.countries[this.countryIndex].code;
@@ -105,12 +131,12 @@ export default {
 
     async sendCode() {
       if (!this.agree) {
-        uni.showToast({ title: '请先同意协议', icon: 'none' });
+        uni.showToast({ title: t('common.agree') + '?', icon: 'none' });
         return;
       }
 
       if (!this.phone) {
-        uni.showToast({ title: '请输入手机号', icon: 'none' });
+        uni.showToast({ title: t('login.placeholderPhone'), icon: 'none' });
         return;
       }
 
@@ -125,7 +151,7 @@ export default {
             CountryCode: this.countryCode
           }
         });
-        uni.showToast({ title: res.message || '验证码已发送', icon: 'success' });
+        uni.showToast({ title: res.message || t('common.sendCode'), icon: 'success' });
         this.countdown = 60;
         const timer = setInterval(() => {
           this.countdown--;
@@ -140,17 +166,17 @@ export default {
 
     async handlePhoneLogin() {
       if (!this.agree) {
-        uni.showToast({ title: '请先同意协议', icon: 'none' });
+        uni.showToast({ title: t('common.agree') + '?', icon: 'none' });
         return;
       }
 
       if (!this.phone) {
-        uni.showToast({ title: '请输入手机号', icon: 'none' });
+        uni.showToast({ title: t('login.placeholderPhone'), icon: 'none' });
         return;
       }
 
       if (!this.code) {
-        uni.showToast({ title: '请输入验证码', icon: 'none' });
+        uni.showToast({ title: t('login.placeholderCode'), icon: 'none' });
         return;
       }
 
@@ -170,9 +196,8 @@ export default {
         // 保存 token 和用户信息
         uni.setStorageSync('token', res.token);
         uni.setStorageSync('userId', res.userId);
-        uni.setStorageSync('userType', res.userType); // Seller / Agent / Supervisor
+        uni.setStorageSync('userType', res.userType);
 
-        // 兼容 Seller 旧字段
         if (res.userType === 'Seller') {
           uni.setStorageSync('sellerId', res.sellerId);
           uni.setStorageSync('nickname', res.nickname);
@@ -182,16 +207,15 @@ export default {
           uni.setStorageSync('agentName', res.name);
         }
 
-        uni.showToast({ title: '登录成功', icon: 'success' });
+        uni.showToast({ title: t('common.login'), icon: 'success' });
 
-        // 根据角色跳转
         setTimeout(() => {
           if (res.userType === 'Seller') {
             uni.switchTab({ url: '/pages/merchant/sessions' });
           } else if (res.userType === 'Agent' || res.userType === 'Supervisor') {
             uni.switchTab({ url: '/pages/support/workbench' });
           } else {
-            uni.switchTab({ url: '/pages/conversations/conversations' }); // fallback
+            uni.switchTab({ url: '/pages/conversations/conversations' });
           }
         }, 1000);
       } catch (err) {
@@ -215,6 +239,7 @@ export default {
   text-align: center;
   margin-bottom: 80rpx;
   position: relative;
+  padding-top: 40rpx;
 }
 
 .logo {
@@ -229,12 +254,19 @@ export default {
   margin-top: 40rpx;
 }
 
-.back {
+.lang-switch, .back {
   position: absolute;
   top: 40rpx;
-  left: 40rpx;
-  font-size: 32rpx;
+  font-size: 28rpx;
   color: #60a5fa;
+}
+
+.lang-switch {
+  right: 40rpx;
+}
+
+.back {
+  left: 40rpx;
 }
 
 .form {
