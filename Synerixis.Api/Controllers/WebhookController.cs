@@ -84,7 +84,7 @@ namespace Synerixis.Api.Controllers
                 {
                     try
                     {
-                        await client.SendReplyAsync(platformMsg.OpenId, aiReply);
+                        await client.SendReplyAsync(platformMsg, aiReply);
                     }
                     catch (Exception ex)
                     {

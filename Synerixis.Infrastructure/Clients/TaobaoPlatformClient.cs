@@ -6,7 +6,6 @@ using System.IO;
 using System.Text;
 using System.Text.Json;
 using System.Security.Cryptography;
-using System.Web;
 
 namespace Synerixis.Infrastructure.Clients
 {
@@ -28,14 +27,14 @@ namespace Synerixis.Infrastructure.Clients
         /// <summary>
         /// 发送回复给淘宝买家（待实现）
         /// </summary>
-        public async Task SendReplyAsync(string openId, string content, CancellationToken cancellationToken = default)
+        public async Task SendReplyAsync(PlatformMessage context, string content, CancellationToken cancellationToken = default)
         {
             // TODO: 调用淘宝消息发送API
+            // context: PlatformMessage 包含 OpenId (buyer open_id), CustomerId, ConversationId等
             // 需要：access_token、open_id、content
             // API 地址：https://eco.taobao.com/router/rest
-            // 方法：taobao.tbk.dg.material.optional? 不对，应该是消息发送接口。
-            // 实际接口名需要查淘宝开放平台文档："消息发送" 接口
-            _logger.LogWarning("[Taobao] SendReplyAsync not implemented yet. openId={OpenId}, content={Content}", openId, content);
+            _logger.LogWarning("[Taobao] SendReplyAsync not implemented yet. OpenId={OpenId}, Content={Content}, ConversationId={ConvId}", 
+                context.OpenId, content, context.ConversationId);
             await Task.CompletedTask;
         }
 
