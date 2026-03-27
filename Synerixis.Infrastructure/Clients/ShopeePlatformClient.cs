@@ -60,15 +60,69 @@ namespace Synerixis.Infrastructure.Clients
         }
 
         /// <summary>
-        /// 验证 Webhook 签名（占位）
+        /// 验证 Webhook 签名（Shopee 使用 HMAC-SHA256，签名位于 Authorization 头，格式 "Bearer <signature>"）
         /// </summary>
         public async Task<bool> VerifySignatureAsync(HttpRequest request, CancellationToken cancellationToken = default)
         {
-            // TODO: 从 Header Authorization 读取 signature，按 Shopee 规则计算并比对
-            // 签名算法：HMAC-SHA256 使用 AppSecret
-            _logger.LogWarning("[Shopee] VerifySignatureAsync not implemented yet.");
-            await Task.CompletedTask;
-            return true; // 临时绕过
+            try
+            {
+                // 开启请求体缓冲，以便多次读取（VerifySignature 会用一次，ParseWebhook 会再用）
+                request.EnableBuffering();
+
+                // 读取原始请求体（保持 UTF8 编码）
+                string body;
+                using (var reader = new StreamReader(request.Body, Encoding.UTF8, leaveOpen: true))
+                {
+                    body = await reader.ReadToEndAsync();
+                    // 重置流位置，供后续读取
+                    request.Body.Position = 0;
+                }
+
+                // 从 Authorization 头部获取签名
+                if (!request.Headers.TryGetValue("Authorization", out var authHeader))
+                {
+                    _logger.LogWarning("[Shopee] Missing Authorization header for signature verification");
+                    return false;
+                }
+
+                var signatureFromHeader = authHeader.ToString();
+                // 去除可能的 "Bearer " 前缀
+                if (signatureFromHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+                {
+                    signatureFromHeader = signatureFromHeader.Substring(7).Trim();
+                }
+
+                // 从配置读取 AppSecret
+                var appSecret = _config["Shopee:AppSecret"];
+                if (string.IsNullOrEmpty(appSecret))
+                {
+                    _logger.LogError("[Shopee] AppSecret not configured in appsettings");
+                    return false;
+                }
+
+                // 计算 HMAC-SHA256 签名
+                using var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(appSecret));
+                var bodyBytes = Encoding.UTF8.GetBytes(body);
+                var hash = hmac.ComputeHash(bodyBytes);
+                var computedSignature = BitConverter.ToString(hash).Replace("-", "").ToLowerInvariant();
+
+                // 对比签名
+                var isValid = computedSignature == signatureFromHeader;
+                if (isValid)
+                {
+                    _logger.LogInformation("[Shopee] Signature verification succeeded");
+                }
+                else
+                {
+                    _logger.LogWarning("[Shopee] Signature verification failed. Computed={Computed}, Received={Received}", computedSignature, signatureFromHeader);
+                }
+                return isValid;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[Shopee] Exception during signature verification");
+                return false;
+            }
         }
     }
 }
