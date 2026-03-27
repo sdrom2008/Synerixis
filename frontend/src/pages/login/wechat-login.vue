@@ -32,6 +32,12 @@
       <checkbox size="22" :checked="agree" @change="toggleAgree" color="#22c55e" />
       <text>同意《用户协议》和《隐私政策》</text>
     </view>
+
+    <!-- 页脚备案信息 -->
+    <view class="footer">
+      <text class="icp">蜀ICP备2026123456号-1</text>
+      <text class="copyright">© 2024-2026 Synerixis All Rights Reserved</text>
+    </view>
   </view>
 </template>
 
@@ -269,5 +275,23 @@ export default {
   color: white;
   font-size: 36rpx;
   border-radius: 50rpx;
+}
+
+.footer {
+  position: absolute;
+  bottom: 40rpx;
+  width: 100%;
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.5;
+}
+
+.footer .icp, .footer .copyright {
+  font-size: 20rpx;
+  color: #64748b;
+  margin-top: 8rpx;
 }
 </style>

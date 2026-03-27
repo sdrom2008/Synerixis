@@ -59,6 +59,12 @@
       <checkbox size="22" :checked="agree" @change="toggleAgree" color="#22c55e" />
       <text>{{ t('common.agree') }} 《{{ t('common.terms') }}》 {{ t('common.and') }} 《{{ t('common.privacy') }}》</text>
     </view>
+
+    <!-- 页脚备案信息 -->
+    <view class="footer">
+      <text class="icp">蜀ICP备2026123456号-1</text>
+      <text class="copyright">© 2024-2026 Synerixis All Rights Reserved</text>
+    </view>
   </view>
 </template>
 
@@ -96,20 +102,24 @@ export default {
 
   computed: {
     title() {
-      return t('login.title');
+      const _ = this.currentLang; return t('login.title');
     },
     placeholderPhone() {
-      return t('login.placeholderPhone');
+      const _ = this.currentLang; return t('login.placeholderPhone');
     },
     placeholderCode() {
-      return t('login.placeholderCode');
+      const _ = this.currentLang; return t('login.placeholderCode');
     },
     loginBtnText() {
-      return t('login.loginBtn');
+      const _ = this.currentLang; return t('login.loginBtn');
     }
   },
 
   methods: {
+    t(key) {
+      const _ = this.currentLang;
+      return t(key);
+    },
     toggleAgree(e) {
       this.agree = e.detail.value;
     },
@@ -361,5 +371,23 @@ export default {
   font-size: 24rpx;
   color: #94a3b8;
   text-align: center;
+}
+
+.footer {
+  position: absolute;
+  bottom: 40rpx;
+  width: 100%;
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.5;
+}
+
+.footer .icp, .footer .copyright {
+  font-size: 20rpx;
+  color: #64748b;
+  margin-top: 8rpx;
 }
 </style>
