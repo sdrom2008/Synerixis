@@ -34,16 +34,22 @@
 </template>
 
 <script>
-import { t } from '@/utils/i18n';
+import { t, getLanguage } from '@/utils/i18n';
 
 export default {
   data() {
     return {
-      agree: true
+      agree: true,
+      currentLang: getLanguage()
     };
   },
 
   methods: {
+    t(key) {
+      // 调用导入的 t 函数
+      return t(key);
+    },
+
     toggleAgree(e) {
       this.agree = e.detail.value;
     },
@@ -58,7 +64,7 @@ export default {
 
     goToWechatLogin() {
       if (!this.agree) {
-        uni.showToast({ title: t('common.agree') + '?', icon: 'none' });
+        uni.showToast({ title: this.t('common.agree') + '?', icon: 'none' });
         return;
       }
       uni.navigateTo({
@@ -68,10 +74,18 @@ export default {
 
     loginPhone() {
       if (!this.agree) {
-        uni.showToast({ title: t('common.agree') + '?', icon: 'none' });
+        uni.showToast({ title: this.t('common.agree') + '?', icon: 'none' });
         return;
       }
       uni.navigateTo({ url: '/pages/login/login' });
+    },
+
+    switchLanguage() {
+      const newLang = this.currentLang === 'zh-CN' ? 'en-US' : 'zh-CN';
+      this.currentLang = newLang;
+      uni.setStorageSync('language', newLang);
+      // 重新加载页面以应用语言
+      uni.reload();
     }
   }
 };
