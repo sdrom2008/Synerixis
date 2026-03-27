@@ -71,6 +71,16 @@ export default {
     loadMessagesFailed: '加载消息失败',
     networkError: '网络错误',
     sendFailed: '发送失败',
-    pleaseLogin: '请先登录'
+    pleaseLogin: '请先登录',
+    // 主管面板
+    totalAgentsText: '总客服数',
+    onlineAgentsText: '在线客服',
+    avgResponseTimeText: '平均响应时间',
+    avgResolutionTimeText: '平均解决时长',
+    satisfactionText: '满意度',
+    lastUpdatedText: '更新时间',
+    noAccess: '无访问权限',
+    agentPerformance: '客服绩效',
+    efficiency: '会话效率'
   }
 };

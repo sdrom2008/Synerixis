@@ -71,6 +71,16 @@ export default {
     loadMessagesFailed: 'Failed to load messages',
     networkError: 'Network error',
     sendFailed: 'Send failed',
-    pleaseLogin: 'Please login'
+    pleaseLogin: 'Please login',
+    // Supervisor panel
+    totalAgentsText: 'Total Agents',
+    onlineAgentsText: 'Online Agents',
+    avgResponseTimeText: 'Avg Response Time',
+    avgResolutionTimeText: 'Avg Resolution Time',
+    satisfactionText: 'Satisfaction',
+    lastUpdatedText: 'Last Updated',
+    noAccess: 'No access permission',
+    agentPerformance: 'Agent Performance',
+    efficiency: 'Efficiency'
   }
 };

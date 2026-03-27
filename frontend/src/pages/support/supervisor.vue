@@ -1,44 +1,44 @@
 <template>
   <view class="supervisor">
     <view class="stats-overview">
-      <view class="stat-card"><text class="label">总会话数</text><text class="value">{{ dashboard.totalSessions }}</text></view>
-      <view class="stat-card"><text class="label">待处理</text><text class="value pending">{{ dashboard.pendingSessions }}</text></view>
-      <view class="stat-card"><text class="label">进行中</text><text class="value active">{{ dashboard.activeSessions }}</text></view>
-      <view class="stat-card"><text class="label">已解决</text><text class="value resolved">{{ dashboard.resolvedSessions }}</text></view>
+      <view class="stat-card"><text class="label">{{ t('support.stats') }}</text><text class="value">{{ dashboard.totalSessions }}</text></view>
+      <view class="stat-card"><text class="label">{{ currentLang === 'zh-CN' ? '待处理' : 'Pending' }}</text><text class="value pending">{{ dashboard.pendingSessions }}</text></view>
+      <view class="stat-card"><text class="label">{{ currentLang === 'zh-CN' ? '进行中' : 'Active' }}</text><text class="value active">{{ dashboard.activeSessions }}</text></view>
+      <view class="stat-card"><text class="label">{{ currentLang === 'zh-CN' ? '已解决' : 'Resolved' }}</text><text class="value resolved">{{ dashboard.resolvedSessions }}</text></view>
     </view>
 
     <view class="main-content">
       <view class="agent-stats-panel">
-        <view class="panel-header"><text class="title">客服绩效</text><text class="subtitle">总计: {{ agentStats.length }} 位客服</text></view>
+        <view class="panel-header"><text class="title">{{ t('support.agents') }}</text><text class="subtitle">{{ currentLang === 'zh-CN' ? '总计' : 'Total' }}: {{ agentStats.length }} {{ currentLang === 'zh-CN' ? '位客服' : 'agents' }}</text></view>
         <scroll-view scroll-y class="stats-list">
           <view v-for="agent in agentStats" :key="agent.agentId" class="agent-card">
-            <view class="agent-header"><text class="agent-name">{{ agent.agentName }}</text><text class="status-tag" :class="{ online: agent.online }">在线</text></view>
+            <view class="agent-header"><text class="agent-name">{{ agent.agentName }}</text><text class="status-tag" :class="{ online: agent.online }">{{ currentLang === 'zh-CN' ? '在线' : 'Online' }}</text></view>
             <view class="metrics">
-              <view class="metric"><text class="label">总会话</text><text class="value">{{ agent.totalSessions }}</text></view>
-              <view class="metric"><text class="label">解决数</text><text class="value">{{ agent.resolvedSessions }}</text></view>
-              <view class="metric"><text class="label">平均响应</text><text class="value">{{ formatSeconds(agent.avgResponseTimeSeconds) }}</text></view>
-              <view class="metric"><text class="label">解决时长</text><text class="value">{{ formatMinutes(agent.avgResolutionTimeMinutes) }}</text></view>
+              <view class="metric"><text class="label">{{ currentLang === 'zh-CN' ? '总会话' : 'Total' }}</text><text class="value">{{ agent.totalSessions }}</text></view>
+              <view class="metric"><text class="label">{{ currentLang === 'zh-CN' ? '解决数' : 'Resolved' }}</text><text class="value">{{ agent.resolvedSessions }}</text></view>
+              <view class="metric"><text class="label">{{ currentLang === 'zh-CN' ? '平均响应' : 'Avg Response' }}</text><text class="value">{{ formatSeconds(agent.avgResponseTimeSeconds) }}</text></view>
+              <view class="metric"><text class="label">{{ currentLang === 'zh-CN' ? '解决时长' : 'Avg Resolution' }}</text><text class="value">{{ formatMinutes(agent.avgResolutionTimeMinutes) }}</text></view>
             </view>
           </view>
         </scroll-view>
       </view>
 
       <view class="system-metrics-panel">
-        <view class="panel-header"><text class="title">系统指标</text></view>
+        <view class="panel-header"><text class="title">{{ t('support.stats') }}</text></view>
         <scroll-view scroll-y class="metrics-detail">
           <view class="metric-group">
-            <text class="group-title">客服状态</text>
-            <view class="metric-row"><text class="label">总客服数</text><text class="value">{{ dashboard.totalAgents }}</text></view>
-            <view class="metric-row"><text class="label">在线客服</text><text class="value online">{{ dashboard.onlineAgents }}</text></view>
+            <text class="group-title">{{ currentLang === 'zh-CN' ? '客服状态' : 'Agent Status' }}</text>
+            <view class="metric-row"><text class="label">{{ currentLang === 'zh-CN' ? '总客服数' : 'Total Agents' }}</text><text class="value">{{ dashboard.totalAgents }}</text></view>
+            <view class="metric-row"><text class="label">{{ currentLang === 'zh-CN' ? '在线客服' : 'Online Agents' }}</text><text class="value online">{{ dashboard.onlineAgents }}</text></view>
           </view>
           <view class="metric-group">
-            <text class="group-title">会话效率</text>
-            <view class="metric-row"><text class="label">平均响应时间</text><text class="value">{{ formatSeconds(dashboard.avgResponseTimeSeconds) }}</text></view>
-            <view class="metric-row"><text class="label">平均解决时长</text><text class="value">{{ formatMinutes(dashboard.avgResolutionTimeMinutes) }}</text></view>
-            <view class="metric-row"><text class="label">满意度</text><text class="value">{{ dashboard.overallSatisfaction?.toFixed(1) }}</text></view>
+            <text class="group-title">{{ currentLang === 'zh-CN' ? '会话效率' : 'Efficiency' }}</text>
+            <view class="metric-row"><text class="label">{{ currentLang === 'zh-CN' ? '平均响应时间' : 'Avg Response Time' }}</text><text class="value">{{ formatSeconds(dashboard.avgResponseTimeSeconds) }}</text></view>
+            <view class="metric-row"><text class="label">{{ currentLang === 'zh-CN' ? '平均解决时长' : 'Avg Resolution Time' }}</text><text class="value">{{ formatMinutes(dashboard.avgResolutionTimeMinutes) }}</text></view>
+            <view class="metric-row"><text class="label">{{ currentLang === 'zh-CN' ? '满意度' : 'Satisfaction' }}</text><text class="value">{{ dashboard.overallSatisfaction?.toFixed(1) }}</text></view>
           </view>
           <view class="metric-group">
-            <text class="group-title">更新时间</text>
+            <text class="group-title">{{ currentLang === 'zh-CN' ? '更新时间' : 'Last Updated' }}</text>
             <view class="metric-row"><text class="value">{{ formatDateTime(dashboard.lastUpdated) }}</text></view>
           </view>
         </scroll-view>
@@ -50,14 +50,16 @@
 <script setup>
 import { ref, onMounted } from 'vue';
 import { request } from '@/utils/request.js';
+import { getLanguage } from '@/utils/i18n';
 
 const dashboard = ref({ totalSessions: 0, pendingSessions: 0, activeSessions: 0, resolvedSessions: 0, totalAgents: 0, onlineAgents: 0, avgResponseTimeSeconds: 0, avgResolutionTimeMinutes: 0, overallSatisfaction: 0, lastUpdated: null });
 const agentStats = ref([]);
+const currentLang = getLanguage();
 
 onMounted(async () => {
     const role = uni.getStorageSync('role');
     if (role !== 'Supervisor' && role !== 'Admin') {
-        uni.showToast({ title: '无访问权限', icon: 'none' });
+        uni.showToast({ title: currentLang === 'zh-CN' ? '无访问权限' : 'No access', icon: 'none' });
         setTimeout(() => uni.switchTab({ url: '/pages/dashboard/dashboard' }), 1500);
         return;
     }
@@ -69,7 +71,18 @@ async function loadDashboard() {
     try {
         const shopId = uni.getStorageSync('shopId');
         const data = await request({ url: '/api/support/dashboard', params: shopId ? { shopId } : {} });
-        dashboard.value = { totalSessions: data.totalSessions || 0, pendingSessions: data.pendingSessions || 0, activeSessions: data.activeSessions || 0, resolvedSessions: data.resolvedSessions || 0, totalAgents: data.totalAgents || 0, onlineAgents: data.onlineAgents || 0, avgResponseTimeSeconds: data.avgResponseTimeSeconds || 0, avgResolutionTimeMinutes: data.avgResolutionTimeMinutes || 0, overallSatisfaction: data.overallSatisfaction || 0, lastUpdated: data.lastUpdated || new Date() };
+        dashboard.value = { 
+            totalSessions: data.totalSessions || 0, 
+            pendingSessions: data.pendingSessions || 0, 
+            activeSessions: data.activeSessions || 0, 
+            resolvedSessions: data.resolvedSessions || 0, 
+            totalAgents: data.totalAgents || 0, 
+            onlineAgents: data.onlineAgents || 0, 
+            avgResponseTimeSeconds: data.avgResponseTimeSeconds || 0, 
+            avgResolutionTimeMinutes: data.avgResolutionTimeMinutes || 0, 
+            overallSatisfaction: data.overallSatisfaction || 0, 
+            lastUpdated: data.lastUpdated || new Date() 
+        };
     } catch (error) {}
 }
 
@@ -77,21 +90,32 @@ async function loadAgentStats() {
     try {
         const shopId = uni.getStorageSync('shopId');
         const data = await request({ url: '/api/support/agents/stats', params: shopId ? { shopId } : {} });
-        agentStats.value = data.map(agent => ({ agentId: agent.id || agent.agentId, agentName: agent.name || agent.agentName, totalSessions: agent.totalSessions || 0, activeSessions: agent.activeSessions || 0, resolvedSessions: agent.resolvedSessions || 0, avgResponseTimeSeconds: agent.avgResponseTimeSeconds || 0, avgResolutionTimeMinutes: agent.avgResolutionTimeMinutes || 0, avgSatisfaction: agent.avgSatisfaction || 0, online: agent.online || false }));
+        agentStats.value = data.map(agent => ({ 
+            agentId: agent.id || agent.agentId, 
+            agentName: agent.name || agent.agentName, 
+            totalSessions: agent.totalSessions || 0, 
+            activeSessions: agent.activeSessions || 0, 
+            resolvedSessions: agent.resolvedSessions || 0, 
+            avgResponseTimeSeconds: agent.avgResponseTimeSeconds || 0, 
+            avgResolutionTimeMinutes: agent.avgResolutionTimeMinutes || 0, 
+            avgSatisfaction: agent.avgSatisfaction || 0, 
+            online: agent.online || false 
+        }));
     } catch (error) {}
 }
 
 function formatSeconds(seconds) {
     if (!seconds) return '0s';
-    const m = Math.floor(seconds / 60);
-    const s = Math.floor(seconds % 60);
-    if (m > 0) return `${m}m ${s}s`;
-    return `${s}s`;
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}m ${secs}s`;
 }
+
 function formatMinutes(minutes) {
     if (!minutes) return '0m';
     return `${minutes.toFixed(1)}m`;
 }
+
 function formatDateTime(dateStr) {
     if (!dateStr) return '-';
     const d = new Date(dateStr);
