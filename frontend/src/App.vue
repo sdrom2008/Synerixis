@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onLaunch, onShow, onHide } from '@dcloudio/uni-app';
-import { getLanguage } from '@/utils/i18n';
+import { getLanguage } from '@/utils/i18n.js';
 import Footer from '@/components/Footer.vue';
 
 onLaunch(() => {

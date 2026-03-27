@@ -6,7 +6,7 @@
 </template>
 
 <script setup>
-import { t } from '@/utils/i18n';
+import { t } from '@/utils/i18n.js';
 </script>
 
 <style scoped>

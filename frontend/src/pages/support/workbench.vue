@@ -74,7 +74,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { request } from '@/utils/request.js'
-import { getLanguage, t } from '@/utils/i18n'
+import { getLanguage, t } from '@/utils/i18n.js'
 
 const tickets = ref([])
 const currentTicket = ref(null)

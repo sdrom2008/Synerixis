@@ -34,7 +34,7 @@
 </template>
 
 <script>
-import { t, getLanguage } from '@/utils/i18n';
+import { t, getLanguage } from '@/utils/i18n.js';
 
 export default {
   data() {

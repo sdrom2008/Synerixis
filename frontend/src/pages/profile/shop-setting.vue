@@ -70,7 +70,7 @@
 
 <script>
 const testbase = 'http://192.168.1.254:7092';
-import { t, getLanguage } from '@/utils/i18n';
+import { t, getLanguage } from '@/utils/i18n.js';
 
 export default {
   data() {

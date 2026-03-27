@@ -64,7 +64,7 @@
 
 <script>
 import { request } from '@/utils/request.js';
-import { t, getLanguage, setLanguage } from '@/utils/i18n';
+import { t, getLanguage, setLanguage } from '@/utils/i18n.js';
 
 export default {
   data() {
