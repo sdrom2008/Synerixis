@@ -49,6 +49,7 @@
 </template>
 
 <script setup lang="ts">
+import { BASE_URL } from '@/utils/config.js';
 import { ref, reactive } from 'vue'
 
 interface GenerateRequest {
@@ -90,7 +91,7 @@ const handleGenerate = async () => {
     if (token) headers.Authorization = `Bearer ${token}`
 
     const apiRes = await uni.request<GenerateResponse>({
-      url: 'http://localhost:7092/api/marketing/generate-copy',
+      url: `${BASE_URL}/api/marketing/generate-copy`,
       method: 'POST',
       header: headers,
       data: {

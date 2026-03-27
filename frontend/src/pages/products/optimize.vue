@@ -54,7 +54,7 @@
 </template>
 
 <script>
-const testbase = 'http://192.168.1.254:7092';
+import { BASE_URL as testbase } from '@/utils/config.js';
 
 export default {
   data() {

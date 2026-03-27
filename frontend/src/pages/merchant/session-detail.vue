@@ -19,7 +19,7 @@ const messages = ref([])
 const sessionId = ref('')
 const sessionStatus = ref('')
 const lastMsgId = ref('')
-const BASE_URL = 'http://192.168.1.254:7092'
+import { BASE_URL } from '@/utils/config.js';
 
 onMounted(() => {
   const pages = getCurrentPages()

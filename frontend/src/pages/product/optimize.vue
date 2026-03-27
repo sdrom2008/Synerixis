@@ -45,6 +45,7 @@
 </template>
 
 <script setup lang="ts">
+import { BASE_URL } from '@/utils/config.js';
 import { reactive, ref } from 'vue'
 
 interface OptimizeRequest {
@@ -98,7 +99,7 @@ const handleOptimize = async () => {
     if (token) headers.Authorization = `Bearer ${token}`
 
     const apiRes = await uni.request<OptimizeResponse>({
-      url: 'http://localhost:7092/api/agent/optimizeproduct',
+      url: `${BASE_URL}/api/agent/optimizeproduct`,
       method: 'POST',
       header: headers,
       data: form

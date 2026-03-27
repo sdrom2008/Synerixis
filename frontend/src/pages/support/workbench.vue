@@ -82,7 +82,7 @@ const messages = ref([])
 const newMessage = ref('')
 const sending = ref(false)
 const lastMessageId = ref('')
-const BASE_URL = 'http://192.168.1.254:7092'
+import { BASE_URL } from '@/utils/config.js';
 const currentLang = getLanguage()
 
 onMounted(() => {

@@ -28,6 +28,7 @@
 </template>
 
 <script setup lang="ts">
+import { BASE_URL } from '@/utils/config.js';
 import { reactive, ref } from 'vue'
 
 interface AnalyzeRequest {
@@ -69,7 +70,7 @@ const handleAnalyze = async () => {
     if (token) headers.Authorization = `Bearer ${token}`
 
     const apiRes = await uni.request<AnalyzeResponse>({
-      url: 'http://localhost:7092/api/competitor/analyze',
+      url: `${BASE_URL}/api/competitor/analyze`,
       method: 'POST',
       header: headers,
       data: form

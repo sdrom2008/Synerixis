@@ -23,6 +23,7 @@
 </template>
 
 <script setup lang="ts">
+import { BASE_URL } from '@/utils/config.js';
 import { ref, computed } from 'vue'
 
 interface Message {
@@ -74,7 +75,7 @@ const sendMessage = async () => {
     }
 
     const apiRes = await uni.request<any>({
-      url: 'http://localhost:7092/api/chat/send',
+      url: `${BASE_URL}/api/chat/send`,
       method: 'POST',
       header: headers,
       data: payload

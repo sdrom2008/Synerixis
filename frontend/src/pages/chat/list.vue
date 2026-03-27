@@ -23,7 +23,7 @@
 import { ref, onMounted } from 'vue'
 
 const conversations = ref<any[]>([])
-const BASE_URL = 'http://192.168.1.254:7092'  // ← 替换成你的后端地址
+import { BASE_URL } from '@/utils/config.js';
 
 onMounted(async () => {
   await loadConversations()
