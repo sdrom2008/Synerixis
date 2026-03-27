@@ -28,7 +28,7 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import { getLanguage } from '@/utils/i18n'
+import { getLanguage, t } from '@/utils/i18n'
 
 const sessions = ref([])
 const BASE_URL = 'http://192.168.1.254:7092'

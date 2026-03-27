@@ -50,7 +50,7 @@
 <script setup>
 import { ref, onMounted } from 'vue';
 import { request } from '@/utils/request.js';
-import { getLanguage } from '@/utils/i18n';
+import { getLanguage, t } from '@/utils/i18n';
 
 const dashboard = ref({ totalSessions: 0, pendingSessions: 0, activeSessions: 0, resolvedSessions: 0, totalAgents: 0, onlineAgents: 0, avgResponseTimeSeconds: 0, avgResolutionTimeMinutes: 0, overallSatisfaction: 0, lastUpdated: null });
 const agentStats = ref([]);

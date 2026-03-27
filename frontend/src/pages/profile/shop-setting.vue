@@ -92,6 +92,10 @@ export default {
   },
 
   methods: {
+    t(key) {
+      return t(key);
+    },
+
     async loadConfig() {
       const token = uni.getStorageSync('token');
       if (!token) return uni.navigateTo({ url: '/pages/login/login' });
