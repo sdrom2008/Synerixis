@@ -2,74 +2,75 @@
   <view class="shop-setting-page">
     <!-- 导航栏 -->
     <view class="navbar">
-      <view class="back" @tap="goBack">← 返回</view>
-      <view class="title">店铺信息</view>
+      <view class="back" @tap="goBack">← {{ currentLang === 'zh-CN' ? '返回' : 'Back' }}</view>
+      <view class="title">{{ t('merchant.dashboard') }}</view>
       <view class="placeholder"></view>
     </view>
 
     <!-- 表单 -->
     <view class="form-container">
       <view class="form-group">
-        <view class="label required">店铺名称</view>
+        <view class="label required">{{ t('merchant.shopName') }}</view>
         <input 
           v-model="form.shopName" 
-          placeholder="请输入店铺名称（建议与平台一致）" 
+          :placeholder="t('merchant.placeholderShopName')" 
           class="input" 
           maxlength="30" 
           focus 
         />
-        <view class="tip">用于 AI 生成文案时自动带入店铺名</view>
+        <view class="tip">{{ t('merchant.shopName') }}{{ currentLang === 'zh-CN' ? '用于 AI 生成文案时自动带入店铺名' : 'Used to auto-include shop name in AI-generated copy' }}</view>
       </view>
 
       <view class="form-group">
-        <view class="label">店铺LOGO</view>
+        <view class="label">{{ t('merchant.shopLogo') }}</view>
         <view class="logo-preview" v-if="form.shopLogo">
           <image :src="form.shopLogo" mode="aspectFill" class="logo-img" @tap="previewLogo" />
         </view>
         <input 
           v-model="form.shopLogo" 
-          placeholder="LOGO URL 或上传" 
+          :placeholder="t('merchant.shopLogo')" 
           class="input" 
         />
         <button class="upload-btn" @tap="chooseLogo" :loading="uploading">
-          上传图片
+          {{ t('merchant.uploadLogo') }}
         </button>
-        <view class="tip">建议正方形 1:1，尺寸 500x500 以上，PNG/JPG 格式</view>
+        <view class="tip">{{ currentLang === 'zh-CN' ? '建议正方形 1:1，尺寸 500x500 以上，PNG/JPG 格式' : 'Recommended square 1:1, at least 500x500, PNG/JPG format' }}</view>
       </view>
 
       <view class="form-group">
-        <view class="label">主营类目</view>
+        <view class="label">{{ t('merchant.mainCategory') }}</view>
         <input 
           v-model="form.mainCategory" 
-          placeholder="如：女装,数码,美妆（用英文逗号分隔，最多5个）" 
+          :placeholder="t('merchant.placeholderCategory')" 
           class="input" 
           maxlength="100" 
         />
-        <view class="tip">帮助 AI 理解店铺定位，提升回复和营销方案精准度</view>
+        <view class="tip">{{ currentLang === 'zh-CN' ? '帮助 AI 理解店铺定位，提升回复和营销方案精准度' : 'Help AI understand your shop positioning for better responses and marketing' }}</view>
       </view>
 
       <view class="form-group">
-        <view class="label">目标客户描述</view>
+        <view class="label">{{ t('merchant.targetCustomer') }}</view>
         <textarea 
           v-model="form.targetCustomerDesc" 
-          placeholder="例如：25-35岁都市白领女性，注重品质和性价比，喜欢简约风格" 
+          :placeholder="t('merchant.placeholderTarget')" 
           class="textarea" 
           maxlength="300" 
           show-confirm-bar 
         />
-        <view class="tip">越详细越好，AI 会据此生成更匹配的客服回复和营销内容</view>
+        <view class="tip">{{ currentLang === 'zh-CN' ? '越详细越好，AI 会据此生成更匹配的客服回复和营销内容' : 'More details help AI generate better responses and marketing content' }}</view>
       </view>
     </view>
 
     <!-- 保存按钮 -->
     <button class="save-btn" :loading="saving" @tap="save">
-      保存店铺信息
+      {{ t('common.save') }}
     </button>
   </view>
 </template>
 
 <script>
 const testbase = 'http://192.168.1.254:7092';
+import { t, getLanguage } from '@/utils/i18n';
 
 export default {
   data() {
@@ -81,7 +82,8 @@ export default {
         targetCustomerDesc: ''
       },
       saving: false,
-      uploading: false
+      uploading: false,
+      currentLang: getLanguage()
     };
   },
 
@@ -134,7 +136,6 @@ export default {
         success: res => {
           const data = JSON.parse(res.data);
           if (data.url) {
-            // 拼接完整 URL 并直接更新表单和显示
             const fullUrl = `${testbase}${data.url}`;
             this.form.shopLogo = fullUrl;
             uni.showToast({ title: 'LOGO上传成功', icon: 'success' });
@@ -175,7 +176,7 @@ export default {
       this.saving = false;
 
       if (res.statusCode === 200) {
-        uni.showToast({ title: '保存成功', icon: 'success' });
+        uni.showToast({ title: t('common.success'), icon: 'success' });
         uni.navigateBack();
       } else {
         uni.showToast({ title: res.data?.msg || '保存失败，请重试', icon: 'none' });

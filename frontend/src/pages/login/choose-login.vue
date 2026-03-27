@@ -6,34 +6,36 @@
       <br/>
       <text class="title">Synerixis</text>
       <br/>
-      <text class="slogan">AI 智能伙伴</text>
+      <text class="slogan">AI Intelligent Assistant</text>
     </view>
 
     <!-- 按钮区 -->
     <view class="options">
       <!-- 微信登录：只跳转页面 -->
       <button class="option-btn wechat" hover-class="btn-hover" @tap="goToWechatLogin">
-        <text>微信一键登录</text>
+        <text>{{ t('login.wechatLogin') }}</text>
         <text class="tag">推荐</text>
       </button>
 
       <button class="option-btn phone" hover-class="btn-hover" @tap="loginPhone">
-        <text>手机号验证码登录</text>
+        <text>{{ t('login.phoneLogin') }}</text>
       </button>
     </view>
 
     <!-- 协议 -->
     <view class="protocol">
       <checkbox size="24" :checked="agree" @change="toggleAgree" color="#3b82f6" />
-      <text>我已阅读并同意</text>
-      <text class="link" @tap="openUserProtocol">《用户协议》</text>
-      <text>和</text>
-      <text class="link" @tap="openPrivacy">《隐私政策》</text>
+      <text>{{ t('common.agree') }} </text>
+      <text class="link" @tap="openUserProtocol">《{{ t('common.terms') }}》</text>
+      <text>{{ t('common.and') }} </text>
+      <text class="link" @tap="openPrivacy">《{{ t('common.privacy') }}》</text>
     </view>
   </view>
 </template>
 
 <script>
+import { t } from '@/utils/i18n';
+
 export default {
   data() {
     return {
@@ -54,24 +56,22 @@ export default {
       uni.navigateTo({ url: '/pages/protocol/privacy' });
     },
 
-    // 点击微信登录 → 跳转到微信登录专用页面
     goToWechatLogin() {
       if (!this.agree) {
-        uni.showToast({ title: '请先同意协议', icon: 'none' });
+        uni.showToast({ title: t('common.agree') + '?', icon: 'none' });
         return;
       }
-      
       uni.navigateTo({
-        url: '/pages/login/wechat-login'   // ← 这里改成你实际的微信登录页面路径
+        url: '/pages/login/wechat-login'
       });
     },
 
     loginPhone() {
       if (!this.agree) {
-        uni.showToast({ title: '请先同意协议', icon: 'none' });
+        uni.showToast({ title: t('common.agree') + '?', icon: 'none' });
         return;
       }
-      uni.navigateTo({ url: '/pages/login/login' });   // 手机号登录页面路径
+      uni.navigateTo({ url: '/pages/login/login' });
     }
   }
 };
@@ -165,7 +165,6 @@ export default {
   text-align: center;
 }
 
-/* 动画 */
 @keyframes brandFloat {
   0% { opacity: 0; transform: translateY(180rpx); }
   100% { opacity: 1; transform: translateY(0); }
