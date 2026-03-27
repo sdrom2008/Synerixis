@@ -1,26 +1,26 @@
 <template>
   <view class="merchant-sessions">
     <view class="header">
-      <text class="title">我的会话</text>
-      <button class="new-btn" @tap="createNew">+ 转人工</button>
+      <text class="title">{{ t('merchant.sessions') }}</text>
+      <button class="new-btn" @tap="createNew">+ {{ currentLang === 'zh-CN' ? '转人工' : 'Transfer' }}</button>
     </view>
 
     <scroll-view scroll-y class="list">
       <view v-for="conv in sessions" :key="conv.id" class="conv-item" @tap="viewSession(conv.id)">
         <view class="title-row">
-          <text class="customer">{{ conv.customerName || '匿名客户' }}</text>
+          <text class="customer">{{ conv.customerName || (currentLang === 'zh-CN' ? '匿名客户' : 'Anonymous') }}</text>
           <text class="platform">{{ conv.platform }}</text>
         </view>
         <view class="info-row">
           <text class="status" :class="conv.status">{{ getStatusLabel(conv.status) }}</text>
           <text class="agent" v-if="conv.assignedAgent">{{ conv.assignedAgent.name }}</text>
-          <text class="agent" v-else>未分配</text>
+          <text class="agent" v-else>{{ currentLang === 'zh-CN' ? '未分配' : 'Unassigned' }}</text>
         </view>
         <view class="time">{{ formatTime(conv.lastActiveAt) }}</view>
       </view>
 
       <view v-if="!sessions.length" class="empty">
-        <text>暂无会话</text>
+        <text>{{ currentLang === 'zh-CN' ? '暂无会话' : 'No sessions' }}</text>
       </view>
     </scroll-view>
   </view>
@@ -28,9 +28,11 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
+import { getLanguage } from '@/utils/i18n'
 
 const sessions = ref([])
 const BASE_URL = 'http://192.168.1.254:7092'
+const currentLang = getLanguage()
 
 onMounted(() => {
   loadSessions()
@@ -39,7 +41,7 @@ onMounted(() => {
 const loadSessions = async () => {
   const token = uni.getStorageSync('token')
   if (!token) {
-    uni.showToast({ title: '请先登录', icon: 'error' })
+    uni.showToast({ title: currentLang === 'zh-CN' ? '请先登录' : 'Please login', icon: 'error' })
     uni.reLaunch({ url: '/pages/login/login' })
     return
   }
@@ -53,10 +55,10 @@ const loadSessions = async () => {
     if (res.statusCode === 200 && res.data.items) {
       sessions.value = res.data.items
     } else {
-      uni.showToast({ title: '加载失败', icon: 'none' })
+      uni.showToast({ title: currentLang === 'zh-CN' ? '加载失败' : 'Load failed', icon: 'none' })
     }
   } catch (e) {
-    uni.showToast({ title: '网络错误', icon: 'none' })
+    uni.showToast({ title: currentLang === 'zh-CN' ? '网络错误' : 'Network error', icon: 'none' })
   }
 }
 
@@ -65,17 +67,24 @@ const viewSession = (id) => {
 }
 
 const createNew = () => {
-  uni.showToast({ title: '请点击会话列表中的会话进行转人工', icon: 'none' })
+  uni.showToast({ 
+    title: currentLang === 'zh-CN' 
+      ? '请点击会话列表中的会话进行转人工' 
+      : 'Please click on a session to transfer', 
+    icon: 'none' 
+  })
 }
 
 const formatTime = (dateStr) => {
-  if (!dateStr) return '刚刚'
+  if (!dateStr) return currentLang === 'zh-CN' ? '刚刚' : 'Just now'
   const d = new Date(dateStr)
   return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`
 }
 
 const getStatusLabel = (status) => {
-  const map = { Pending: '待处理', Active: '进行中', Resolved: '已解决', Closed: '已关闭' }
+  const zhMap = { Pending: '待处理', Active: '进行中', Resolved: '已解决', Closed: '已关闭' }
+  const enMap = { Pending: 'Pending', Active: 'Active', Resolved: 'Resolved', Closed: 'Closed' }
+  const map = currentLang === 'zh-CN' ? zhMap : enMap
   return map[status] || status
 }
 </script>

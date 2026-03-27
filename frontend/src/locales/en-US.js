@@ -41,7 +41,15 @@ export default {
     saveInfo: 'Save Shop Info',
     placeholderShopName: 'Enter shop name',
     placeholderCategory: 'e.g. Fashion,Electronics,Beauty',
-    placeholderTarget: 'Describe your target customers'
+    placeholderTarget: 'Describe your target customers',
+    anonymousCustomer: 'Anonymous',
+    unassigned: 'Unassigned',
+    transferToAgent: 'Transfer to Agent',
+    noSessions: 'No sessions',
+    loadFailed: 'Load failed',
+    networkError: 'Network error',
+    pleaseLogin: 'Please login',
+    transferHint: 'Please click on a session to transfer'
   },
   support: {
     workbench: 'Agent Workbench',

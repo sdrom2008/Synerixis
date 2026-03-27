@@ -41,7 +41,15 @@ export default {
     saveInfo: '保存店铺信息',
     placeholderShopName: '请输入店铺名称',
     placeholderCategory: '如：女装,数码,美妆',
-    placeholderTarget: '描述您的目标客户群体'
+    placeholderTarget: '描述您的目标客户群体',
+    anonymousCustomer: '匿名客户',
+    unassigned: '未分配',
+    transferToAgent: '转人工',
+    noSessions: '暂无会话',
+    loadFailed: '加载失败',
+    networkError: '网络错误',
+    pleaseLogin: '请先登录',
+    transferHint: '请点击会话列表中的会话进行转人工'
   },
   support: {
     workbench: '客服工作台',
