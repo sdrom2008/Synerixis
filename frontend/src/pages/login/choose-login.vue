@@ -29,6 +29,11 @@
       </button>
     </view>
 
+    <!-- 客服入口 -->
+    <view class="agent-entry">
+      <text class="link" @tap="goToAgentLogin">{{ currentLang === 'zh-CN' ? '员工/客服登录' : 'Employee Login' }}</text>
+    </view>
+
     <!-- 协议 -->
     <view class="protocol">
       <checkbox size="24" :checked="agree" @change="toggleAgree" color="#3b82f6" />
@@ -89,6 +94,10 @@ export default {
       uni.navigateTo({
         url: '/pages/login/wechat-login'
       });
+    },
+
+    goToAgentLogin() {
+      uni.navigateTo({ url: '/pages/login/agent-login' });
     },
 
     loginPhone() {
@@ -210,6 +219,13 @@ export default {
   font-size: 20rpx;
   padding: 2rpx 12rpx;
   border-radius: 20rpx;
+}
+
+.agent-entry {
+  margin-top: 40rpx;
+  font-size: 28rpx;
+  color: #60a5fa;
+  text-align: center;
 }
 
 .protocol {

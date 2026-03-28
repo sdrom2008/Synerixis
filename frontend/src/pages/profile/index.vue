@@ -34,6 +34,14 @@
       </view>
     </view>
 
+    <!-- 团队管理 -->
+    <view class="other-list" style="margin-bottom: 24rpx;">
+      <view class="list-item" @tap="toTeam">
+        <text>团队管理</text>
+        <text class="arrow">></text>
+      </view>
+    </view>
+
     <!-- 其他 -->
     <view class="other-list">
       <view class="list-item" @tap="contactUs">
@@ -100,6 +108,10 @@ export default {
 
     toAiPreference() {
       uni.navigateTo({ url: '/pages/profile/ai-preference' });
+    },
+
+    toTeam() {
+      uni.navigateTo({ url: '/pages/merchant/team' });
     },
 
     toAccount() {

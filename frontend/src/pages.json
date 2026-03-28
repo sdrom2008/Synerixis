@@ -2,11 +2,13 @@
   "pages": [
 	{ "path": "pages/splash/splash", "style": {"navigationBarTitleText": "","navigationStyle": "custom"}},
 	{ "path": "pages/login/choose-login", "style": { "navigationBarTitleText": "登录方式" } },
+    { "path": "pages/login/agent-login", "style": { "navigationBarTitleText": "客服登录" } },
     { "path": "pages/login/login", "style": { "navigationBarTitleText": "手机号短信验证登录" } }, 
 	{ "path": "pages/login/wechat-login", "style": { "navigationBarTitleText": "微信登录" } }, 
 	{ "path": "pages/login/bind-phone", "style": { "navigationBarTitleText": "绑定电话" } },
     { "path": "pages/merchant/sessions", "style": { "navigationBarTitleText": "我的会话" } },
     { "path": "pages/merchant/session-detail", "style": { "navigationBarTitleText": "会话详情" } },
+    { "path": "pages/merchant/team", "style": { "navigationBarTitleText": "团队管理" } },
     { "path": "pages/support/workbench", "style": { "navigationBarTitleText": "客服工作台" } },
     { "path": "pages/support/supervisor", "style": { "navigationBarTitleText": "主管监控" } },
     { "path": "pages/dashboard/dashboard", "style": { "navigationBarTitleText": "仪表盘" } },
