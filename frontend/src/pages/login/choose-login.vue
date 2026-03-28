@@ -17,10 +17,12 @@
     <!-- 按钮区 -->
     <view class="options">
       <!-- 微信登录：只跳转页面 -->
+      <!-- #ifdef MP-WEIXIN -->
       <button class="option-btn wechat" hover-class="btn-hover" @tap="goToWechatLogin">
         <text>{{ t('login.wechatLogin', currentLang) }}</text>
         <text class="tag">推荐</text>
       </button>
+      <!-- #endif -->
 
       <button class="option-btn phone" hover-class="btn-hover" @tap="loginPhone">
         <text>{{ t('login.phoneLogin', currentLang) }}</text>
