@@ -161,8 +161,24 @@ namespace Synerixis.Api.Controllers
                 });
             }
 
-            // 都找不到，返回未注册
-            return Unauthorized(new { message = "用户不存在" });
+            // 都找不到，自动注册为新商户 (Seller)
+            var newSeller = Seller.CreateWithPhone(fullPhone);
+            _db.Sellers.Add(newSeller);
+            await _db.SaveChangesAsync();
+
+            var newToken = _authService.GenerateJwt(newSeller.Id, "Seller", null);
+            return Ok(new
+            {
+                code = 200,
+                token = newToken,
+                userId = newSeller.Id,
+                userType = "Seller",
+                nickname = newSeller.Nickname,
+                freeQuota = newSeller.FreeQuota,
+                subscriptionLevel = newSeller.SubscriptionLevel,
+                isNewRegistration = true,
+                message = "注册并登录成功"
+            });
         }
 
         [HttpPost("bind-wechat")]
