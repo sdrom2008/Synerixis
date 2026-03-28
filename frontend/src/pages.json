@@ -26,8 +26,9 @@
   "tabBar": {
     "list": [
       { "pagePath": "pages/merchant/sessions", "text": "会话", "icon": "message" },
-      { "pagePath": "pages/support/workbench", "text": "工作台", "icon": "work" },
+      { "pagePath": "pages/products/products", "text": "商品", "icon": "shop" },
       { "pagePath": "pages/dashboard/dashboard", "text": "仪表盘", "icon": "dashboard" },
+      { "pagePath": "pages/support/workbench", "text": "工作台", "icon": "work" },
       { "pagePath": "pages/profile/index", "text": "我的", "icon": "user" }
     ]
   }
