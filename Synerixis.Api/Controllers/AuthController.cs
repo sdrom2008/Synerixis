@@ -100,10 +100,11 @@ namespace Synerixis.Api.Controllers
             // 拼接完整国际号码：+{CountryCode}{Phone}
             var fullPhone = $"+{dto.CountryCode}{dto.Phone}".Replace(" ", "");
 
-            // 开发环境：跳过验证码检查，直接登录
-            if (_env.IsDevelopment())
+            // 开发环境或未配置短信网关时，允许测试验证码通过
+            if (_env.IsDevelopment() || string.IsNullOrEmpty(_config["AliyunSms:AccessKeyId"]))
             {
-                // 开发环境任意验证码通过（简化测试）
+                if (dto.Code != "123456" && (!_cache.TryGetValue($"sms:{fullPhone}", out string cachedCode) || cachedCode != dto.Code))
+                    return BadRequest("验证码错误或已过期");
             }
             else
             {
@@ -206,10 +207,11 @@ namespace Synerixis.Api.Controllers
             // 开发环境：固定验证码 "123456"
             var code = "123456";
 
-            if (_env.IsDevelopment())
+            // 如果是开发环境，或未配置阿里云短信（即AccessKeyId为空），均使用固定验证码 123456 进行测试
+            if (_env.IsDevelopment() || string.IsNullOrEmpty(_config["AliyunSms:AccessKeyId"]))
             {
                 _cache.Set($"sms:{fullPhone}", code, TimeSpan.FromMinutes(5));
-                return Ok(new { message = "验证码已发送（开发环境固定为 123456）" });
+                return Ok(new { message = "测试模式已开启（验证码: 123456）" });
             }
 
             var realCode = new Random().Next(100000, 999999).ToString();
@@ -229,7 +231,18 @@ namespace Synerixis.Api.Controllers
             if (string.IsNullOrEmpty(dto.Code))
                 return BadRequest("验证码不能为空");
 
-            // TODO: 校验验证码
+            // 校验验证码
+            var fullPhoneCode = $"+{dto.CountryCode}{dto.Phone}".Replace(" ", "");
+            if (_env.IsDevelopment() || string.IsNullOrEmpty(_config["AliyunSms:AccessKeyId"]))
+            {
+                if (dto.Code != "123456" && (!_cache.TryGetValue($"sms:{fullPhoneCode}", out string cachedCode) || cachedCode != dto.Code))
+                    return BadRequest("验证码错误或已过期");
+            }
+            else
+            {
+                if (!_cache.TryGetValue($"sms:{fullPhoneCode}", out string cachedCode) || cachedCode != dto.Code)
+                    return BadRequest("验证码错误或已过期");
+            }
 
             // 拼接完整国际号码
             var fullPhone = $"+{dto.CountryCode}{dto.Phone}".Replace(" ", "");
