@@ -49,9 +49,11 @@ namespace Synerixis.Domain.Entities
         // 手机号登录/注册时创建新商户
         public static Seller CreateWithPhone(string phone)
         {
+            var id = Guid.NewGuid();
             return new Seller
             {
-                Id = Guid.NewGuid(),
+                Id = id,
+                OpenId = "phone_" + id.ToString("N"), // 防止数据库 OpenId 唯一索引冲突
                 Phone = phone,
                 Nickname = "商户" + DateTime.Now.ToString("MMddHHmm"),
                 FreeQuota = 100,  // 赠送免费额度
@@ -74,7 +76,7 @@ namespace Synerixis.Domain.Entities
         // 绑定微信 openid（已有手机号账号时）
         public void BindWechat(string openId)
         {
-            if (!string.IsNullOrEmpty(OpenId))
+            if (!string.IsNullOrEmpty(OpenId) && !OpenId.StartsWith("phone_"))
                 throw new InvalidOperationException("微信已绑定，不可重复设置");
 
             OpenId = openId;
