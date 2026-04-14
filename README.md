@@ -27,6 +27,8 @@ Synerixis AI 智能客服 专注于 .NET 生态下的 AI 智能客服开发，�
 
 - **后端**：.NET 8 (ASP.NET Core API), Entity Framework Core
 - **前端**：React.js with TypeScript
+  - 开发工具：HBuilder (支持多端生成：App/小程序/H5)
+  - 前端目录：`frontend/`
 - **AI 服务**：Azure OpenAI / 阿里云大模型 API
 - **数据库**：PostgreSQL / SQL Server
 - **部署**：Docker, Kubernetes

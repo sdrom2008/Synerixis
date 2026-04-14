@@ -14,9 +14,9 @@ This is the **Synerixis** project, a .NET-based application with the following s
   - `Synerixes.Api` - API layer
 
 ### Known Components
-- Frontend: React-based frontend in `/frontend`
+- Frontend: React-based frontend in `/frontend/` (使用 HBuilder 开发，支持多端生成)
 - Backend: .NET 8 Web API
-- Database: Likely SQL Server / PostgreSQL (check Migrations folder)
+- Database: PostgreSQL / SQL Server (check Migrations folder)
 - Docker: Docker Compose setup with Redis, PostgreSQL, etc.
 
 ### Key Features (from README)
