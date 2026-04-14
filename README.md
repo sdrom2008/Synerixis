@@ -1,51 +1,98 @@
-"# My Project\n\nMonorepo: ASP.NET Core 8 + uni-app" 
+# Synerixis AI æ™ºèƒ½å®¢æœ
 
-
-
-# NexusAI Tech: AI Çı¶¯µÄÆóÒµÔËÓªÆ½Ì¨
+Monorepo: ASP.NET Core 8 + React
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![.NET Version](https://img.shields.io/badge/.NET-8.0-blue)](https://dotnet.microsoft.com/)
-[![Build Status](https://img.shields.io/badge/build-passing-brightgreen)](https://github.com/sdrom2008/my-project/actions) <!-- Èç¹ûÉèÖÃÁË CI/CD£¬¿ÉÌæ»» -->
 
-**NexusAI Tech**£¨ÖÇÁªAI¿Æ¼¼£©ÊÇÒ»¸ö AI Çı¶¯µÄÆóÒµ¼¶ SaaS Æ½Ì¨£¬Ö¼ÔÚ°ïÖúÖĞ¹úÖĞĞ¡ÆóÒµÊµÏÖÖÇÄÜ»¯ÔËÓª¡£Æ½Ì¨²ÉÓÃ agentic£¨´úÀíÊ½£©ºÍ intent-driven£¨ÒâÍ¼Çı¶¯£©¼Ü¹¹£¬Í¨¹ı×ÔÈ»ÓïÑÔ½»»¥£¬×Ô¶¯´¦Àí¿Í·ş¡¢ÈÎÎñ·ÖÅäºÍ±¨¸æÉú³ÉµÈÈÎÎñ£¬ÏÔÖø½µµÍÈË¹¤³É±¾£¬ÌáÉıĞ§ÂÊ¡£
+## Synerixis AI æ™ºèƒ½å®¢æœ - è·¨å¢ƒç”µå•†æ™ºèƒ½å®¢æœå¹³å°
 
-## ÏîÄ¿Ô¸¾°Óë±³¾°
-NexusAI Tech ÓÉ×ÊÉî .NET ¿ª·¢Õß´´Á¢£¬×¨×¢ÓÚÖĞ¹úÊĞ³¡Êı×Ö»¯×ªĞÍÍ´µã£¨ÈçĞ§ÂÊµÍ¡¢Êı¾İ¹Âµº£©¡£ÎÒÃÇÒÔ AI ×÷ÎªºËĞÄ¡°²Ù×÷ÏµÍ³¡±£¬ËùÓĞ²úÆ·¸üĞÂºÍµü´ú¾ùÓÉ AI ¸¨Öú¾ö²ß£¬È·±£Ãô½İ¿ª·¢¡£Ä¿±êÓÃ»§£ºÄêÓªÊÕ 1000 Íò-1 ÒÚ RMB µÄµçÉÌ¡¢½ÌÓıºÍ·şÎñÆóÒµ¡£
+**Synerixis AI æ™ºèƒ½å®¢æœ** ä¸“æ³¨äº AI é©±åŠ¨çš„è·¨å¢ƒç”µå•†æ™ºèƒ½å®¢æœè§£å†³æ–¹æ¡ˆï¼Œé€šè¿‡ agentic æ–¹å¼å’Œ intent-driven æ™ºèƒ½ï¼Œå®ç°é€šè¿‡è‡ªç„¶è¯­è¨€è‡ªåŠ¨å®Œæˆè®¢å•ç®¡ç†ã€å®¢æˆ·æ”¯æŒç­‰ä»»åŠ¡ã€‚
 
-- **ºËĞÄÂôµã**£ºÒâÍ¼Çı¶¯½»»¥£¨ÓÃ»§Ëµ¡°²é¶©µ¥¡±£¬AI ×Ô¶¯Ö´ĞĞ£©£»½¥½øÊ½ AGI ÄÜÁ¦£¨´Óµ¥Ò»´úÀíµ½¶à´úÀíĞ­×÷£©¡£
-- **ÊĞ³¡¶¨Î»**£ºÌî²¹ÖĞ¹úÖĞĞ¡ÆóÒµ AI ¹¤¾ß¿Õ°×£¬¾ºÕùÓÚ°¢ÀïÔÆ/ÌÚÑ¶ÔÆµÄÇáÁ¿¼¶Ìæ´ú¡£
-- **¼¼ÊõÁÁµã**£ºClean Architecture Éè¼Æ£¬¼¯³É OpenAI/°¢ÀïÔÆ´óÄ£ĞÍ£¬Ö§³ÖÎ¢ĞÅÉúÌ¬¡£
+## é¡¹ç›®æ„¿æ™¯ä¸ä½¿å‘½
 
-## ¹¦ÄÜÁÁµã
-### Ç°ÆÚ MVP ¹¦ÄÜ£¨2-3 ¸öºËĞÄ´úÀí£©
-1. **AI ÒâÍ¼Çı¶¯¿Í·ş´úÀí**£º½âÎöÓÃ»§×ÔÈ»ÓïÑÔÒâÍ¼£¬×Ô¶¯²éÑ¯/ÏìÓ¦£¨Èç¶©µ¥¸ú×Ù£©¡£¼¯³ÉÎ¢ĞÅ£¬Ö§³Ö¶àÂÖ¶Ô»°¡£
-2. **ÖÇÄÜÈÎÎñ·ÖÅä´úÀí**£º»ùÓÚÍÅ¶ÓÊı¾İ£¬AI ×Ô¶¯·ÖÅäÈÎÎñ£¬ÓÅ»¯¸ºÔØºÍ¼¼ÄÜÆ¥Åä¡£
-3. **×Ô¶¯»¯±¨¸æÉú³É**£ºAI ·ÖÎöÊı¾İ£¬Éú³É¿ÉÊÓ»¯±¨¸æ£¨ÈçÏúÊÛÔ¤²â£©£¬Ò»¼üµ¼³ö PDF¡£
+Synerixis AI æ™ºèƒ½å®¢æœ ä¸“æ³¨äº .NET ç”Ÿæ€ä¸‹çš„ AI æ™ºèƒ½å®¢æœå¼€å‘ï¼Œæ ¸å¿ƒç›®æ ‡ï¼š
+- **æ™ºèƒ½å¯¹è¯**ï¼šé€šè¿‡ NLP å’Œç”¨æˆ·æ„å›¾è¯†åˆ«ï¼Œå®ç°å¤šè½®å¯¹è¯ï¼Œæå‡å®¢æœä½“éªŒ
+- **å¸‚åœºå®šä½**ï¼šé¢†å…ˆè·¨å¢ƒç”µå•†æ™ºèƒ½å®¢æœè§£å†³æ–¹æ¡ˆï¼Œé™ä½è¿è¥æˆæœ¬å’Œæå‡æ•ˆç‡
 
-ºóÆÚÉı¼¶£ºÀ©Õ¹µ½È«ÆóÒµ AI OS£¬Ö§³Ö×Ô¶¨Òå´úÀíÁ´¡£
+## æ ¸å¿ƒèƒ½åŠ›
 
-## ¼¼ÊõÕ»
-- **ºó¶Ë**£º.NET 8 (ASP.NET Core API), Entity Framework Core, ML.NET for AI integration.
-- **Ç°¶Ë**£ºReact.js with TypeScript, Ö§³ÖÏìÓ¦Ê½Éè¼Æ¡£
-- **AI ×é¼ş**£ºAzure OpenAI / °¢ÀïÔÆ´óÄ£ĞÍ API for NLP and agent orchestration.
-- **Êı¾İ¿â**£ºPostgreSQL / SQL Server.
-- **²¿Êğ**£ºDocker, Kubernetes; ³õÆÚ°¢ÀïÔÆ ECS.
-- **ÆäËû**£ºGitHub Actions for CI/CD, Swagger for API docs.
+- **æ™ºèƒ½å¯¹è¯ç®¡ç†**ï¼šå¯¹è¯æµç®¡ç†ï¼Œç”¨æˆ·è¾“å…¥ç†è§£å’Œè‡ªåŠ¨å›å¤
+- **è®¢å•ç®¡ç†åŠŸèƒ½**ï¼šè®¢å•æŸ¥è¯¢ï¼ŒçŠ¶æ€æ›´æ–°å’Œç‰©æµè·Ÿè¸ª
+- **è‡ªåŠ¨å¼€ç¥¨åŠŸèƒ½**ï¼šAI ç”Ÿæˆå‘ç¥¨ï¼Œåˆè§„æ€§æ£€æŸ¥å’Œæ‰¹é‡å¤„ç†
 
-## ¼Ü¹¹¸ÅÊö
-²ÉÓÃ Clean Architecture£¨Õû½à¼Ü¹¹£©£¬·Ö²ãÉè¼ÆÈ·±£¿ÉÎ¬»¤ĞÔ£º
-- **Domain**£ººËĞÄÒµÎñÊµÌåºÍÂß¼­£¨Entities, Value Objects£©¡£
-- **Application**£ºÓÃÀıºÍ·şÎñ£¨Use Cases, DTOs, Interfaces£©¡£
-- **Infrastructure**£ºÍâ²¿ÊµÏÖ£¨DB, AI APIs, Logging£©¡£
-- **API**£ºRESTful endpoints with authentication (JWT).
+é¡¹ç›®ç›®æ ‡æ˜¯æˆä¸ºä¼ä¸šçº§ AI å®¢æœæ“ä½œç³»ç»Ÿã€‚
 
-¼òµ¥¼Ü¹¹Í¼£¨Mermaid ¸ñÊ½£¬¿ÉÔÚ GitHub äÖÈ¾£©£º
-```mermaid
-flowchart TD
-    A[User Input] --> B[Intent Parser (NLP AI)]
-    B --> C[Agent Orchestrator (.NET Core)]
-    C --> D[Task Agents (e.g., Query DB, Generate Report)]
-    D --> E[Output to User]
-    E --> F[AI Optimizer (Feedback Loop)]
-    F --> C
+## æŠ€æœ¯æ ˆ
+
+- **åç«¯**ï¼š.NET 8 (ASP.NET Core API), Entity Framework Core
+- **å‰ç«¯**ï¼šReact.js with TypeScript
+- **AI æœåŠ¡**ï¼šAzure OpenAI / é˜¿é‡Œäº‘å¤§æ¨¡å‹ API
+- **æ•°æ®åº“**ï¼šPostgreSQL / SQL Server
+- **éƒ¨ç½²**ï¼šDocker, Kubernetes
+
+## åŠŸèƒ½æ¶æ„
+
+åŸºäº Clean Architecture ç¡®ä¿å¯ç»´æŠ¤æ€§å’Œå¯æ‰©å±•æ€§ã€‚
+
+## é¡¹ç›®ç»“æ„
+
+```
+my-project/
+â”œâ”€â”€ Synerixis.sln
+â”œâ”€â”€ README.md
+â”œâ”€â”€ PROJECT_STRUCTURE.md
+â”‚
+â”œâ”€â”€ Synerixis.Application/
+â”‚   â”œâ”€â”€ Agents/
+â”‚   â”œâ”€â”€ DTOs/
+â”‚   â”œâ”€â”€ Interfaces/
+â”‚   â””â”€â”€ Services/
+â”‚
+â”œâ”€â”€ Synerixis.Domain/
+â”‚   â”œâ”€â”€ Common/
+â”‚   â”œâ”€â”€ Entities/
+â”‚   â”œâ”€â”€ Enums/
+â”‚   â””â”€â”€ Repositories/
+â”‚
+â”œâ”€â”€ Synerixis.Infrastructure/
+â”‚   â”œâ”€â”€ AIServices/
+â”‚   â”œâ”€â”€ Repositories/
+â”‚   â”œâ”€â”€ Services/
+â”‚   â””â”€â”€ Data/
+â”‚
+â””â”€â”€ Synerixis.Api/
+    â”œâ”€â”€ Controllers/
+    â”œâ”€â”€ Program.cs
+    â””â”€â”€ Synerixis.Api.csproj
+```
+
+## ä¸‹ä¸€æ­¥
+
+- [ ] å®Œå–„ Agent è·¯ç”±åŠŸèƒ½
+- [ ] æ·»åŠ æ›´å¤šçš„å®¢æœåœºæ™¯
+- [ ] ä¼˜åŒ–å¯¹è¯æµç¨‹
+- [ ] å¢å¼ºé”™è¯¯å¤„ç†å’Œæ—¥å¿—è®°å½•
+
+## è´¡çŒ®
+
+æ¬¢è¿è´¡çŒ®ï¼è¯·éµå¾ªä»¥ä¸‹æ­¥éª¤ï¼š
+1. Fork ä»“åº“
+2. åˆ›å»º feature åˆ†æ”¯
+3. Commit å˜æ›´
+4. Push åˆ°åˆ†æ”¯
+5. æ‰“å¼€ Pull Request
+
+## ä»£ç é£æ ¼
+
+- éµå¾ª .NET ç¼–ç è§„èŒƒ
+- ä½¿ç”¨ EditorConfig
+
+## è®¸å¯è¯
+
+æœ¬é¡¹ç›®é‡‡ç”¨ MIT License (LICENSE)ã€‚
+
+## è”ç³»æˆ‘ä»¬
+
+- GitHub: sdrom2008
+- Email: sdrom2008@qq.com
