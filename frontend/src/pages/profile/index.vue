@@ -130,7 +130,7 @@ export default {
           if (res.confirm) {
             uni.removeStorageSync('token');
             uni.removeStorageSync('sellerId');
-            uni.switchTab({ url: '/pages/login/login' });
+            uni.navigateTo({ url: '/pages/login/choose-login' });
           }
         }
       });

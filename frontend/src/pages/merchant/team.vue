@@ -71,6 +71,8 @@ const currentLang = ref(getLanguage())
 const teamMembers = ref([])
 const loading = ref(false)
 
+console.log('teamMembers:', teamMembers.value);
+
 const showAddModal = ref(false)
 const submitLoading = ref(false)
 const form = ref({
@@ -81,14 +83,15 @@ const form = ref({
 })
 
 const fetchTeam = async () => {
-  loading.value = true
+  loading.value = true;
   try {
-    const res = await request({ url: '/api/seller/team', method: 'GET' })
-    teamMembers.value = res || []
+    const res = await request({ url: '/api/seller/team', method: 'GET' });
+    console.log('Fetched team members:', res);
+    teamMembers.value = res || [];
   } catch (err) {
-    console.error(err)
+    console.error(err);
   } finally {
-    loading.value = false
+    loading.value = false;
   }
 }
 
@@ -97,26 +100,34 @@ const getRoleName = (role) => {
   return currentLang.value === 'zh-CN' ? '人工客服' : 'Agent';
 }
 
+console.log('getRoleName:', getRoleName);
+
 const openAddModal = () => {
-  form.value = { name: '', email: '', password: '', role: 0 }
-  showAddModal.value = true
+  form.value = { name: '', email: '', password: '', role: 0 };
+  showAddModal.value = true;
 }
+
+console.log('openAddModal');
 
 const closeAddModal = () => {
-  showAddModal.value = false
+  showAddModal.value = false;
 }
 
+console.log('closeAddModal');
+
 const onRoleChange = (e) => {
-  form.value.role = parseInt(e.detail.value)
+  form.value.role = parseInt(e.detail.value);
 }
+
+console.log('onRoleChange');
 
 const submitAddMember = async () => {
   if (!form.value.name || !form.value.email || !form.value.password) {
-    uni.showToast({ title: currentLang.value === 'zh-CN' ? '请填写完整信息' : 'Please fill all fields', icon: 'none' })
-    return
+    uni.showToast({ title: currentLang.value === 'zh-CN' ? '请填写完整信息' : 'Please fill all fields', icon: 'none' });
+    return;
   }
 
-  submitLoading.value = true
+  submitLoading.value = true;
   try {
     await request({
       url: '/api/seller/team',
@@ -127,16 +138,19 @@ const submitAddMember = async () => {
         Password: form.value.password,
         Role: form.value.role
       }
-    })
-    uni.showToast({ title: currentLang.value === 'zh-CN' ? '添加成功' : 'Added successfully' })
-    closeAddModal()
-    fetchTeam()
+    });
+    uni.showToast({ title: currentLang.value === 'zh-CN' ? '添加成功' : 'Added successfully', icon: 'success' });
+    closeAddModal();
+    fetchTeam();
   } catch (err) {
     // 错误在 request 拦截处理
+    console.error(err);
   } finally {
-    submitLoading.value = false
+    submitLoading.value = false;
   }
 }
+
+console.log('submitAddMember');
 
 const removeMember = async (id) => {
   uni.showModal({
@@ -148,20 +162,22 @@ const removeMember = async (id) => {
           await request({
             url: `/api/seller/team/${id}`,
             method: 'DELETE'
-          })
-          uni.showToast({ title: currentLang.value === 'zh-CN' ? '移除成功' : 'Removed' })
-          fetchTeam()
+          });
+          uni.showToast({ title: currentLang.value === 'zh-CN' ? '移除成功' : 'Removed', icon: 'success' });
+          fetchTeam();
         } catch (e) {
-          console.error(e)
+          console.error(e);
         }
       }
     }
-  })
+  });
 }
 
+console.log('removeMember');
+
 onMounted(() => {
-  fetchTeam()
-})
+  fetchTeam();
+});
 </script>
 
 <style>

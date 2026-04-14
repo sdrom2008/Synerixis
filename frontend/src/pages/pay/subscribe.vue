@@ -94,7 +94,7 @@ export default {
             channel: this.selectedChannel,
             amount: 99,
             description: '升级订阅 99元/月',
-            notifyUrl: 'https://your-domain.com/api/pay/notify/' + this.selectedChannel,
+            notifyUrl: 'https://api.synerixis.com/api/pay/notify/' + this.selectedChannel,
             returnUrl: 'pages/profile/profile'
           }
         });

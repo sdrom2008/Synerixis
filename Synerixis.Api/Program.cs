@@ -113,22 +113,22 @@ builder.Services.AddScoped<PlatformClientRouter>();
 // --- END PLATFORM CLIENTS ---
 
 // 微信支付（生产环境才启用，开发环境暂时注释）
-// builder.Services.AddScoped<WeChatPayV3Client>(serviceProvider =>
-// {
-//     var config = serviceProvider.GetRequiredService<IConfiguration>();
-//     var dbContext = serviceProvider.GetRequiredService<AppDbContext>();
-//     return new WeChatPayV3Client(
-//         config["WeChatPay:MchId"],
-//         config["WeChatPay:AppId"],
-//         config["WeChatPay:ApiV3Key"],
-//         config["WeChatPay:CertPath"],
-//         config["WeChatPay:CertPassword"],
-//         dbContext);
-// });
+builder.Services.AddScoped<WeChatPayV3Client>(serviceProvider =>
+{
+    var config = serviceProvider.GetRequiredService<IConfiguration>();
+    var dbContext = serviceProvider.GetRequiredService<AppDbContext>();
+    return new WeChatPayV3Client(
+        config["WeChatPay:MchId"],
+        config["WeChatPay:AppId"],
+        config["WeChatPay:ApiV3Key"],
+        config["WeChatPay:CertPath"],
+        config["WeChatPay:CertPassword"],
+        dbContext);
+});
 
-// builder.Services.AddScoped<WechatPaymentProvider>();
-// builder.Services.AddScoped<AlipayPaymentProvider>();
-// builder.Services.AddScoped<IPaymentProviderFactory, PaymentProviderFactory>();
+builder.Services.AddScoped<WechatPaymentProvider>();
+builder.Services.AddScoped<AlipayPaymentProvider>();
+builder.Services.AddScoped<IPaymentProviderFactory, PaymentProviderFactory>();
 
 builder.Services.AddScoped<ProductService>();
 
