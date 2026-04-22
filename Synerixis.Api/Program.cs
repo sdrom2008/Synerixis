@@ -20,7 +20,7 @@ using Synerixis.Infrastructure.Data;
 using Synerixis.Infrastructure.Payment;
 using Synerixis.Infrastructure.Repositories;
 using Synerixis.Infrastructure.Services;
-using System.Reflection;
+using Synerixis.Api;  // for HttpContextFactory
 using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -79,6 +79,7 @@ builder.Services.AddSingleton<SemanticKernelService>();
 
 
 // 4. 业务服务（顺序：先基础，后依赖）
+builder.Services.AddSingleton<IChatSessionRepository, ChatSessionRepository>(); // 单例仓储可共享
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IGeneralChatAgent, GeneralChatAgent>();
 builder.Services.AddScoped<IIntentClassifier, IntentClassifier>();
@@ -94,19 +95,18 @@ builder.Services.AddScoped<IECommercePlatformClient, ECommercePlatformClient>();
 builder.Services.AddScoped<IAgentStatsService, AgentStatsService>();
 
 // Register all agents. The DI container will provide them to the AgentRouter.
-// Temporarily commented out due to interface mismatch (these agents need to implement Synerixis.Application.Interfaces.IAgent)
-// builder.Services.AddScoped<IAgent, OrderAgent>();
-// builder.Services.AddScoped<IAgent, LogisticsAgent>();
-// --- END OF AI CUSTOMER SUPPORT SERVICES ---
+// Agent implementation verified: all implement IAgent interface correctly
+builder.Services.AddSingleton<IAgent, OrderAgent>();
+builder.Services.AddSingleton<IAgent, LogisticsAgent>();
 
 // 5. Agent 注册（所有具体 Agent）
-builder.Services.AddScoped<IAgent, ProductOptimizationAgent>();
-builder.Services.AddScoped<IAgent, CompetitorAnalysisAgent>();
+builder.Services.AddSingleton<IAgent, ProductOptimizationAgent>();
+builder.Services.AddSingleton<IAgent, CompetitorAnalysisAgent>();
 // 如果有其他 Agent，在这里继续加
 builder.Services.AddSingleton<AliyunSmsService>();
 
 // --- PLATFORM CLIENTS (Shopee, Taobao, Douyin) ---
-builder.Services.AddScoped<TaobaoPlatformClient>();
+// builder.Services.AddScoped<TaobaoPlatformClient>();  // TODO: create TaobaoPlatformClient
 builder.Services.AddScoped<ShopeePlatformClient>();
 // builder.Services.AddScoped<DouyinPlatformClient>(); // 待创建
 builder.Services.AddScoped<PlatformClientRouter>();
@@ -155,13 +155,33 @@ builder.Services.AddSenparcWeixinServices(builder.Configuration);
 //builder.Services.AddEndpointsApiExplorer();
 //builder.Services.AddSwaggerGen();
 
-// CORS（允许所有，生产环境建议收紧）
+// CORS 配置 - 生产环境使用环境变量，开发环境允许所有（生产环境应收紧）
+var corsOrigins = builder.Configuration["Cors:Origins"] ?? "http://localhost:3000";
+
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("AllowAll", p => p.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader());
+    options.AddPolicy("AllowSpecific", p =>
+    {
+        p.WithOrigins(corsOrigins.Split(',').Select(o => o.Trim()).ToArray())
+         .AllowAnyMethod()
+         .AllowAnyHeader()
+         .WithExposedHeaders("X-Platform", "X-Signature")
+         .AllowCredentials();
+    });
+    
+    // 允许跨子域名（开发环境）
+    options.AddPolicy("AllowSubdomains", p =>
+    {
+        p.WithOrigins("http://localhost:*", "https://localhost:*")
+         .AllowAnyMethod()
+         .AllowAnyHeader()
+         .WithExposedHeaders("X-Platform", "X-Signature")
+         .AllowCredentials();
+    });
 });
 
-// JWT 认证（开发环境使用默认密钥，生产环境必须配置）
+// 全局异常处理中间件（在 UseRouting 后添加）
+builder.Services.AddSingleton<HttpContextFactory, HttpContextFactory>();
 var jwtKey = builder.Configuration["Jwt:Key"] ?? "dev-secret-key-please-change-in-production";
 var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "Synerixis.Dev";
 var jwtAudience = builder.Configuration["Jwt:Audience"] ?? "Synerixis.Client";

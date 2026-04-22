@@ -12,6 +12,8 @@ using Synerixis.Domain.Common;
 using Synerixis.Domain.Entities;
 using Synerixis.Infrastructure.Data;
 using Synerixis.Infrastructure.Services;
+using Synerixis.Infrastructure.Clients;
+using Microsoft.EntityFrameworkCore;
 using System.IdentityModel.Tokens.Jwt;
 using System.Linq;
 using System.Net.Http;
@@ -32,7 +34,15 @@ namespace Synerixis.Api.Controllers
         private readonly IMemoryCache _cache;
         private readonly IWebHostEnvironment _env;
 
-        public AuthController(AppDbContext db, IAuthService authService, IConfiguration config, IHttpClientFactory factory, AliyunSmsService smsService, IMemoryCache cache, IWebHostEnvironment env)
+        public AuthController(
+            AppDbContext db,
+            IAuthService authService,
+            IConfiguration config,
+            IHttpClientFactory factory,
+            AliyunSmsService smsService,
+            IMemoryCache cache,
+            IWebHostEnvironment env,
+            IPlatformClientRouter platformClientRouter)
         {
             _db = db;
             _authService = authService ?? throw new ArgumentNullException(nameof(authService));
@@ -41,7 +51,10 @@ namespace Synerixis.Api.Controllers
             _smsService = smsService;
             _cache = cache;
             _env = env;
+            _router = platformClientRouter ?? throw new ArgumentNullException(nameof(platformClientRouter));
         }
+
+        private readonly IPlatformClientRouter _router;
 
         [HttpPost("wechat")]
         public async Task<IActionResult> WeChatLogin([FromBody] WeChatCode request)

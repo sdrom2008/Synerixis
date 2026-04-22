@@ -1,5 +1,3 @@
-using System.Collections.Generic;
-using System.Threading.Tasks;
 using Synerixis.Application.Interfaces;
 using Synerixis.Application.Interfaces.Infrastructure;
 using Synerixis.Application.DTOs;
@@ -8,41 +6,61 @@ using Synerixis.Domain.Enums;
 namespace Synerixis.Application.Agents
 {
     /// <summary>
-    /// Agent responsible for handling order-related queries.
+    /// 订单查询 Agent
     /// </summary>
     public class OrderAgent : IAgent
     {
         public ChatIntent SupportedIntent => ChatIntent.QueryOrder;
 
         private readonly IECommercePlatformClient _platformClient;
+        private readonly IChatSessionRepository _chatSessionRepository;
 
-        public OrderAgent(IECommercePlatformClient platformClient)
+        public OrderAgent(
+            IECommercePlatformClient platformClient,
+            IChatSessionRepository chatSessionRepository)
         {
             _platformClient = platformClient;
+            _chatSessionRepository = chatSessionRepository;
         }
 
         public async Task<AgentProcessResult> ProcessAsync(string userInput, ChatContext context)
         {
-            var orderId = "SIMULATED_ORDER_12345";
+            // 1. 从 ChatSession 获取客户信息
+            var chatSession = await _chatSessionRepository.GetByCustomerIdAsync(context.CustomerId);
 
-            var orderDetails = await _platformClient.GetOrderDetailsAsync(context.Platform, orderId);
-
-            string responseMessage;
-            if (orderDetails != null)
+            if (chatSession == null)
             {
-                responseMessage = $"您好，查询到订单【{orderId}】的状态是：【{orderDetails.Status}】。订单金额：{orderDetails.Amount}元。";
-            }
-            else
-            {
-                responseMessage = $"很抱歉，暂时没有查询到订单【{orderId}】的信息，请您核对一下订单号是否正确。";
+                return new AgentProcessResult(
+                    Messages: Array.Empty<ChatMessageDto>(),
+                    Success: false,
+                    ErrorMessage: "未找到客户会话信息，无法查询订单");
             }
 
-            var messages = new List<ChatMessageDto>
-            {
-                new ChatMessageDto { IsFromUser = false, Content = responseMessage, MessageType = "text" }
-            };
+            // 2. 获取订单信息
+            var orderResult = await _platformClient.GetOrderDetailsAsync(
+                platform: chatSession.Platform,
+                orderId: chatSession.CustomerId);
 
-            return new AgentProcessResult(messages, Success: true);
+            if (orderResult != null)
+            {
+                var response = $"您好，查询到您的订单【{orderResult.OrderId}】，状态：{orderResult.Status}，金额：{orderResult.Amount}元。";
+                var messages = new List<ChatMessageDto>
+                {
+                    new ChatMessageDto 
+                    { 
+                        IsFromUser = false, 
+                        Content = response, 
+                        MessageType = "text",
+                        Data = new { orderResult.OrderId, orderResult.Status, orderResult.Amount }
+                    }
+                };
+                return new AgentProcessResult(messages, Success: true);
+            }
+
+            return new AgentProcessResult(
+                Messages: Array.Empty<ChatMessageDto>(),
+                Success: false,
+                ErrorMessage: "未找到订单信息");
         }
     }
 }

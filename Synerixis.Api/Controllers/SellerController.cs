@@ -203,7 +203,7 @@ namespace Synerixis.Api.Controllers
         public async Task<IActionResult> GetProducts(
             [FromQuery] int page = 1,
             [FromQuery] int pageSize = 10,
-            [FromQuery] string keyword = null)
+             [FromQuery] string? keyword = null)
         {
             try
             {

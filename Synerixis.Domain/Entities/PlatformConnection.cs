@@ -8,12 +8,14 @@ using System.Threading.Tasks;
 namespace Synerixis.Domain.Entities
 {
     /// <summary>
-    /// 平台连接信息（一个店铺可绑定多个平台，如淘宝、抖音）
+    /// 平台连接信息（跨境电商平台）
+    /// Phase 1: Shopee + TikTok Shop
+    /// Phase 2（可选）：Lazada、Amazon、AliExpress
     /// </summary>
     public class PlatformConnection : AggregateRoot<Guid>
     {
         public Guid SellerId { get; private set; }          // 关联 sellers.Id
-        public string Platform { get; private set; } = string.Empty;   // 'TAOBAO', 'DOUYIN', 'XIAOHONGSHU'
+        public string Platform { get; private set; } = string.Empty;   // 'SHOPEE', 'TIKTOK', 'LAZADA'
         public string AppKey { get; private set; } = string.Empty;    // 应用公钥
         public string AccessToken { get; private set; } = string.Empty; // 访问令牌（加密存储）
         public string? RefreshToken { get; private set; }              // 刷新令牌

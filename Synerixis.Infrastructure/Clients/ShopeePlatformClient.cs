@@ -10,7 +10,8 @@ using System.Security.Cryptography;
 namespace Synerixis.Infrastructure.Clients
 {
     /// <summary>
-    /// Shopee 平台客户端
+    /// Shopee 平台客户端（跨境电商）
+    /// Phase 1: Shopee + TikTok Shop
     /// </summary>
     public class ShopeePlatformClient : IPlatformClient
     {
@@ -254,6 +255,12 @@ namespace Synerixis.Infrastructure.Clients
                 _logger.LogError(ex, "[Shopee] Exception during signature verification");
                 return false;
             }
+        }
+
+        public async Task<string?> GetCustomerOrderAsync(string platform, string customerId, CancellationToken cancellationToken = default)
+        {
+            _logger.LogWarning("[Shopee] GetCustomerOrderAsync stub for platform={Platform} customer={CustomerId}", platform, customerId);
+            return null; // TODO: 接入 Shopee Order API
         }
     }
 }

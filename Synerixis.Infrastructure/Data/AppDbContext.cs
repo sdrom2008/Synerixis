@@ -25,6 +25,8 @@ namespace Synerixis.Infrastructure.Data
         public DbSet<AgentStat> AgentStats { get; set; }
         public DbSet<PlatformConnection> PlatformConnections { get; set; }
 
+
+
         public AppDbContext(DbContextOptions<AppDbContext> options) : base(options)
         {
         }
@@ -293,6 +295,75 @@ namespace Synerixis.Infrastructure.Data
                       .WithMany(c => c.Messages)
                       .HasForeignKey(m => m.ChatSessionId)
                       .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            modelBuilder.Entity<Seller>(entity =>
+            {
+                entity.ToTable("sellers");
+                entity.HasKey(s => s.Id);
+
+                entity.HasMany(s => s.PlatformConnections)
+                      .WithOne(c => c.Seller)
+                      .HasForeignKey(c => c.SellerId)
+                      .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasMany(s => s.Conversations)
+                      .WithOne(c => c.Seller)
+                      .HasForeignKey(c => c.SellerId)
+                      .OnDelete(DeleteBehavior.Restrict);
+            });
+
+            modelBuilder.Entity<PlatformConnection>(entity =>
+            {
+                entity.ToTable("platform_connections");
+                entity.HasKey(e => e.Id);
+
+                entity.Property(e => e.SellerId)
+                      .HasColumnType("binary(16)")
+                      .ValueGeneratedOnAdd();
+
+                entity.Property(e => e.Platform)
+                      .HasColumnType("varchar(50)")
+                      .HasMaxLength(50)
+                      .IsRequired();
+
+                entity.Property(e => e.OpenId)
+                      .HasColumnType("varchar(128)")
+                      .HasMaxLength(128)
+                      .IsRequired();
+
+                entity.Property(e => e.ShopId)
+                      .HasColumnType("varchar(128)")
+                      .HasMaxLength(128);
+
+                entity.Property(e => e.AppKey)
+                      .HasColumnType("longtext");
+
+                entity.Property(e => e.AccessToken)
+                      .HasColumnType("longtext");
+
+                entity.Property(e => e.RefreshToken)
+                      .HasColumnType("varchar(512)");
+
+                entity.Property(e => e.Nickname)
+                      .HasColumnType("varchar(128)");
+
+                entity.Property(e => e.AvatarUrl)
+                      .HasColumnType("varchar(512)");
+
+                entity.Property(e => e.IsActive)
+                      .HasColumnType("bit");
+
+                entity.Property(e => e.CreatedAt)
+                      .HasColumnType("datetime2");
+
+                entity.Property(e => e.UpdatedAt)
+                      .HasColumnType("datetime2");
+
+                entity.HasOne(e => e.Seller)
+                      .WithMany(s => s.PlatformConnections)
+                      .HasForeignKey(e => e.SellerId)
+                      .OnDelete(DeleteBehavior.Restrict);
             });
         }
     }

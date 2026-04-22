@@ -10,22 +10,43 @@ namespace Synerixis.Domain.Entities
 {
     public class ChatMessage
     {
+        private ChatMessage() { }
+
         public Guid Id { get; private set; } = Guid.NewGuid();
-        public Guid ChatSessionId { get; private set; }  // 外键，指向 ChatSession
-        public ChatSession? ChatSession { get; private set; }  // 导航属性
+        public Guid ChatSessionId { get; set; }
+        public ChatSession? ChatSession { get; set; }
 
         // 映射到数据库的 SenderType 字段 (1=Customer, 2=Agent, 3=System)
-        public int SenderType { get; private set; }
-        public Guid? SenderId { get; private set; }  // 可选，AgentId 当 SenderType=2
+        public int SenderType { get; set; }
+        public Guid? SenderId { get; set; }  // 可选，AgentId 当 SenderType=2
 
-        public string Content { get; private set; } = string.Empty;
-        public int MessageType { get; private set; } = 1;  // 1=Text, 2=Image, etc.
-        public string? Metadata { get; private set; }
-        public bool IsRead { get; private set; } = false;
-        public DateTime? ReadAt { get; private set; }
-        public DateTime CreatedAt { get; private set; } = DateTime.UtcNow;
+        public string Content { get; set; } = string.Empty;
+        public int MessageType { get; set; } = 1;  // 1=Text, 2=Image, etc.
+        public string? Metadata { get; set; }
+        public bool IsRead { get; set; } = false;
+        public DateTime? ReadAt { get; set; }
+        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
-        private ChatMessage() { }
+        /// <summary>
+        /// 来源类型（Customer/SenderType映射）
+        /// </summary>
+        public string SenderTypeName => SenderType switch
+        {
+            1 => "Customer",
+            2 => "Agent",
+            3 => "System",
+            _ => "Unknown"
+        };
+        
+        /// <summary>
+        /// 是否为买家发送
+        /// </summary>
+        public bool IsFromUser => SenderType == 1;
+        
+        /// <summary>
+        /// 消息时间戳（别名）
+        /// </summary>
+        public DateTime Timestamp => CreatedAt;
 
         public static ChatMessage FromUser(string content, Guid chatSessionId)
         {

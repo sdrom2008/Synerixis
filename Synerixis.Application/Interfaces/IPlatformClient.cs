@@ -28,6 +28,11 @@ namespace Synerixis.Application.Interfaces
         /// 验证 Webhook 请求签名
         /// </summary>
         Task<bool> VerifySignatureAsync(HttpRequest request, CancellationToken cancellationToken = default);
+        
+        /// <summary>
+        /// 获取客户（买家）的订单信息（非商户订单，而是客户在平台的订单）
+        /// </summary>
+        Task<string?> GetCustomerOrderAsync(string platform, string customerId, CancellationToken cancellationToken = default);
     }
 
     /// <summary>

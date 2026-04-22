@@ -26,10 +26,13 @@ namespace Synerixis.Domain.Entities
         public string? LastLoginType { get; private set; }                //最后登录方式：wechat / phone
         public DateTime? UpdatedAt { get; private set; }
 
-        public ICollection<SellerProduct> SellerProducts { get; set; } = new List<SellerProduct>();  // 新增：商户拥有的商品关联集合
+        public ICollection<SellerProduct> SellerProducts { get; set; } = new List<SellerProduct>();
 
-        // 反向导航：该商家的所有会话
+        // 反��导航：该商家的所有会话
         public List<Conversation> Conversations { get; private set; } = new();
+
+        // 反向导航：该商家的所有平台绑定
+        public ICollection<PlatformConnection> PlatformConnections { get; set; } = new List<PlatformConnection>();
 
         public SellerConfig? Config { get; set; }  // 导航属性（可选）
 

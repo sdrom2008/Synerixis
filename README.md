@@ -30,8 +30,17 @@ Synerixis AI 智能客服 专注于 .NET 生态下的 AI 智能客服开发，�
   - 开发工具：HBuilder (支持多端生成：App/小程序/H5)
   - 前端目录：`frontend/`
 - **AI 服务**：Azure OpenAI / 阿里云大模型 API
-- **数据库**：PostgreSQL / SQL Server
+- **数据库**：MySQL 8.4.8
 - **部署**：Docker, Kubernetes
+
+## 支持平台（Phase 1）
+
+| 平台 | 地区 | 状态 | API 文档 |
+|------|------|------|---------|
+| **Shopee** | 东南亚 + 台湾 | ✅ 已实现 | https://shopee.dev |
+| **TikTok Shop** | 东南亚 + 英国 + 美国 | 🚧 开发中 | https://developers.tiktok.com |
+
+> 后续 Phase 2 可扩展：Lazada、Amazon、AliExpress 等平台
 
 ## 功能架构
 

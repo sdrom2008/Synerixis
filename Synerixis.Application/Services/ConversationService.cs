@@ -4,7 +4,6 @@ using System.Threading.Tasks;
 using Synerixis.Application.DTOs;
 using Synerixis.Application.Interfaces;
 using Synerixis.Domain.Entities;
-using Synerixis.Application.Interfaces.Agents;
 
 namespace Synerixis.Application.Services
 {
@@ -54,7 +53,12 @@ namespace Synerixis.Application.Services
             var intent = await _intentClassifier.ClassifyAsync(messageContent, historyDtos);
 
             string replyContent;
-            var chatContext = new ChatContext { Messages = historyDtos };
+            var chatContext = new ChatContext 
+            { 
+                Messages = historyDtos,
+                CustomerId = customerId,
+                Platform = platform
+            };
             var agent = _agentRouter.GetAgent(intent);
 
             // Route to specific agent or general chat
