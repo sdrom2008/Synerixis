@@ -79,7 +79,7 @@ builder.Services.AddSingleton<SemanticKernelService>();
 
 
 // 4. 业务服务（顺序：先基础，后依赖）
-builder.Services.AddSingleton<IChatSessionRepository, ChatSessionRepository>(); // 单例仓储可共享
+builder.Services.AddScoped<IChatSessionRepository, ChatSessionRepository>(); // 单例仓储可共享
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IGeneralChatAgent, GeneralChatAgent>();
 builder.Services.AddScoped<IIntentClassifier, IntentClassifier>();
@@ -96,14 +96,14 @@ builder.Services.AddScoped<IAgentStatsService, AgentStatsService>();
 
 // Register all agents. The DI container will provide them to the AgentRouter.
 // Agent implementation verified: all implement IAgent interface correctly
-builder.Services.AddSingleton<IAgent, OrderAgent>();
-builder.Services.AddSingleton<IAgent, LogisticsAgent>();
+builder.Services.AddScoped<IAgent, OrderAgent>();
+builder.Services.AddScoped<IAgent, LogisticsAgent>();
 
 // 5. Agent 注册（所有具体 Agent）
-builder.Services.AddSingleton<IAgent, ProductOptimizationAgent>();
-builder.Services.AddSingleton<IAgent, CompetitorAnalysisAgent>();
+builder.Services.AddScoped<IAgent, ProductOptimizationAgent>();
+builder.Services.AddScoped<IAgent, CompetitorAnalysisAgent>();
 // 如果有其他 Agent，在这里继续加
-builder.Services.AddSingleton<AliyunSmsService>();
+builder.Services.AddScoped<AliyunSmsService>();
 
 // --- PLATFORM CLIENTS (Shopee, Taobao, Douyin) ---
 // builder.Services.AddScoped<TaobaoPlatformClient>();  // TODO: create TaobaoPlatformClient
