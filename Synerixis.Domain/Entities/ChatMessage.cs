@@ -23,6 +23,13 @@ namespace Synerixis.Domain.Entities
         public string Content { get; set; } = string.Empty;
         public int MessageType { get; set; } = 1;  // 1=Text, 2=Image, etc.
         public string? Metadata { get; set; }
+
+        /// <summary>
+        /// 平台消息唯一 ID（用于 Webhook 幂等性去重）
+        /// 如 TikTok event_id, Shopee push_id 等
+        /// </summary>
+        public string? PlatformMsgId { get; set; }
+
         public bool IsRead { get; set; } = false;
         public DateTime? ReadAt { get; set; }
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

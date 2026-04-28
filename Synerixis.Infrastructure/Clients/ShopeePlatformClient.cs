@@ -262,5 +262,96 @@ namespace Synerixis.Infrastructure.Clients
             _logger.LogWarning("[Shopee] GetCustomerOrderAsync stub for platform={Platform} customer={CustomerId}", platform, customerId);
             return null; // TODO: 接入 Shopee Order API
         }
+
+        /// <summary>
+        /// 获取 Shopee 授权 URL
+        /// </summary>
+        public async Task<string> GetAuthorizationUrlAsync(string state)
+        {
+            var appKey = _config["Shopee:AppKey"];
+            var redirectUri = _config["Shopee:RedirectUri"];
+            
+            if (string.IsNullOrEmpty(appKey) || string.IsNullOrEmpty(redirectUri))
+                throw new InvalidOperationException("Shopee AppKey 和 RedirectUri 未配置");
+
+            return $"https://partner.shopeemobile.com/mobile/openplatform/seller?appkey={appKey}&redirect_uri={Uri.EscapeDataString(redirectUri)}&state={state}";
+        }
+
+        /// <summary>
+        /// 通过授权码获取 Token
+        /// </summary>
+        public async Task<(string AccessToken, string RefreshToken)> GetAccessTokenAsync(string authorizationCode, string state, CancellationToken cancellationToken = default)
+        {
+            var appKey = _config["Shopee:AppKey"];
+            var appSecret = _config["Shopee:AppSecret"];
+            var redirectUri = _config["Shopee:RedirectUri"];
+
+            var body = $"appkey={appKey}&code={authorizationCode}&redirect_uri={Uri.EscapeDataString(redirectUri)}";
+            var hash = GenerateSignature(appSecret, body);
+
+            var endpoint = _config["Shopee:Endpoint"] ?? "https://partner.shopeemobile.com";
+            var url = $"{endpoint}/api/v2/auth/app_token";
+
+            var httpContent = new StringContent($"{body}&sign={hash}", Encoding.UTF8, "application/x-www-form-urlencoded");
+            
+            using var http = new HttpClient();
+            var response = await http.PostAsync(url, httpContent, cancellationToken);
+            
+            if (!response.IsSuccessStatusCode)
+            {
+                var errorContent = await response.Content.ReadAsStringAsync(cancellationToken);
+                _logger.LogError("[Shopee] Failed to get access token: {Error}", errorContent);
+                throw new InvalidOperationException("获取 Token 失败");
+            }
+
+            var json = await response.Content.ReadAsStringAsync(cancellationToken);
+            var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+            
+            var accessToken = root.GetProperty("access_token").GetString();
+            var refreshToken = root.TryGetProperty("refresh_token", out var refreshElem) ? refreshElem.GetString() : string.Empty;
+
+            return (accessToken, refreshToken);
+        }
+
+        /// <summary>
+        /// 获取店铺信息
+        /// </summary>
+        public async Task<(string ShopId, string Nickname, string AvatarUrl)> GetShopInfoAsync(string accessToken, CancellationToken cancellationToken = default)
+        {
+            var appKey = _config["Shopee:AppKey"];
+            var appSecret = _config["Shopee:AppSecret"];
+            var endpoint = _config["Shopee:Endpoint"] ?? "https://partner.shopeemobile.com";
+
+            // 注意：Shopee Partner API 需要先用 app_token 获取 shop_id，这里简化处理，假设先通过某种方式拿到 shopId
+            // 实际流程通常是：App Token -> Get Shop List -> Get Shop Info
+            // 这里我们返回一个占位符，因为完整的绑定流程需要先获取 Shop List
+            
+            var url = $"{endpoint}/api/v2/shop/get?access_token={accessToken}";
+            
+            using var http = new HttpClient();
+            http.DefaultRequestHeaders.Add("x-api-sign", GenerateSignature(appSecret, "shop_id")); // Simplified for demo
+            var response = await http.GetAsync(url);
+            
+            if (!response.IsSuccessStatusCode)
+                throw new InvalidOperationException("获取店铺信息失败");
+
+            var json = await response.Content.ReadAsStringAsync();
+            var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+
+            // Shopee GetShop 返回的是列表，取第一个
+            var shopId = root.GetProperty("shop_id").ToString();
+            var nickname = root.TryGetProperty("nickname", out var nickElem) ? nickElem.GetString() : "Shopee 店铺";
+            
+            return (shopId, nickname, string.Empty);
+        }
+
+        private string GenerateSignature(string secret, string body)
+        {
+            using var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(secret));
+            var hash = hmac.ComputeHash(Encoding.UTF8.GetBytes(body));
+            return BitConverter.ToString(hash).Replace("-", "").ToLowerInvariant();
+        }
     }
 }

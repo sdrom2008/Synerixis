@@ -106,9 +106,7 @@ builder.Services.AddScoped<IAgent, CompetitorAnalysisAgent>();
 builder.Services.AddScoped<AliyunSmsService>();
 
 // --- PLATFORM CLIENTS (Shopee, Taobao, Douyin) ---
-// builder.Services.AddScoped<TaobaoPlatformClient>();  // TODO: create TaobaoPlatformClient
 builder.Services.AddScoped<ShopeePlatformClient>();
-// builder.Services.AddScoped<DouyinPlatformClient>(); // 待创建
 builder.Services.AddScoped<PlatformClientRouter>();
 // --- END PLATFORM CLIENTS ---
 
@@ -118,11 +116,11 @@ builder.Services.AddScoped<WeChatPayV3Client>(serviceProvider =>
     var config = serviceProvider.GetRequiredService<IConfiguration>();
     var dbContext = serviceProvider.GetRequiredService<AppDbContext>();
     return new WeChatPayV3Client(
-        config["WeChatPay:MchId"],
-        config["WeChatPay:AppId"],
-        config["WeChatPay:ApiV3Key"],
-        config["WeChatPay:CertPath"],
-        config["WeChatPay:CertPassword"],
+        config["WeChatPay:MchId"] ?? "",
+        config["WeChatPay:AppId"] ?? "",
+        config["WeChatPay:ApiV3Key"] ?? "",
+        config["WeChatPay:CertPath"] ?? "",
+        config["WeChatPay:CertPassword"] ?? "",
         dbContext);
 });
 
@@ -233,6 +231,14 @@ else
 // 泛型仓储（推荐只注册一次）
 builder.Services.AddScoped(typeof(IRepository<>), typeof(Repository<>));
 
+// 注册订单仓储
+builder.Services.AddScoped<IOrderRepository, OrderRepository>();
+
+// 注册平台客户端路由器及商户平台服务
+builder.Services.AddScoped<IPlatformClientRouter, PlatformClientRouter>();
+builder.Services.AddScoped<IPlatformConnectionRepository, PlatformConnectionRepository>();
+builder.Services.AddScoped<IMerchantPlatformService, MerchantPlatformService>();
+
 // HttpClient 工厂（如果 Agent 里需要调用外部 API）
 builder.Services.AddHttpClient();
 
@@ -256,7 +262,7 @@ using (var scope = app.Services.CreateScope())
 app.UseStaticFiles();
 
 // 中间件管道
-app.UseCors("AllowAll");
+      app.UseCors("AllowSpecific");
 
 //if (app.Environment.IsDevelopment())
 //{

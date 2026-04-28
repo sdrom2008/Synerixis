@@ -47,6 +47,17 @@ namespace Synerixis.Api.Controllers
         }
 
         /// <summary>
+        /// 获取当前 Seller 的 ID
+        /// </summary>
+        protected Guid GetCurrentSellerId()
+        {
+            var current = GetCurrentUser();
+            if (!current.IsSeller)
+                throw new UnauthorizedAccessException("仅商户可访问");
+            return current.UserId;
+        }
+
+        /// <summary>
         /// 获取当前 Agent（客服或主管）
         /// </summary>
         protected Agent GetCurrentAgent(AppDbContext db)

@@ -51,18 +51,29 @@ my-project/
 
 ## 已知问题与待办
 
-1. **Agent DI 注册**：需要恢复 DI 注册并测试 Router 路由
-2. **模型文件**：`regime_model.pkl` 用于量化交易，非本项目核心
+1. **Agent DI 注册**：✅ 已完成 - OrderAgent, LogisticsAgent, ProductOptimizationAgent, CompetitorAnalysisAgent 已注册
+2. **CORS 中间件**：✅ 已修复 - AllowAll → AllowSpecific
+3. **支付 Provider**：✅ 已启用 - WeChatPayV3Client, WechatPaymentProvider, AlipayPaymentProvider
+4. **Nullable 警告**：✅ 已清理 - 从 110 降至 2 条（仅剩 HttpContextFactory 和 CompetitorAnalysisController）
+5. **RAG 代码索引**：✅ 已完成 - MySQL 1617 chunks, TF-IDF 5000 维词向量
+6. **模型文件**：`regime_model.pkl` 用于量化交易，非本项目核心
+
+## RAG 使用
+
+```bash
+# 查询代码库
+PYTHONPATH=/home/rich/.local/lib/python3.12/site-packages python3 tools/query_rag.py "你的问题" top_k
+```
 
 ## 下一步建议
 
-- [ ] 统一 Agent 接口
-- [ ] 恢复 Program.cs 中的 DI 注册
-- [ ] 补充 ConversationService 中的错误处理与日志
-- [ ] 编写部署文档和环境变量说明
+- [ ] 补齐 admin-console 管理后台源码（目前为空壳）
+- [ ] 实现 TikTokShop webhook 集成
+- [ ] 补充 Docker Compose 部署文件
+- [ ] 清理 AlipayPaymentProvider nullable 警告
 - [ ] 将项目从"电商平台客服"升级为"跨境电商平台智能客服"
 
 ---
 
-最后更新：2026-04-14
+最后更新：2026-04-24 (RAG index + bug fixes)
 GitHub: https://github.com/sdrom2008/my-project

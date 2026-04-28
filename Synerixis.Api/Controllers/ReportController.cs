@@ -90,11 +90,11 @@ namespace Synerixis.Api.Controllers
             // 3. 客服绩效（今日）
             var todayAgentStats = await _db.AgentStats
                 .Include(s => s.Agent)
-                .Where(s => s.Agent.ShopId == shopId && s.StatDate == todayStart)
+                .Where(s => s.Agent != null && s.Agent.ShopId == shopId && s.StatDate == todayStart)
                 .Select(s => new
                 {
                     AgentId = s.AgentId,
-                    AgentName = s.Agent.Name,
+                    AgentName = s.Agent!.Name,
                     s.TotalConversations,
                     s.AvgResponseTimeSeconds,
                     s.ResolutionRate
@@ -179,14 +179,14 @@ namespace Synerixis.Api.Controllers
 
             var stats = await _db.AgentStats
                 .Include(s => s.Agent)
-                .Where(s => s.StatDate >= startDate && s.StatDate <= endDate && s.Agent.ShopId == shopId)
+                .Where(s => s.Agent != null && s.StatDate >= startDate && s.StatDate <= endDate && s.Agent.ShopId == shopId)
                 .OrderByDescending(s => s.StatDate)
-                .ThenBy(s => s.Agent.Name)
+                .ThenBy(s => s.Agent!.Name)
                 .Select(s => new
                 {
                     Date = s.StatDate,
-                    AgentName = s.Agent.Name,
-                    AgentRole = s.Agent.Role,
+                    AgentName = s.Agent!.Name,
+                    AgentRole = s.Agent!.Role,
                     s.TotalConversations,
                     s.ResolvedCount,
                     ResolutionRate = Math.Round(s.ResolutionRate * 100, 2),

@@ -73,7 +73,7 @@ namespace Synerixis.Api.Controllers
                     message,
                     extraData);
             }
-            catch (Exception ex)
+         catch (Exception)
             {
                 // 可加日志
                 // _logger.LogError(ex, "处理消息失败: SellerId={SellerId}", sellerId);
@@ -125,7 +125,7 @@ namespace Synerixis.Api.Controllers
             Guid sellerId = User.GetSellerId();
 
             var query = _conversationRepository.GetQueryable(
-                c => c.SellerId == sellerId && (c.IsDeleted == null || c.IsDeleted == false))
+                c => c.SellerId == sellerId && !c.IsDeleted)
                 .OrderByDescending(c => c.LastActiveAt);
 
             var total = await query.CountAsync();

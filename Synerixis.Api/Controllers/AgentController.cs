@@ -233,8 +233,8 @@ namespace Synerixis.Api.Controllers
             if (session.Status != SessionStatus.Pending)
                 return BadRequest($"Cannot assign a session with status {session.Status}");
 
-            var targetAgent = await _db.Agents.FirstOrDefaultAsync(a => a.Id == dto.AgentId && a.ShopId == currentAgent.ShopId);
-            if (targetAgent == null) return BadRequest("Target agent not found or not in same shop");
+             var targetAgent = await _db.Agents.FirstOrDefaultAsync(a => a.Id == dto.AgentId && a.ShopId == currentAgent.ShopId);
+            if (targetAgent == null || !dto.AgentId.HasValue) return BadRequest("Target agent not found or not in same shop");
 
             session.AssignToAgent(dto.AgentId.Value);
             await _db.SaveChangesAsync();

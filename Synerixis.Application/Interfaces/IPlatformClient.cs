@@ -33,6 +33,21 @@ namespace Synerixis.Application.Interfaces
         /// 获取客户（买家）的订单信息（非商户订单，而是客户在平台的订单）
         /// </summary>
         Task<string?> GetCustomerOrderAsync(string platform, string customerId, CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// 【绑定功能】获取 OAuth 授权 URL
+        /// </summary>
+        Task<string> GetAuthorizationUrlAsync(string state);
+
+        /// <summary>
+        /// 【绑定功能】通过授权码获取 Access Token
+        /// </summary>
+        Task<(string AccessToken, string RefreshToken)> GetAccessTokenAsync(string authorizationCode, string state, CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// 【绑定功能】获取店铺信息
+        /// </summary>
+        Task<(string ShopId, string Nickname, string AvatarUrl)> GetShopInfoAsync(string accessToken, CancellationToken cancellationToken = default);
     }
 
     /// <summary>

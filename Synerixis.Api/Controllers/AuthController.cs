@@ -13,7 +13,6 @@ using Synerixis.Domain.Entities;
 using Synerixis.Infrastructure.Data;
 using Synerixis.Infrastructure.Services;
 using Synerixis.Infrastructure.Clients;
-using Microsoft.EntityFrameworkCore;
 using System.IdentityModel.Tokens.Jwt;
 using System.Linq;
 using System.Net.Http;
@@ -116,12 +115,12 @@ namespace Synerixis.Api.Controllers
             // 开发环境或未配置短信网关时，允许测试验证码通过
             if (_env.IsDevelopment() || string.IsNullOrEmpty(_config["AliyunSms:AccessKeyId"]))
             {
-                if (dto.Code != "123456" && (!_cache.TryGetValue($"sms:{fullPhone}", out string cachedCode) || cachedCode != dto.Code))
+                if (dto.Code != "123456" && (!_cache.TryGetValue($"sms:{fullPhone}", out string? cachedCode) || cachedCode != dto.Code))
                     return BadRequest("验证码错误或已过期");
             }
             else
             {
-                if (!_cache.TryGetValue($"sms:{fullPhone}", out string cachedCode) || cachedCode != dto.Code)
+                if (!_cache.TryGetValue($"sms:{fullPhone}", out string? cachedCode) || cachedCode != dto.Code)
                     return BadRequest("验证码错误或已过期");
             }
 
@@ -264,12 +263,12 @@ namespace Synerixis.Api.Controllers
             var fullPhoneCode = $"+{dto.CountryCode}{dto.Phone}".Replace(" ", "");
             if (_env.IsDevelopment() || string.IsNullOrEmpty(_config["AliyunSms:AccessKeyId"]))
             {
-                if (dto.Code != "123456" && (!_cache.TryGetValue($"sms:{fullPhoneCode}", out string cachedCode) || cachedCode != dto.Code))
+                if (dto.Code != "123456" && (!_cache.TryGetValue($"sms:{fullPhoneCode}", out string? cachedCode) || cachedCode != dto.Code))
                     return BadRequest("验证码错误或已过期");
             }
             else
             {
-                if (!_cache.TryGetValue($"sms:{fullPhoneCode}", out string cachedCode) || cachedCode != dto.Code)
+                if (!_cache.TryGetValue($"sms:{fullPhoneCode}", out string? cachedCode) || cachedCode != dto.Code)
                     return BadRequest("验证码错误或已过期");
             }
 
@@ -319,18 +318,18 @@ namespace Synerixis.Api.Controllers
             var response = await _http.GetStringAsync(url);
             var wxResult = JsonConvert.DeserializeObject<Dictionary<string, object>>(response);
 
-            if (wxResult.ContainsKey("errcode"))
-                return BadRequest(new { code = 400, msg = $"微信错误: {wxResult["errmsg"]}" });
+            if (wxResult == null || wxResult.ContainsKey("errcode"))
+                return BadRequest(new { code = 400, msg = $"微信错误: {wxResult?["errmsg"]}" });
 
-            var sessionKey = wxResult["session_key"].ToString();
-            var openIdFromWx = wxResult["openid"].ToString();
+            var sessionKey = wxResult["session_key"]?.ToString();
+            var openIdFromWx = wxResult["openid"]?.ToString();
 
             if (openIdFromWx != dto.OpenId)
                 return BadRequest(new { code = 400, msg = "openid 不匹配" });
 
             try
             {
-                var phoneInfo = WxDecryptHelper.DecryptPhone(dto.EncryptedData, dto.Iv, sessionKey, appId);
+                var phoneInfo = WxDecryptHelper.DecryptPhone(dto.EncryptedData, dto.Iv, sessionKey ?? string.Empty, appId ?? string.Empty);
                 var phone = $"+86{phoneInfo.PurePhoneNumber}"; // 微信手机号为中国，添加 +86
 
                 var seller = await _db.Sellers.FirstOrDefaultAsync(s => s.OpenId == dto.OpenId);
@@ -365,7 +364,7 @@ namespace Synerixis.Api.Controllers
                     msg = "绑定成功"
                 });
             }
-            catch (Exception ex)
+            catch (Exception)
             {
                 return StatusCode(500, new { code = 500, msg = "系统错误，请重试" });
             }

@@ -21,9 +21,9 @@ namespace Synerixis.Infrastructure.Payment
         {
             return channel.ToLowerInvariant() switch
             {
-                "wechat" => _serviceProvider.GetService<WechatPaymentProvider>(),
-                "alipay" => _serviceProvider.GetService<AlipayPaymentProvider>(),
-                _ => null
+                "wechat" => _serviceProvider.GetRequiredService<WechatPaymentProvider>(),
+                "alipay" => _serviceProvider.GetRequiredService<AlipayPaymentProvider>(),
+                _ => throw new ArgumentException($"Unsupported payment channel: {channel}")
             };
         }
     }

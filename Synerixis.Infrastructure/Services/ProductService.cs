@@ -86,7 +86,7 @@ namespace Synerixis.Application.Services
             Guid sellerId,
             int page = 1,
             int pageSize = 10,
-            string keyword = null)
+            string? keyword = null)
         {
             var query = _db.SellerProducts
                 .Include(p => p.Product)          // 加载主商品

@@ -132,7 +132,7 @@ namespace Synerixis.Api.Controllers
                     return Content("success");  // 支付宝回调返回 success
                 }
             }
-            catch (Exception ex)
+            catch (Exception)
             {
                 return Content(channel == "wechat" ? "<xml><return_code><![CDATA[FAIL]]></return_code><return_msg><![CDATA[服务器错误]]></return_msg></xml>" : "fail");
             }

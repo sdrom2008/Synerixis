@@ -9,11 +9,13 @@ using Synerixis.Infrastructure.Repositories;
 using System;
 using System.Linq;
 using System.Threading.Tasks;
+using System.Security.Cryptography;
+using System.Text;
 
 namespace Synerixis.Api.Controllers
 {
     /// <summary>
-    /// 商户端接口（查看会话、转人工）
+    /// 商户端接口（查看会话、转人工、绑定平台）
     /// </summary>
     [Authorize]
     [Route("api/merchant")]
@@ -21,11 +23,93 @@ namespace Synerixis.Api.Controllers
     {
         private readonly AppDbContext _db;
         private readonly IRepository<ChatSession> _sessionRepo;
+        private readonly IMerchantPlatformService _platformService;
+        private readonly IPlatformConnectionRepository _connectionRepo;
 
-        public MerchantController(AppDbContext db, IRepository<ChatSession> sessionRepo)
+        public MerchantController(
+            AppDbContext db, 
+            IRepository<ChatSession> sessionRepo,
+            IMerchantPlatformService platformService,
+            IPlatformConnectionRepository connectionRepo)
         {
             _db = db;
             _sessionRepo = sessionRepo;
+            _platformService = platformService;
+            _connectionRepo = connectionRepo;
+        }
+
+        /// <summary>
+        /// 获取可绑定的平台列表
+        /// </summary>
+        [HttpGet("platforms")]
+        public async Task<IActionResult> GetPlatforms()
+        {
+            var platforms = await _platformService.GetAvailablePlatformsAsync();
+            return Ok(new { items = platforms });
+        }
+
+        /// <summary>
+        /// 获取指定平台的授权 URL
+        /// </summary>
+        [HttpGet("bind/{platform}")]
+        public async Task<IActionResult> GetBindUrl(string platform)
+        {
+            var state = GenerateState();
+            var url = await _platformService.GetAuthorizationUrlAsync(platform, state);
+            return Ok(new { url, state });
+        }
+
+        /// <summary>
+        /// 绑定平台店铺（处理 OAuth 回调）
+        /// </summary>
+        [HttpPost("bind/callback")]
+        public async Task<IActionResult> BindCallback([FromBody] BindCallbackRequest request)
+        {
+            var sellerId = GetCurrentSellerId();
+            var result = await _platformService.BindShopAsync(request.Platform, request.Code, sellerId);
+            
+            if (result.Success)
+            {
+                return Ok(new { message = "绑定成功", result });
+            }
+            return BadRequest(new { message = result.Error });
+        }
+
+        /// <summary>
+        /// 获取已绑定的店铺列表
+        /// </summary>
+        [HttpGet("connections")]
+        public async Task<IActionResult> GetConnections()
+        {
+            var sellerId = GetCurrentSellerId();
+            var connections = await _connectionRepo.GetBySellerIdAndActiveAsync(sellerId);
+            
+            var items = connections.Select(c => new 
+            { 
+                c.Id, 
+                c.Platform, 
+                c.ShopId, 
+                c.Nickname, 
+                c.AvatarUrl,
+                c.IsActive 
+            });
+            
+            return Ok(new { items });
+        }
+
+         /// <summary>
+        /// 解绑店铺
+        /// </summary>
+        [HttpPost("unbind/{platform}")]
+        public async Task<IActionResult> Unbind(string platform)
+        {
+            var sellerId = GetCurrentSellerId();
+            var connection = await _connectionRepo.GetBySellerIdAsync(sellerId);
+            if (connection == null)
+                return NotFound("未找到绑定记录");
+
+            await _platformService.UnbindShopAsync(platform, connection.Id);
+            return Ok(new { message = "已解绑" });
         }
 
         /// <summary>
@@ -155,5 +239,19 @@ namespace Synerixis.Api.Controllers
                 return HandleError(ex);
             }
         }
+
+        private string GenerateState()
+        {
+            var buffer = new byte[16];
+            using var rng = RandomNumberGenerator.Create();
+            rng.GetBytes(buffer);
+            return Convert.ToBase64String(buffer);
+        }
+    }
+
+    public class BindCallbackRequest
+    {
+        public string Platform { get; set; } = string.Empty;
+        public string Code { get; set; } = string.Empty;
     }
 }

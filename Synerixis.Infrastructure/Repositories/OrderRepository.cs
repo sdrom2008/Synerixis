@@ -40,5 +40,40 @@ namespace Synerixis.Infrastructure.Repositories
                 .OrderByDescending(o => o.OrderTime)
                 .FirstOrDefaultAsync();
         }
+
+        /// <summary>
+        /// 【B2B】查询店铺下的订单列表（支持分页）
+        /// </summary>
+        public async Task<PaginatedList<Order>> GetByShopIdAsync(Guid shopId, int page = 1, int pageSize = 20)
+        {
+            var query = _context.Orders
+                .Where(o => o.ShopId == shopId)
+                .OrderByDescending(o => o.OrderTime);
+
+            var totalCount = await query.CountAsync();
+            var items = await query
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .ToListAsync();
+
+            return new PaginatedList<Order>
+            {
+                Items = items,
+                TotalCount = totalCount,
+                Page = page,
+                PageSize = pageSize
+            };
+        }
+
+        /// <summary>
+        /// 【B2C】查询特定买家在店铺下的订单
+        /// </summary>
+        public async Task<IEnumerable<Order>> GetByShopIdAndCustomerIdAsync(Guid shopId, string customerId)
+        {
+            return await _context.Orders
+                .Where(o => o.ShopId == shopId && o.CustomerId == customerId)
+                .OrderByDescending(o => o.OrderTime)
+                .ToListAsync();
+        }
     }
 }

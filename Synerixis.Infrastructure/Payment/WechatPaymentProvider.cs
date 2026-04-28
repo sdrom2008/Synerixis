@@ -40,12 +40,12 @@ namespace Synerixis.Infrastructure.Payment
             }
 
             //订单传过去 weixin订单产生
-            var payParams = await _client.CreateJsApiOrderAsync(
+             var payParams = await _client.CreateJsApiOrderAsync(
                 request.OutTradeNo,
                 amountInFen,
-                request.Description,
-                request.OpenId,
-                request.NotifyUrl ?? _config["WeChatPay:NotifyUrl"]
+                request.Description ?? "Synerixis Subscription",
+                request.OpenId ?? "",
+                request.NotifyUrl ?? _config["WeChatPay:NotifyUrl"] ?? ""
             );
 
             // 保存订单（从 Controller 迁移过来）

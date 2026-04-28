@@ -68,12 +68,13 @@ namespace Synerixis.Application.Interfaces
 
         public PlatformConnectionResult() { }
 
-        public PlatformConnectionResult(Guid id, string platform, bool success, string? shopId = null, string? error = null)
+        public PlatformConnectionResult(Guid id, string platform, bool success, string? shopId = null, string? nickname = null, string? error = null)
         {
             ConnectionId = id;
             Platform = platform;
             Success = success;
             ShopId = shopId;
+            Nickname = nickname;
             Error = error;
         }
     }

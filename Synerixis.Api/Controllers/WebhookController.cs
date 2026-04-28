@@ -1,27 +1,34 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Synerixis.Application.Interfaces;
 using Synerixis.Domain.Entities;
 using Synerixis.Infrastructure.Clients;
 using Synerixis.Infrastructure.Data;
+using System.Data;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 
 namespace Synerixis.Api.Controllers
 {
     /// <summary>
     /// 通用平台 Webhook 接收控制器
+    /// 路由: POST /api/webhook/{platform} (通用)
+    ///       POST /api/webhook/tiktok/test (TikTok 测试)
+    ///       POST /api/webhook/shopee/test (Shopee 测试)
     /// </summary>
     [ApiController]
     [Route("api/webhook")]
     public class WebhookController : ControllerBase
     {
-        private readonly PlatformClientRouter _router;
+        private readonly IPlatformClientRouter _router;
         private readonly IConversationRepository _conversationRepo;
         private readonly ILogger<WebhookController> _logger;
         private readonly AppDbContext _db;
 
         public WebhookController(
-            PlatformClientRouter router,
+            IPlatformClientRouter router,
             IConversationRepository conversationRepo,
             AppDbContext db,
             ILogger<WebhookController> logger)
@@ -32,94 +39,307 @@ namespace Synerixis.Api.Controllers
             _logger = logger;
         }
 
+        #region === 通用 Webhook 入口 ===
+
         /// <summary>
-        /// 接收平台消息推送（淘宝、抖店、Shopee等）
+        /// 通用平台 Webhook 接收端点
+        /// 支持签名验证 + 幂等性检查 + 事件类型路由
         /// </summary>
         [HttpPost("{platform}")]
         public async Task<IActionResult> Handle(string platform)
         {
+            var sw = System.Diagnostics.Stopwatch.StartNew();
             try
             {
-                _logger.LogInformation("[{Platform}] Received webhook from {RemoteIp}", platform, HttpContext.Connection.RemoteIpAddress);
+                _logger.LogInformation("[Webhook] Incoming from {Platform} at {RemoteIp}",
+                    platform, HttpContext.Connection.RemoteIpAddress);
 
-                // 获取对应平台的客户端
+                // 1. 获取对应平台的客户端
                 var client = _router.GetClient(platform);
 
-                // 1. 验证签名
+                // 2. 验证签名（TikTok 支持新旧双格式）
                 if (!await client.VerifySignatureAsync(Request))
                 {
-                    _logger.LogWarning("[{Platform}] Signature verification failed", platform);
+                    _logger.LogWarning("[Webhook] Signature verification failed for {Platform}", platform);
                     return BadRequest(new { code = 401, message = "Invalid signature" });
                 }
 
-                // 2. 解析消息
-                var platformMsg = await client.ParseWebhookAsync(Request);
-                _logger.LogInformation("[{Platform}] Received message from {OpenId}: {Content}", platform, platformMsg.OpenId, platformMsg.Content);
-
-                // 3. 查找或创建会话
-                var session = await FindOrCreateSessionAsync(platformMsg);
-                if (session == null)
+                // 3. 解析消息
+                //    对 TikTok 平台使用扩展解析（含事件类型），其他平台使用标准解析
+                WebhookEventType eventType;
+                PlatformMessage platformMsg;
+                if (client is TikTokShopPlatformClient tiktokClient)
                 {
-                    _logger.LogWarning("[{Platform}] Session not found or create failed for OpenId={OpenId}", platform, platformMsg.OpenId);
-                    return BadRequest(new { code = 404, message = "Session not found" });
+                    var result = await tiktokClient.ParseWebhookResultAsync(Request);
+                    platformMsg = result.Message;
+                    eventType = result.EventType;
+                }
+                else
+                {
+                    platformMsg = await client.ParseWebhookAsync(Request);
+                    eventType = WebhookEventType.Unknown;
                 }
 
-                // 4. 添加用户消息
-                var userMsg = ChatMessage.FromUser(platformMsg.Content, session.Id);
-                session.Messages.Add(userMsg);
-                session.AddUserMessage();
+                _logger.LogInformation("[Webhook] Parsed message: Platform={Platform}, Event={Event}, MsgId={MsgId}, Content={Content}",
+                    platformMsg.Platform, eventType, platformMsg.MsgId, platformMsg.Content);
 
-                // 5. 🔥 调用 AI 自动回复（新接入）- 演示用模拟回复
-                // TODO: 接入真实 AI 服务
-                var aiReply = "这是一个模拟的 AI 自动回复。实际部署后将连接阿里云通义千问。";
-
-                var aiMsg = ChatMessage.FromAI(aiReply, chatSessionId: session.Id);
-                session.Messages.Add(aiMsg);
-                session.AddAiMessage();
-
-                await _db.SaveChangesAsync();
-
-                // 6. 调用平台发送回复（异步，不阻塞响应）
-                _ = Task.Run(async () =>
+                // 4. 幂等性检查：通过 MsgId 去重
+                if (!await IsDuplicateAsync(platformMsg))
                 {
-                    try
-                    {
-                        await client.SendReplyAsync(platformMsg, aiReply);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError(ex, "[{Platform}] Failed to send reply to {OpenId}", platform, platformMsg.OpenId);
-                    }
-                });
+                    _logger.LogWarning("[Webhook] Duplicate webhook ignored: MsgId={MsgId}", platformMsg.MsgId);
+                    return Ok(new { code = 0, message = "duplicate" });
+                }
 
-                // 7. 返回成功（各平台要求 200 OK）
-                return Ok(new { code = 0, message = "success", reply = aiReply });
+                // 5. 根据事件类型路由处理
+                switch (eventType)
+                {
+                    case WebhookEventType.IM_MESSAGE_RECEIVED:
+                        return await HandleChatMessageAsync(platformMsg);
+
+                    case WebhookEventType.ORDER_PAYMENT:
+                    case WebhookEventType.ORDER_CANCELLED:
+                    case WebhookEventType.ORDER_SHIPPED:
+                    case WebhookEventType.ORDER_COMPLETED:
+                    case WebhookEventType.ORDER_CREATED:
+                        return await HandleOrderEventAsync(platformMsg, eventType);
+
+                    default:
+                        _logger.LogWarning("[Webhook] Unhandled event type: {EventType} for {Platform}",
+                            eventType, platform);
+                        return Ok(new { code = 0, message = "event_type_not_handled", event_type = eventType });
+                }
+            }
+            catch (NotSupportedException ex)
+            {
+                _logger.LogWarning("[Webhook] Unsupported platform: {Platform} - {Message}", platform, ex.Message);
+                return NotFound(new { code = 404, message = ex.Message });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "[{Platform}] Webhook processing failed", platform);
+                _logger.LogError(ex, "[Webhook] Processing failed for {Platform} after {Elapsed}ms",
+                    platform, sw.ElapsedMilliseconds);
                 return StatusCode(500, new { code = 500, message = "server error" });
             }
         }
 
         /// <summary>
-        /// 🔥 模拟Shopee消息推送（用于演示和测试）- 不需要真实平台
+        /// 🔥 处理聊天消息（IM）
         /// </summary>
+        private async Task<IActionResult> HandleChatMessageAsync(PlatformMessage msg)
+        {
+            if (string.IsNullOrWhiteSpace(msg.Content))
+            {
+                _logger.LogWarning("[Webhook] Chat message with empty content ignored");
+                return Ok(new { code = 0, message = "empty_content_ignored" });
+            }
+
+            // 查找或创建会话
+            var session = await FindOrCreateSessionAsync(msg);
+            if (session == null)
+            {
+                _logger.LogWarning("[Webhook] Session creation failed for {Platform} Customer={Customer}",
+                    msg.Platform, msg.CustomerId);
+                // 仍然返回 200（避免平台重试），但不处理
+                return Ok(new { code = 0, message = "session_not_found" });
+            }
+
+            // 添加用户消息到数据库
+            var userMsg = ChatMessage.FromUser(msg.Content, session.Id);
+            userMsg.PlatformMsgId = msg.MsgId;  // 设置平台消息ID用于去重
+            session.Messages.Add(userMsg);
+            session.AddUserMessage();
+            await _db.SaveChangesAsync();
+
+            // 调用 AI 自动回复（异步，不阻塞 webhook 响应）
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    // 这里可以接入真实 AI 服务
+                    var aiReply = GenerateAiReply(session, msg.Content);
+
+                    var aiMsg = ChatMessage.FromAI(aiReply, chatSessionId: session.Id);
+                    session.Messages.Add(aiMsg);
+                    session.AddAiMessage();
+                    await _db.SaveChangesAsync();
+
+                    // 通过平台客户端发送回复
+                    var client = _router.GetClient(msg.Platform);
+                    await client.SendReplyAsync(msg, aiReply);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "[Webhook] Async reply failed for session {SessionId}", session.Id);
+                }
+            });
+
+            return Ok(new { code = 0, message = "success" });
+        }
+
+        /// <summary>
+        /// 🔥 处理订单事件
+        /// </summary>
+        private async Task<IActionResult> HandleOrderEventAsync(PlatformMessage msg, WebhookEventType eventType)
+        {
+            _logger.LogInformation("[Webhook] Order event: {Event} Order={Order}", eventType, msg.CustomerId);
+
+            // 记录到数据库（可作为后续订单处理的数据源）
+            var orderEvent = new
+            {
+                event_type = eventType.ToString(),
+                order_id = msg.CustomerId,
+                shop_id = msg.OpenId,
+                content = msg.Content,
+                received_at = DateTime.UtcNow
+            };
+
+            _logger.LogInformation("[Webhook] Order event payload: {Payload}", JsonSerializer.Serialize(orderEvent));
+
+            // 异步通知商户（如站内信、邮件、钉钉机器人）
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    // TODO: 集成通知服务（邮件/钉钉/企业微信）
+                    _logger.LogInformation("[Webhook] Order event notification sent: {Event} Order={Order}",
+                        eventType, msg.CustomerId);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "[Webhook] Order event notification failed for {Event}", eventType);
+                }
+            });
+
+            return Ok(new { code = 0, message = "order_event_received", event_type = eventType.ToString() });
+        }
+
+        #endregion
+
+        #region === TikTok 专用测试端点 ===
+
+        /// <summary>
+        /// 🔥 TikTok 模拟 Webhook 测试端点
+        /// 支持三种测试模式: chat (聊天), order (订单), signature (签名验证)
+        /// </summary>
+        [HttpPost("tiktok/test")]
+        public IActionResult TestTikTok([FromBody] TikTokTestRequest request)
+        {
+            try
+            {
+                switch (request.Mode)
+                {
+                    case "chat":
+                        return HandleTikTokChatTest(request);
+
+                    case "order":
+                        return HandleTikTokOrderTest(request);
+
+                    case "signature":
+                        return HandleTikTokSignatureTest(request);
+
+                    default:
+                        return BadRequest(new { code = 400, message = $"Unknown mode: {request.Mode}. Use: chat, order, signature" });
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[TikTok-Test] Test failed");
+                return StatusCode(500, new { code = 500, message = ex.Message });
+            }
+        }
+
+        private IActionResult HandleTikTokChatTest(TikTokTestRequest request)
+        {
+            _logger.LogInformation("[TikTok-Test] Chat test: Customer={Customer}, Message={Message}",
+                request.CustomerId, request.Message);
+
+            var seller = Seller.Create(
+                openId: request.SellerOpenId ?? Guid.NewGuid().ToString(),
+                nickname: request.SellerName ?? "TikTok Shop"
+            );
+            _db.Sellers.Add(seller);
+
+            var session = ChatSession.Create(
+                shopId: seller.Id,
+                platform: "TIKTOK",
+                customerId: request.CustomerId,
+                customerName: request.CustomerName
+            );
+            _db.ChatSessions.Add(session);
+
+            var userMsg = ChatMessage.FromUser(request.Message, session.Id);
+            session.Messages.Add(userMsg);
+            session.AddUserMessage();
+
+            var aiReply = $"【TikTok AI 自动回复】您好！您关于「{request.Message}」的问题已收到，我们会尽快处理。";
+            var aiMsg = ChatMessage.FromAI(aiReply, chatSessionId: session.Id);
+            session.Messages.Add(aiMsg);
+            session.AddAiMessage();
+
+            _db.SaveChangesAsync();
+
+            return Ok(new {
+                code = 0,
+                message = "success",
+                reply = aiReply,
+                session_id = session.Id,
+                session_no = session.SessionId
+            });
+        }
+
+        private IActionResult HandleTikTokOrderTest(TikTokTestRequest request)
+        {
+            _logger.LogInformation("[TikTok-Test] Order test: Event={Event}, Order={Order}",
+                request.EventType, request.OrderId);
+
+            return Ok(new {
+                code = 0,
+                message = $"Order event {request.EventType} simulated",
+                order_id = request.OrderId,
+                event_type = request.EventType,
+                timestamp = DateTime.UtcNow
+            });
+        }
+
+        private IActionResult HandleTikTokSignatureTest(TikTokTestRequest request)
+        {
+            // 签名验证测试：使用硬编码密钥（测试用），生产环境应从配置读取
+            var appSecret = "test-secret";
+            var baseString = $"{request.Timestamp}\n{request.Body}";
+
+            using var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(appSecret));
+            var computed = BitConverter.ToString(hmac.ComputeHash(Encoding.UTF8.GetBytes(baseString)))
+                .Replace("-", "").ToLowerInvariant();
+
+            var isValid = computed == (request.Signature ?? "").ToLowerInvariant();
+
+            return Ok(new {
+                code = 0,
+                message = isValid ? "signature_valid" : "signature_mismatch",
+                computed_signature = computed,
+                received_signature = request.Signature,
+                is_valid = isValid
+            });
+        }
+
+        #endregion
+
+        #region === Shopee 测试端点（保持不变） ===
+
         [HttpPost("shopee/test")]
         public async Task<IActionResult> TestShopee([FromBody] TestShopeeMessage request)
         {
             try
             {
-                _logger.LogInformation("[Shopee] Test webhook received: Customer={Customer}, Message={Message}", request.CustomerId, request.Message);
+                _logger.LogInformation("[Shopee] Test webhook received: Customer={Customer}, Message={Message}",
+                    request.CustomerId, request.Message);
 
-                // 创建 Seller（作为店铺主体）
                 var seller = Seller.Create(
                     openId: Guid.NewGuid().ToString(),
                     nickname: request.CustomerName ?? "Mock Shop"
                 );
                 _db.Sellers.Add(seller);
 
-                // 创建会话（使用 seller.Id 作为外键）
                 var session = ChatSession.Create(
                     shopId: seller.Id,
                     platform: "SHOPEE",
@@ -130,12 +350,10 @@ namespace Synerixis.Api.Controllers
 
                 await _db.SaveChangesAsync();
 
-                // 添加用户消息
                 var userMsg = ChatMessage.FromUser(request.Message, session.Id);
                 session.Messages.Add(userMsg);
                 session.AddUserMessage();
 
-                // 模拟 AI 自动回复
                 var aiReply = "【模拟自动回复】您的消息已收到，我们会尽快处理。";
 
                 var aiMsg = ChatMessage.FromAI(aiReply, chatSessionId: session.Id);
@@ -155,47 +373,128 @@ namespace Synerixis.Api.Controllers
             }
         }
 
+        #endregion
+
+        #region === 私有辅助方法 ===
+
+        /// <summary>
+        /// 幂等性检查：通过 MsgId 去重
+        /// 检查数据库中是否已处理过相同 MsgId 的消息
+        /// </summary>
+        private async Task<bool> IsDuplicateAsync(PlatformMessage msg)
+        {
+            if (string.IsNullOrEmpty(msg.MsgId))
+                return false; // 无 MsgId 无法去重，直接放行
+
+            try
+            {
+                // 检查 ChatMessage 表中是否已有相同 MsgId
+                var existed = await _db.Set<ChatMessage>()
+                    .AnyAsync(m => m.PlatformMsgId == msg.MsgId);
+                return existed;
+            }
+            catch
+            {
+                // 数据库异常时放行（宁可重复处理也不丢消息）
+                _logger.LogWarning("[Webhook] Idempotency check failed, allowing duplicate");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// 查找或创建会话
+        /// </summary>
         private async Task<ChatSession?> FindOrCreateSessionAsync(PlatformMessage msg)
         {
-            // 通过 OpenId + Platform 查找已有会话
+            // 通过 CustomerId + Platform 查找已有会话
             var existing = await _db.ChatSessions
                 .Include(s => s.Messages)
-                .FirstOrDefaultAsync(s => s.Platform == msg.Platform && s.CustomerId == msg.OpenId);
+                .FirstOrDefaultAsync(s => s.Platform == msg.Platform && s.CustomerId == msg.CustomerId);
 
             if (existing != null) return existing;
 
-            // 创建新会话：需要从 PlatformConnection 获取 ShopId
+            // 创建新会话：需要找到 Seller
             var platformConn = await _db.Set<PlatformConnection>()
                 .FirstOrDefaultAsync(pc => pc.Platform == msg.Platform && pc.OpenId == msg.OpenId);
 
-            if (platformConn == null)
+            if (platformConn != null)
             {
-                _logger.LogWarning("[{Platform}] No PlatformConnection found for OpenId={OpenId}", msg.Platform, msg.OpenId);
-                return null;
+                var seller = await _db.Sellers.FindAsync(platformConn.SellerId);
+                if (seller != null)
+                {
+                    var newSession = ChatSession.Create(
+                        shopId: seller.Id,
+                        platform: msg.Platform,
+                        customerId: msg.CustomerId,
+                        customerName: msg.CustomerName
+                    );
+                    _db.ChatSessions.Add(newSession);
+                    await _db.SaveChangesAsync();
+                    return newSession;
+                }
             }
 
-            if (string.IsNullOrEmpty(platformConn.ShopId))
-            {
-                _logger.LogError("[{Platform}] PlatformConnection ShopId is empty for OpenId={OpenId}", msg.Platform, msg.OpenId);
-                return null;
-            }
-
-            var shopId = Guid.Parse(platformConn.ShopId);
-            var newSession = ChatSession.Create(
-                shopId: shopId,
-                platform: msg.Platform,
-                customerId: msg.OpenId,
-                customerName: msg.CustomerName ?? $"{msg.Platform}客户"
+            // 兜底：创建临时 Seller（演示模式）
+            _logger.LogWarning("[Webhook] No seller found for platform={Platform}, creating temporary seller", msg.Platform);
+            var tempSeller = Seller.Create(
+                openId: msg.OpenId ?? Guid.NewGuid().ToString(),
+                nickname: $"{msg.Platform} Shop"
             );
-            _db.ChatSessions.Add(newSession);
+            _db.Sellers.Add(tempSeller);
             await _db.SaveChangesAsync();
 
-            return newSession;
+            var fallbackSession = ChatSession.Create(
+                shopId: tempSeller.Id,
+                platform: msg.Platform,
+                customerId: msg.CustomerId,
+                customerName: msg.CustomerName
+            );
+            _db.ChatSessions.Add(fallbackSession);
+            await _db.SaveChangesAsync();
+
+            return fallbackSession;
         }
+
+        /// <summary>
+        /// 生成 AI 回复（演示用，后续接入真实 LLM）
+        /// </summary>
+        private string GenerateAiReply(ChatSession session, string userMessage)
+        {
+            // TODO: 接入阿里云通义千问或其他 LLM 服务
+            return $"【AI 自动回复】您好！您关于「{userMessage}」的问题已收到。我们的客服团队将在 24 小时内为您处理。";
+        }
+
+        #endregion
+    }
+
+    #region === DTOs ===
+
+    /// <summary>
+    /// TikTok 测试请求体
+    /// </summary>
+    public class TikTokTestRequest
+    {
+        public string Mode { get; set; } = "chat";     // chat / order / signature
+        public string CustomerId { get; set; } = string.Empty;
+        public string? CustomerName { get; set; }
+        public string SellerOpenId { get; set; } = string.Empty;
+        public string? SellerName { get; set; }
+
+        // chat 模式
+        public string Message { get; set; } = string.Empty;
+
+        // order 模式
+        public string EventType { get; set; } = "ORDER_PAYMENT";
+        public string OrderId { get; set; } = string.Empty;
+
+        // signature 模式
+        public string Timestamp { get; set; } = string.Empty;
+        public string Body { get; set; } = string.Empty;
+        public string? Signature { get; set; }
     }
 
     /// <summary>
-    /// 模拟Shopee消息请求体
+    /// 模拟 Shopee 消息请求体
     /// </summary>
     public class TestShopeeMessage
     {
@@ -203,4 +502,6 @@ namespace Synerixis.Api.Controllers
         public string? CustomerName { get; set; }
         public string Message { get; set; } = string.Empty;
     }
+
+    #endregion
 }

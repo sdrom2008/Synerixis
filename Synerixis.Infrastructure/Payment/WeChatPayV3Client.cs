@@ -142,20 +142,20 @@ namespace Synerixis.Infrastructure.Payment
             var notify = JsonSerializer.Deserialize<Dictionary<string, object>>(body);
 
             // 验证签名（简化版，实际需用平台证书验证）
-            // 完整验证需要下载微信支付平台证书并校验
-            // 这里先假设验证通过，实际项目需实现
+            if (notify == null || !notify.ContainsKey("resource"))
+                return "{\"code\":\"FAIL\",\"message\":\"Invalid callback\"}";
 
-            var resource = JsonSerializer.Deserialize<Dictionary<string, object>>(notify["resource"].ToString());
-            var cipherText = resource["ciphertext"].ToString();
-            var nonce = resource["nonce"].ToString();
-            var associatedData = resource["associated_data"].ToString();
+            var resource = JsonSerializer.Deserialize<Dictionary<string, object>>(notify["resource"]?.ToString() ?? "{}");
+            var cipherText = resource?["ciphertext"]?.ToString() ?? "";
+            var nonce = resource?["nonce"]?.ToString() ?? "";
+            var associatedData = resource?["associated_data"]?.ToString() ?? "";
 
             // AES-GCM 解密（V3 标准）
             var decrypted = AesGcmDecrypt(cipherText, _apiV3Key, nonce, associatedData);
 
-            var decryptedObj = JsonSerializer.Deserialize<Dictionary<string, object>>(decrypted);
-            var outTradeNo = decryptedObj["out_trade_no"].ToString();
-            var transactionId = decryptedObj["transaction_id"].ToString();
+            var decryptedObj = JsonSerializer.Deserialize<Dictionary<string, object>>(decrypted) ?? new();
+            var outTradeNo = decryptedObj["out_trade_no"]?.ToString() ?? "";
+            var transactionId = decryptedObj["transaction_id"]?.ToString() ?? "";
 
             // 更新订单和商户权益（同前逻辑）
             var order = await _db.PayOrders.FirstOrDefaultAsync(o => o.OutTradeNo == outTradeNo);
@@ -166,7 +166,8 @@ namespace Synerixis.Infrastructure.Payment
                 order.PaidAt = DateTime.UtcNow;
 
                 var seller = await _db.Sellers.FirstOrDefaultAsync(s => s.Id == order.SellerId);
-                seller.ApplySubscription(order.Amount / 100m); // 假设金额单位为分
+                if (seller != null)
+                    seller.ApplySubscription(order.Amount / 100m); // 假设金额单位为分
 
                 await _db.SaveChangesAsync();
             }
