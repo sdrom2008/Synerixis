@@ -7,6 +7,9 @@ export interface SessionItem {
   sessionId: string
   customerName?: string
   platform?: string
+  platformShopOpenId?: string
+  shopNickname?: string
+  connectionId?: string
   status?: string
   priority?: string
   pendingHumanHandoff?: boolean
@@ -87,10 +90,59 @@ export interface DashboardKpis {
   generatedAt?: string
 }
 
-export function getSessions(status?: string) {
-  const q = status ? `?status=${encodeURIComponent(status)}` : ''
+export interface SessionQuery {
+  status?: string
+  platform?: string
+  connectionId?: string
+  platformShopId?: string
+}
+
+export function getSessions(params: SessionQuery | string = {}) {
+  const q =
+    typeof params === 'string'
+      ? params
+        ? { status: params }
+        : {}
+      : params
+  const sp = new URLSearchParams()
+  if (q.status) sp.set('status', q.status)
+  if (q.platform) sp.set('platform', q.platform)
+  if (q.connectionId) sp.set('connectionId', q.connectionId)
+  if (q.platformShopId) sp.set('platformShopId', q.platformShopId)
+  const qs = sp.toString()
   return request<SessionsListResult>({
-    url: `/api/merchant/sessions${q}`,
+    url: `/api/merchant/sessions${qs ? `?${qs}` : ''}`,
+  })
+}
+
+export interface ShopOption {
+  connectionId: string
+  platform?: string
+  shopId?: string
+  nickname?: string
+}
+
+export function getShopOptions() {
+  return request<{ items: ShopOption[] }>({ url: '/api/merchant/shop-options' })
+}
+
+export interface SessionOrderItem {
+  id?: string
+  orderNo?: string
+  status?: string
+  totalAmount?: number
+  paymentAmount?: number
+  platform?: string
+  orderTime?: string
+  paidAt?: string
+  shippedAt?: string
+  logisticsNo?: string
+  logisticsCompany?: string
+}
+
+export function getSessionOrders(sessionId: string) {
+  return request<{ items: SessionOrderItem[]; total?: number; empty?: boolean }>({
+    url: `/api/merchant/sessions/${sessionId}/orders`,
   })
 }
 
@@ -182,6 +234,13 @@ export function getBindUrl(platform: string) {
 export function unbindPlatform(platform: string) {
   return request({
     url: `/api/merchant/unbind/${encodeURIComponent(platform)}`,
+    method: 'POST',
+  })
+}
+
+export function refreshConnection(connectionId: string) {
+  return request<{ message?: string; tokenExpiresAt?: string }>({
+    url: `/api/merchant/connections/${encodeURIComponent(connectionId)}/refresh`,
     method: 'POST',
   })
 }

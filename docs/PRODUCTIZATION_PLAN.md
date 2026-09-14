@@ -68,12 +68,14 @@
 | 项 | 说明 |
 |----|------|
 | 技术 | Vue3 + Vite + TS + Element Plus + Pinia + Vue Router + Axios |
-| 壳 | 顶栏 + 左导航：概览、收件箱、店铺绑定、AI 设置、计费、团队(stub) |
-| 收件箱 | 三栏：会话列表 \| 消息时间线+草稿审发 \| 订单/上下文占位 |
-| API | 对齐 draft-first（`a3dc779`）MerchantController：sessions / messages / draft approve·edit-send·discard |
-| 路径 | 仓库根目录 `merchant-web/`；详见该目录 `README.md` |
+| 壳 | 顶栏 + 左导航：概览、收件箱、店铺绑定、AI 设置、计费、团队 |
+| 收件箱 | 三栏：会话列表 \| 消息时间线+草稿审发 \| 订单侧栏；多店筛选 |
+| API | MerchantController：sessions（platform/connectionId）/ orders / shop-options / connections（Supervisor 通） |
+| 路径 | 仓库根目录 `merchant-web/`；详见 `docs/MERCHANT_WEB.md` |
 
-**不**替换移动端 `frontend/`。Handoff/SLA 可并行演进；桌面端已展示 SLA 相关字段。
+**MVP 状态（网页端可演示）**：登录 → 绑店（Seller/Supervisor）→ 收件箱审发/转人工/SLA → 订单侧栏 → 多店筛选 → Token 后台刷新。详见验收清单。
+
+**不**替换移动端 `frontend/`。Admin / 计费深化 / 幂等存储仍为遗留。
 
 ### P1d — Handoff 硬闸 + SLA 超时唤醒（2026-09-14）
 

@@ -122,6 +122,23 @@ CREATE TABLE IF NOT EXISTS `draft_messages` (
 ";
             await db.Database.ExecuteSqlRawAsync(draftSql);
             logger?.LogInformation("[SchemaPatcher] draft_messages table ensured (MySQL)");
+
+            const string tokenExpSql = @"
+SET @db := DATABASE();
+SET @col := (
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = @db AND TABLE_NAME = 'platform_connections' AND COLUMN_NAME = 'TokenExpiresAt'
+);
+SET @ddl := IF(@col = 0,
+  'ALTER TABLE `platform_connections` ADD COLUMN `TokenExpiresAt` DATETIME(6) NULL',
+  'SELECT 1');
+PREPARE stmt FROM @ddl;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+";
+            await db.Database.ExecuteSqlRawAsync(tokenExpSql);
+            logger?.LogInformation("[SchemaPatcher] platform_connections.TokenExpiresAt ensured (MySQL)");
+
         }
 
         private static async Task TrySqliteAsync(AppDbContext db, ILogger? logger)
@@ -139,6 +156,7 @@ CREATE TABLE IF NOT EXISTS `draft_messages` (
                 "ALTER TABLE chat_sessions ADD COLUMN LastBuyerMessageAt TEXT NULL",
                 "ALTER TABLE chat_sessions ADD COLUMN PendingHumanHandoff INTEGER NOT NULL DEFAULT 0",
                 "ALTER TABLE chat_sessions ADD COLUMN HandoffAt TEXT NULL",
+                "ALTER TABLE platform_connections ADD COLUMN TokenExpiresAt TEXT NULL",
                 @"CREATE TABLE IF NOT EXISTS draft_messages (
                     Id BLOB NOT NULL PRIMARY KEY,
                     ChatSessionId BLOB NOT NULL,

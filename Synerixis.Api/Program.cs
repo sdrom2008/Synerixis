@@ -243,6 +243,7 @@ builder.Services.AddScoped<IOrderRepository, OrderRepository>();
 builder.Services.AddScoped<IPlatformClientRouter, PlatformClientRouter>();
 builder.Services.AddScoped<IPlatformConnectionRepository, PlatformConnectionRepository>();
 builder.Services.AddScoped<IMerchantPlatformService, MerchantPlatformService>();
+builder.Services.AddHostedService<Synerixis.Api.Services.PlatformTokenRefreshHostedService>();
 
 // HttpClient 工厂（如果 Agent 里需要调用外部 API）
 builder.Services.AddHttpClient();

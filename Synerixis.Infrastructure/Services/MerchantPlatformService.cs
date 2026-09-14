@@ -176,9 +176,9 @@ namespace Synerixis.Infrastructure.Services
             try
             {
                 var client = _clientRouter.GetClient(platform);
-                var (accessToken, _) = await client.GetAccessTokenAsync(connection.RefreshToken, "refresh");
+                var (accessToken, newRefresh) = await client.GetAccessTokenAsync(connection.RefreshToken, "refresh");
                 
-                connection.UpdateToken(accessToken, connection.RefreshToken);
+                connection.UpdateToken(accessToken, string.IsNullOrEmpty(newRefresh) ? connection.RefreshToken : newRefresh);
                 await _connectionRepository.UpdateAsync(connection);
                 await _db.SaveChangesAsync();
                 

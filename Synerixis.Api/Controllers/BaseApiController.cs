@@ -80,6 +80,33 @@ namespace Synerixis.Api.Controllers
         }
 
         /// <summary>
+        /// 店铺绑定 / SellerConfig 读写：Seller→UserId；Supervisor/Admin→JWT shopId（所属 Seller.Id）；Agent→无权。
+        /// </summary>
+        protected Guid GetShopOwnerSellerId()
+        {
+            var current = GetCurrentUser();
+            if (current.IsSeller)
+                return current.ShopId ?? current.UserId;
+
+            if (current.IsSupervisor || current.IsAdmin)
+            {
+                if (!current.ShopId.HasValue)
+                    throw new UnauthorizedAccessException("坐席 Token 缺少 shopId");
+                return current.ShopId.Value;
+            }
+
+            // Agent 等无权管理店铺连接 / 本店 AI 配置
+            throw new UnauthorizedAccessException("仅商家或主管可管理店铺连接与 AI 设置");
+        }
+
+        /// <summary>Seller / Supervisor / Admin 可管店铺连接与 AI 设置；Agent 不可。</summary>
+        protected bool CanManageShopOwnerResources()
+        {
+            var current = GetCurrentUser();
+            return current.IsSeller || current.IsSupervisor || current.IsAdmin;
+        }
+
+        /// <summary>
         /// 团队管理：Seller 本人，或同店 Supervisor/Admin。
         /// 返回被管理店铺的 Seller.Id（= Agents.ShopId）。
         /// </summary>

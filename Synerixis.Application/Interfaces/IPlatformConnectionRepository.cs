@@ -16,5 +16,7 @@ namespace Synerixis.Application.Interfaces
         Task<IEnumerable<PlatformConnection>> GetBySellerIdAndActiveAsync(Guid sellerId);
         Task AddAsync(PlatformConnection connection);
         Task UpdateAsync(PlatformConnection connection);
+        /// <summary>所有启用且带 RefreshToken 的连接（后台刷新扫描）。</summary>
+        Task<IEnumerable<PlatformConnection>> GetActiveWithRefreshTokenAsync();
     }
 }

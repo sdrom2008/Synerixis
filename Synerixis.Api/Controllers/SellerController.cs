@@ -36,9 +36,12 @@ namespace Synerixis.Api.Controllers
         {
             try
             {
-                var sellerIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-                if (!Guid.TryParse(sellerIdStr, out var sellerId))
-                    return Unauthorized("无效身份");
+                // Seller 本人；Supervisor/Admin 读本店 Seller（JWT shopId）
+                if (!CanManageShopOwnerResources())
+                    return Forbid();
+                Guid sellerId;
+                try { sellerId = GetShopOwnerSellerId(); }
+                catch (UnauthorizedAccessException ex) { return Unauthorized(ex.Message); }
 
                 var seller = await _db.Sellers
                     .Include(s => s.Config)
@@ -90,9 +93,12 @@ namespace Synerixis.Api.Controllers
         [HttpPut("config")]
         public async Task<IActionResult> UpdateConfig([FromBody] SellerConfigUpdateDto dto)
         {
-            var sellerIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (!Guid.TryParse(sellerIdStr, out var sellerId))
-                return Unauthorized();
+            // AI 设置：Seller + Supervisor + Admin 可写本店 SellerConfig
+            if (!CanManageShopOwnerResources())
+                return Forbid();
+            Guid sellerId;
+            try { sellerId = GetShopOwnerSellerId(); }
+            catch (UnauthorizedAccessException) { return Unauthorized(); }
 
             var config = await _db.SellerConfigs.FirstOrDefaultAsync(c => c.SellerId == sellerId);
 

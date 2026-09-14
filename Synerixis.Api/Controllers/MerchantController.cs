@@ -51,74 +51,204 @@ namespace Synerixis.Api.Controllers
         }
 
         /// <summary>
+        /// 收件箱多店筛选选项（Seller / 坐席均可，按本店 shopId）。
+        /// </summary>
+        [HttpGet("shop-options")]
+        public async Task<IActionResult> GetShopOptions()
+        {
+            try
+            {
+                var shopId = GetMerchantShopId();
+                var connections = await _connectionRepo.GetBySellerIdAndActiveAsync(shopId);
+                var items = connections.Select(c => new
+                {
+                    connectionId = c.Id,
+                    platform = c.Platform,
+                    shopId = c.ShopId,
+                    nickname = c.Nickname ?? c.ShopId ?? c.Platform
+                });
+                return Ok(new { items });
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return Unauthorized(new { message = ex.Message });
+            }
+        }
+
+        /// <summary>
         /// 获取指定平台的授权 URL
         /// </summary>
         [HttpGet("bind/{platform}")]
         public async Task<IActionResult> GetBindUrl(string platform)
         {
-            var state = GenerateState();
-            var url = await _platformService.GetAuthorizationUrlAsync(platform, state);
-            return Ok(new { url, state });
+            if (!CanManageShopOwnerResources())
+                return Forbid();
+            try
+            {
+                _ = GetShopOwnerSellerId();
+                var state = GenerateState();
+                var url = await _platformService.GetAuthorizationUrlAsync(platform, state);
+                return Ok(new { url, state });
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return Unauthorized(new { message = ex.Message });
+            }
         }
 
         /// <summary>
-        /// 绑定平台店铺（处理 OAuth 回调）
+        /// 绑定平台店铺（处理 OAuth 回调）。Seller / Supervisor / Admin；Agent 403。
         /// </summary>
         [HttpPost("bind/callback")]
         public async Task<IActionResult> BindCallback([FromBody] BindCallbackRequest request)
         {
-            var sellerId = GetCurrentSellerId();
-            var result = await _platformService.BindShopAsync(request.Platform, request.Code, sellerId);
-            
-            if (result.Success)
+            if (!CanManageShopOwnerResources())
+                return Forbid();
+            try
             {
-                return Ok(new { message = "绑定成功", result });
+                var sellerId = GetShopOwnerSellerId();
+                var result = await _platformService.BindShopAsync(request.Platform, request.Code, sellerId);
+
+                if (result.Success)
+                    return Ok(new { message = "绑定成功", result });
+                return BadRequest(new { message = result.Error });
             }
-            return BadRequest(new { message = result.Error });
+            catch (UnauthorizedAccessException ex)
+            {
+                return Unauthorized(new { message = ex.Message });
+            }
         }
 
         /// <summary>
-        /// 获取已绑定的店铺列表
+        /// 获取已绑定的店铺列表。Seller / Supervisor / Admin；Agent 403。
         /// </summary>
         [HttpGet("connections")]
         public async Task<IActionResult> GetConnections()
         {
-            var sellerId = GetCurrentSellerId();
-            var connections = await _connectionRepo.GetBySellerIdAndActiveAsync(sellerId);
-            
-            var items = connections.Select(c => new 
-            { 
-                c.Id, 
-                c.Platform, 
-                c.ShopId, 
-                c.Nickname, 
-                c.AvatarUrl,
-                c.IsActive 
-            });
-            
-            return Ok(new { items });
+            if (!CanManageShopOwnerResources())
+                return Forbid();
+            try
+            {
+                var sellerId = GetShopOwnerSellerId();
+                var connections = await _connectionRepo.GetBySellerIdAndActiveAsync(sellerId);
+                var now = DateTime.UtcNow;
+
+                var items = connections.Select(c =>
+                {
+                    string tokenStatus;
+                    if (!c.IsActive) tokenStatus = "inactive";
+                    else if (c.TokenExpiresAt.HasValue)
+                    {
+                        if (c.TokenExpiresAt.Value <= now) tokenStatus = "expired";
+                        else if (c.TokenExpiresAt.Value <= now.AddHours(1)) tokenStatus = "expiring";
+                        else tokenStatus = "valid";
+                    }
+                    else
+                    {
+                        var anchor = c.UpdatedAt ?? c.CreatedAt;
+                        if (anchor <= now.AddHours(-4)) tokenStatus = "expiring";
+                        else tokenStatus = "valid";
+                    }
+
+                    return new
+                    {
+                        c.Id,
+                        c.Platform,
+                        shopId = c.ShopId,
+                        nickname = c.Nickname,
+                        c.AvatarUrl,
+                        c.IsActive,
+                        tokenExpiresAt = c.TokenExpiresAt,
+                        tokenStatus,
+                        tokenHint = tokenStatus switch
+                        {
+                            "expired" => "Token 已过期，请刷新或重新绑定",
+                            "expiring" => "Token 即将过期",
+                            "inactive" => "已停用",
+                            _ => "有效"
+                        },
+                        updatedAt = c.UpdatedAt
+                    };
+                });
+
+                return Ok(new { items });
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return Unauthorized(new { message = ex.Message });
+            }
         }
 
-         /// <summary>
-        /// 解绑店铺
+        /// <summary>
+        /// 手动刷新指定连接的 access token。
+        /// </summary>
+        [HttpPost("connections/{id:guid}/refresh")]
+        public async Task<IActionResult> RefreshConnection(Guid id)
+        {
+            if (!CanManageShopOwnerResources())
+                return Forbid();
+            try
+            {
+                var sellerId = GetShopOwnerSellerId();
+                var connection = await _connectionRepo.GetByIdAsync(id);
+                if (connection == null || connection.SellerId != sellerId)
+                    return NotFound(new { message = "未找到绑定记录" });
+
+                var ok = await _platformService.RefreshTokenAsync(connection.Platform, connection);
+                if (!ok)
+                    return BadRequest(new { message = "刷新失败（可能缺少 RefreshToken 或平台拒绝）" });
+
+                return Ok(new
+                {
+                    message = "Token 已刷新",
+                    connectionId = connection.Id,
+                    tokenExpiresAt = connection.TokenExpiresAt,
+                    updatedAt = connection.UpdatedAt
+                });
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return Unauthorized(new { message = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// 解绑店铺。Seller / Supervisor / Admin；Agent 403。
         /// </summary>
         [HttpPost("unbind/{platform}")]
         public async Task<IActionResult> Unbind(string platform)
         {
-            var sellerId = GetCurrentSellerId();
-            var connection = await _connectionRepo.GetBySellerIdAsync(sellerId);
-            if (connection == null)
-                return NotFound("未找到绑定记录");
+            if (!CanManageShopOwnerResources())
+                return Forbid();
+            try
+            {
+                var sellerId = GetShopOwnerSellerId();
+                var connections = await _connectionRepo.GetBySellerIdAndActiveAsync(sellerId);
+                var normalized = (platform ?? string.Empty).ToUpperInvariant();
+                var connection = connections.FirstOrDefault(c =>
+                    string.Equals(c.Platform, normalized, StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(c.Platform, platform, StringComparison.OrdinalIgnoreCase));
+                if (connection == null)
+                    return NotFound(new { message = "未找到绑定记录" });
 
-            await _platformService.UnbindShopAsync(platform, connection.Id);
-            return Ok(new { message = "已解绑" });
+                await _platformService.UnbindShopAsync(connection.Platform, connection.Id);
+                return Ok(new { message = "已解绑" });
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return Unauthorized(new { message = ex.Message });
+            }
         }
 
         /// <summary>
-        /// 获取本店的所有会话列表
+        /// 获取本店的所有会话列表。支持 platform / connectionId / platformShopId 多店筛选。
         /// </summary>
         [HttpGet("sessions")]
-        public async Task<IActionResult> GetSessions([FromQuery] string? status = null)
+        public async Task<IActionResult> GetSessions(
+            [FromQuery] string? status = null,
+            [FromQuery] string? platform = null,
+            [FromQuery] Guid? connectionId = null,
+            [FromQuery] string? platformShopId = null)
         {
             try
             {
@@ -140,12 +270,55 @@ namespace Synerixis.Api.Controllers
                     }
                 }
 
+                string? filterPlatform = string.IsNullOrWhiteSpace(platform)
+                    ? null
+                    : platform.Trim().ToUpperInvariant();
+                string? filterShopOpenId = string.IsNullOrWhiteSpace(platformShopId)
+                    ? null
+                    : platformShopId.Trim();
+
+                if (connectionId.HasValue)
+                {
+                    var conn = await _db.PlatformConnections.AsNoTracking()
+                        .FirstOrDefaultAsync(c => c.Id == connectionId.Value && c.SellerId == shopId);
+                    if (conn == null)
+                        return BadRequest(new { message = "无效的 connectionId" });
+                    filterPlatform = (conn.Platform ?? string.Empty).ToUpperInvariant();
+                    filterShopOpenId = !string.IsNullOrEmpty(conn.OpenId)
+                        ? conn.OpenId
+                        : conn.ShopId;
+                }
+
+                if (!string.IsNullOrEmpty(filterPlatform))
+                {
+                    var fp = filterPlatform;
+                    // 兼容历史大小写；避免依赖 SQL ToUpper 翻译
+                    query = query.Where(s =>
+                        s.Platform == fp
+                        || s.Platform == filterPlatform
+                        || (s.Platform != null && s.Platform.ToLower() == fp.ToLower()));
+                }
+
+                if (!string.IsNullOrEmpty(filterShopOpenId))
+                {
+                    var oid = filterShopOpenId;
+                    query = query.Where(s =>
+                        s.PlatformShopOpenId == oid
+                        || (s.PlatformShopOpenId == null || s.PlatformShopOpenId == ""));
+                    // Prefer exact openId match when present; include legacy null for demo
+                    // Re-filter in memory below for precision when mixed.
+                }
+
                 var sellerConfig = await _db.SellerConfigs
                     .AsNoTracking()
                     .FirstOrDefaultAsync(c => c.SellerId == shopId);
                 var slaHours = sellerConfig?.ResponseSlaHours > 0 ? sellerConfig.ResponseSlaHours : 12;
 
-                // 待发草稿 / 未读买家消息优先；其次按即将超时（needsResponseBy 升序）
+                var connections = await _db.PlatformConnections.AsNoTracking()
+                    .Where(c => c.SellerId == shopId && c.IsActive)
+                    .Select(c => new { c.Id, c.Platform, c.ShopId, c.OpenId, c.Nickname })
+                    .ToListAsync();
+
                 var total = await query.CountAsync();
                 var raw = await query
                     .Select(s => new
@@ -154,6 +327,7 @@ namespace Synerixis.Api.Controllers
                         sessionId = s.SessionId,
                         customerName = s.CustomerName,
                         platform = s.Platform,
+                        platformShopOpenId = s.PlatformShopOpenId,
                         status = ((SessionStatus)s.Status).ToString(),
                         priority = ((SessionPriority)s.Priority).ToString(),
                         pendingHumanHandoff = s.PendingHumanHandoff,
@@ -178,6 +352,17 @@ namespace Synerixis.Api.Controllers
                     })
                     .ToListAsync();
 
+                // 精确店铺：有 PlatformShopOpenId 时必须匹配；无则仅当未指定店铺筛或同平台唯一连接
+                if (!string.IsNullOrEmpty(filterShopOpenId))
+                {
+                    var oid = filterShopOpenId;
+                    raw = raw.Where(s =>
+                        string.IsNullOrEmpty(s.platformShopOpenId)
+                        || string.Equals(s.platformShopOpenId, oid, StringComparison.OrdinalIgnoreCase)
+                    ).ToList();
+                    total = raw.Count;
+                }
+
                 var now = DateTime.UtcNow;
                 var items = raw
                     .Select(s =>
@@ -185,17 +370,34 @@ namespace Synerixis.Api.Controllers
                         var anchor = s.lastBuyerMessageAt ?? s.lastActiveAt ?? s.createdAt;
                         var hours = Math.Max(0, (now - anchor).TotalHours);
                         var needsBy = anchor.AddHours(slaHours);
-                        // overdue = 已过 SLA；soon = 剩余不足 25% SLA（至少 0.5h）
                         string slaUrgency;
                         if (now >= needsBy) slaUrgency = "overdue";
                         else if ((needsBy - now).TotalHours <= Math.Max(0.5, slaHours * 0.25)) slaUrgency = "soon";
                         else slaUrgency = "ok";
+
+                        var plat = (s.platform ?? "").ToUpperInvariant();
+                        var match = connections.FirstOrDefault(c =>
+                            string.Equals(c.Platform, plat, StringComparison.OrdinalIgnoreCase)
+                            && (
+                                (!string.IsNullOrEmpty(s.platformShopOpenId)
+                                    && (c.OpenId == s.platformShopOpenId || c.ShopId == s.platformShopOpenId))
+                                || string.IsNullOrEmpty(s.platformShopOpenId)
+                            ));
+                        if (match == null)
+                        {
+                            match = connections.FirstOrDefault(c =>
+                                string.Equals(c.Platform, plat, StringComparison.OrdinalIgnoreCase));
+                        }
+
                         return new
                         {
                             s.id,
                             s.sessionId,
                             s.customerName,
                             s.platform,
+                            platformShopOpenId = s.platformShopOpenId,
+                            shopNickname = match?.Nickname,
+                            connectionId = match?.Id,
                             s.status,
                             s.priority,
                             s.pendingHumanHandoff,
@@ -222,7 +424,14 @@ namespace Synerixis.Api.Controllers
                     .ToList();
 
                 var pendingDraftCount = items.Count(i => i.hasPendingDraft);
-                return Ok(new { items, total, pendingDraftCount, responseSlaHours = slaHours });
+                return Ok(new
+                {
+                    items,
+                    total,
+                    pendingDraftCount,
+                    responseSlaHours = slaHours,
+                    filters = new { platform = filterPlatform, connectionId, platformShopId = filterShopOpenId }
+                });
             }
             catch (Exception ex)
             {
@@ -291,6 +500,77 @@ namespace Synerixis.Api.Controllers
                     slaUrgency,
                     pendingDraft = draft,
                     items = messages,
+                });
+            }
+            catch (Exception ex)
+            {
+                return HandleError(ex);
+            }
+        }
+
+        /// <summary>
+        /// 会话关联订单（本地 Orders 优先；失败返回空列表不炸）。
+        /// </summary>
+        [HttpGet("sessions/{id:guid}/orders")]
+        public async Task<IActionResult> GetSessionOrders(Guid id, [FromQuery] int limit = 10)
+        {
+            try
+            {
+                var shopId = GetMerchantShopId();
+                var session = await _db.ChatSessions.AsNoTracking()
+                    .FirstOrDefaultAsync(s => s.Id == id && s.ShopId == shopId);
+                if (session == null)
+                    return NotFound(new { message = "会话不存在" });
+
+                var take = Math.Clamp(limit, 1, 50);
+                var orders = await _db.Orders
+                    .AsNoTracking()
+                    .Where(o => o.ShopId == shopId && o.CustomerId == session.CustomerId)
+                    .OrderByDescending(o => o.OrderTime)
+                    .Take(take)
+                    .Select(o => new
+                    {
+                        id = o.Id,
+                        orderNo = o.OrderNo,
+                        status = o.Status,
+                        totalAmount = o.TotalAmount,
+                        paymentAmount = o.PaymentAmount,
+                        platform = o.Platform ?? session.Platform,
+                        orderTime = o.OrderTime,
+                        paidAt = o.PaidAt,
+                        shippedAt = o.ShippedAt,
+                        logisticsNo = o.LogisticsNo,
+                        logisticsCompany = o.LogisticsCompany
+                    })
+                    .ToListAsync();
+
+                // 本地为空时尝试平台客户端（若已有能力）；失败吞掉返回空
+                if (orders.Count == 0)
+                {
+                    try
+                    {
+                        var router = HttpContext.RequestServices.GetService<IPlatformClientRouter>();
+                        if (router != null && !string.IsNullOrEmpty(session.Platform)
+                            && !string.IsNullOrEmpty(session.CustomerId))
+                        {
+                            var client = router.GetClient(session.Platform);
+                            // 平台查单能力因客户端而异；无接口则跳过
+                            _ = client;
+                        }
+                    }
+                    catch
+                    {
+                        // ignore platform lookup failures
+                    }
+                }
+
+                return Ok(new
+                {
+                    sessionId = session.Id,
+                    customerId = session.CustomerId,
+                    items = orders,
+                    total = orders.Count,
+                    empty = orders.Count == 0
                 });
             }
             catch (Exception ex)

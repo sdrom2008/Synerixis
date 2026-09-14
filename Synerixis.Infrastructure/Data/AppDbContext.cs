@@ -401,6 +401,9 @@ namespace Synerixis.Infrastructure.Data
                 entity.Property(e => e.UpdatedAt)
                       .HasColumnType("datetime2");
 
+                entity.Property(e => e.TokenExpiresAt)
+                      .HasColumnType("datetime2");
+
                 entity.HasOne(e => e.Seller)
                       .WithMany(s => s.PlatformConnections)
                       .HasForeignKey(e => e.SellerId)

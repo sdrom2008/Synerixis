@@ -54,5 +54,12 @@ namespace Synerixis.Infrastructure.Repositories
         {
             _context.PlatformConnections.Update(connection);
         }
+
+        public async Task<IEnumerable<PlatformConnection>> GetActiveWithRefreshTokenAsync()
+        {
+            return await _context.PlatformConnections
+                .Where(c => c.IsActive && c.RefreshToken != null && c.RefreshToken != "")
+                .ToListAsync();
+        }
     }
 }

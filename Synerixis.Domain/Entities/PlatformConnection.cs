@@ -26,6 +26,8 @@ namespace Synerixis.Domain.Entities
         public bool IsActive { get; private set; } = true;             // 是否启用
         public DateTime CreatedAt { get; private set; } = DateTime.UtcNow;
         public DateTime? UpdatedAt { get; private set; }
+        /// <summary>AccessToken 预计过期时间（UTC）；用于后台刷新扫描。</summary>
+        public DateTime? TokenExpiresAt { get; private set; }
 
         // 导航属性
         public Seller? Seller { get; private set; }
@@ -54,15 +56,17 @@ namespace Synerixis.Domain.Entities
                 Nickname = nickname,
                 AvatarUrl = avatarUrl,
                 IsActive = true,
-                CreatedAt = DateTime.UtcNow
+                CreatedAt = DateTime.UtcNow,
+                TokenExpiresAt = DateTime.UtcNow.AddHours(4)
             };
         }
 
-        public void UpdateToken(string accessToken, string? refreshToken = null)
+        public void UpdateToken(string accessToken, string? refreshToken = null, DateTime? tokenExpiresAt = null)
         {
             AccessToken = accessToken;
             if (refreshToken != null) RefreshToken = refreshToken;
             UpdatedAt = DateTime.UtcNow;
+            TokenExpiresAt = tokenExpiresAt ?? DateTime.UtcNow.AddHours(4);
         }
 
         /// <summary>
@@ -84,6 +88,7 @@ namespace Synerixis.Domain.Entities
             if (!string.IsNullOrEmpty(avatarUrl)) AvatarUrl = avatarUrl;
             IsActive = true;
             UpdatedAt = DateTime.UtcNow;
+            TokenExpiresAt = DateTime.UtcNow.AddHours(4);
         }
 
         public void SetActive(bool isActive)
