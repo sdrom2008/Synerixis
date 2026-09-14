@@ -458,6 +458,10 @@ namespace Synerixis.Infrastructure.Data
                       .HasColumnType("varchar(512)")
                       .HasMaxLength(512);
 
+                entity.Property(e => e.Region)
+                      .HasColumnType("varchar(16)")
+                      .HasMaxLength(16);
+
                 entity.HasOne(e => e.Seller)
                       .WithMany(s => s.PlatformConnections)
                       .HasForeignKey(e => e.SellerId)

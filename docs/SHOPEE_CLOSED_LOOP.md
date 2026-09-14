@@ -26,7 +26,7 @@
 | AI 草稿（默认） | ✅ | `DraftMessage` + `OutboundMode=DraftFirst` | 默认不 `SendReply`；`AutoSend` 显式开启才出站 |
 | 人审出站 | ✅ | `POST .../draft/approve` 等 | 调用 `SendReplyAsync`（per-shop token） |
 | 转人工 handoff | ✅ | `ChatSession.PendingHumanHandoff` + `TransferToAgent` | 硬闸 + **敏感词/低置信自动 handoff**；营业外不 AutoSend（可 handoff） |
-| 配置 | ⚠️ | `Shopee:AppKey/AppSecret/AccessToken/ShopId/Endpoint` | 缺配置 Warning + skip；appsettings 已 gitignore |
+| 配置 | ✅ | `Shopee:AppKey/AppSecret` 或 `Partners[]` / `Shopee:{Region}` | 单组仍可用；多站点填 Partners；缺配置 Warning + skip |
 
 ## 分步说明
 
@@ -36,7 +36,7 @@
 - ✅ `POST /api/merchant/bind/callback` → `BindShopAsync`：换 token → 店铺信息 → **按 ShopId+Platform upsert** `PlatformConnection`  
 - ✅ **匿名 GET** `/api/merchant/bind/callback` / `/api/oauth/{platform}/callback`：收 code/state → BindShop → redirect `Frontends:MerchantWebBaseUrl/shops?bound=1`  
 - ✅ `TokenExpiresAt` + `PlatformTokenRefreshHostedService`  
-- ❌ 多站点 partner（TW/VN/…）切换  
+- ✅ 多站点 partner（`Shopee:Partners` / `Shopee:{Region}` + 绑店 `region`，默认 SG）  
 - ⚠️ `GetShopInfoAsync` 仍简化，真实环境可能需先 get_shop_list
 
 ### 2. Webhook → 会话
@@ -54,7 +54,7 @@
 - ✅ `IInboundSessionService`（FindOrCreate + AppendBuyerMessage）Webhook 与 ConversationService 共用；`ProcessIncomingMessageAsync` 已 Obsolete 并转发入库；**AI 草稿/handoff/维护/营业外仍仅 Webhook ProcessInboundAiReply**  
 
 **本轮摘要（2026-09-14）**：Shopee `get_tracking_info` 真实轨迹 + 侧栏 logistics；`IInboundSessionService` 收拢 Webhook/Conversation 入库。  
-**下一轮缺口（自动继续）**：TikTok 真实轨迹；Token 过期告警 UI；支付生产网关；APNs；多站点 partner；多实例限流（当前 Webhook 限流为**单机内存**，非 Redis）；幂等审计完善。  
+**本轮已补**：TikTok 真实轨迹路径；Shopee 多站点 partner；Webhook 可选 Redis 限流。Token 告警 UI 更早已完成。**仍需外部账号**：支付生产、APNs、ISV/沙箱实机。总览见 [`PRODUCT_STATUS.md`](./PRODUCT_STATUS.md)。  
 
 ### 4. Order → Reply
 

@@ -18,12 +18,12 @@ namespace Synerixis.Application.Interfaces
         /// <summary>
         /// 获取指定平台的 OAuth 授权 URL
         /// </summary>
-        Task<string> GetAuthorizationUrlAsync(string platform, string state);
+        Task<string> GetAuthorizationUrlAsync(string platform, string state, string? region = null);
 
         /// <summary>
         /// 通过授权码获取平台信息并绑定店铺
         /// </summary>
-        Task<PlatformConnectionResult> BindShopAsync(string platform, string authorizationCode, Guid sellerId);
+        Task<PlatformConnectionResult> BindShopAsync(string platform, string authorizationCode, Guid sellerId, string? region = null);
 
         /// <summary>
         /// 刷新平台 access token（处理 token 过期）
@@ -64,6 +64,7 @@ namespace Synerixis.Application.Interfaces
         public string? ShopId { get; set; }
         public string? OpenId { get; set; }
         public string? Nickname { get; set; }
+        public string? Region { get; set; }
         public string? Error { get; set; }
 
         public PlatformConnectionResult() { }

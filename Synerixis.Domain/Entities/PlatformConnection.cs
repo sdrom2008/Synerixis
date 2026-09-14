@@ -32,6 +32,8 @@ namespace Synerixis.Domain.Entities
         public DateTime? LastRefreshAt { get; private set; }
         /// <summary>最近一次刷新失败原因（成功时清空）；用于引导重新 OAuth。</summary>
         public string? LastRefreshError { get; private set; }
+        /// <summary>平台站点/区域（Shopee：SG/TW/VN/…；缺省按配置 Shopee:Region 或 SG）。</summary>
+        public string? Region { get; private set; }
 
         // 导航属性
         public Seller? Seller { get; private set; }
@@ -46,7 +48,8 @@ namespace Synerixis.Domain.Entities
             string openId,
             string? shopId = null,
             string? nickname = null,
-            string? avatarUrl = null)
+            string? avatarUrl = null,
+            string? region = null)
         {
             return new PlatformConnection
             {
@@ -59,6 +62,7 @@ namespace Synerixis.Domain.Entities
                 ShopId = shopId,
                 Nickname = nickname,
                 AvatarUrl = avatarUrl,
+                Region = string.IsNullOrWhiteSpace(region) ? null : region.Trim().ToUpperInvariant(),
                 IsActive = true,
                 CreatedAt = DateTime.UtcNow,
                 TokenExpiresAt = DateTime.UtcNow.AddHours(4)
@@ -114,6 +118,13 @@ namespace Synerixis.Domain.Entities
             TokenExpiresAt = DateTime.UtcNow.AddHours(4);
             LastRefreshAt = DateTime.UtcNow;
             LastRefreshError = null;
+        }
+
+        public void SetRegion(string? region)
+        {
+            if (!string.IsNullOrWhiteSpace(region))
+                Region = region.Trim().ToUpperInvariant();
+            UpdatedAt = DateTime.UtcNow;
         }
 
         public void SetActive(bool isActive)

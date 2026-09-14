@@ -253,6 +253,22 @@ DEALLOCATE PREPARE stmt2;
             await db.Database.ExecuteSqlRawAsync(refreshErrSql);
             logger?.LogInformation("[SchemaPatcher] platform_connections.LastRefreshError/At ensured (MySQL)");
 
+            const string regionSql = @"
+SET @db := DATABASE();
+SET @col := (
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = @db AND TABLE_NAME = 'platform_connections' AND COLUMN_NAME = 'Region'
+);
+SET @ddl := IF(@col = 0,
+  'ALTER TABLE `platform_connections` ADD COLUMN `Region` varchar(16) NULL',
+  'SELECT 1');
+PREPARE stmt FROM @ddl;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+";
+            await db.Database.ExecuteSqlRawAsync(regionSql);
+            logger?.LogInformation("[SchemaPatcher] platform_connections.Region ensured (MySQL)");
+
             const string settingsSql = @"
 CREATE TABLE IF NOT EXISTS `system_settings` (
   `Key` varchar(64) NOT NULL,
@@ -289,6 +305,7 @@ CREATE TABLE IF NOT EXISTS `system_settings` (
                 "ALTER TABLE platform_connections ADD COLUMN TokenExpiresAt TEXT NULL",
                 "ALTER TABLE platform_connections ADD COLUMN LastRefreshError TEXT NULL",
                 "ALTER TABLE platform_connections ADD COLUMN LastRefreshAt TEXT NULL",
+                "ALTER TABLE platform_connections ADD COLUMN Region TEXT NULL",
                 @"CREATE TABLE IF NOT EXISTS draft_messages (
                     Id BLOB NOT NULL PRIMARY KEY,
                     ChatSessionId BLOB NOT NULL,

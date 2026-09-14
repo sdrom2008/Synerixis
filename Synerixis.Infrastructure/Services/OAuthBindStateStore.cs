@@ -8,33 +8,36 @@ namespace Synerixis.Infrastructure.Services
     /// </summary>
     public interface IOAuthBindStateStore
     {
-        void Put(string state, Guid sellerId, string platform, TimeSpan? ttl = null);
-        bool TryTake(string state, out Guid sellerId, out string platform);
+        void Put(string state, Guid sellerId, string platform, string? region = null, TimeSpan? ttl = null);
+        bool TryTake(string state, out Guid sellerId, out string platform, out string? region);
     }
 
     public sealed class OAuthBindStateStore : IOAuthBindStateStore
     {
         private readonly ConcurrentDictionary<string, Entry> _map = new(StringComparer.Ordinal);
 
-        private sealed record Entry(Guid SellerId, string Platform, DateTime ExpiresAtUtc);
+        private sealed record Entry(Guid SellerId, string Platform, string? Region, DateTime ExpiresAtUtc);
 
-        public void Put(string state, Guid sellerId, string platform, TimeSpan? ttl = null)
+        public void Put(string state, Guid sellerId, string platform, string? region = null, TimeSpan? ttl = null)
         {
             if (string.IsNullOrWhiteSpace(state)) return;
             var exp = DateTime.UtcNow.Add(ttl ?? TimeSpan.FromMinutes(30));
-            _map[state] = new Entry(sellerId, platform.Trim().ToUpperInvariant(), exp);
+            var reg = string.IsNullOrWhiteSpace(region) ? null : region.Trim().ToUpperInvariant();
+            _map[state] = new Entry(sellerId, platform.Trim().ToUpperInvariant(), reg, exp);
             CleanupExpired();
         }
 
-        public bool TryTake(string state, out Guid sellerId, out string platform)
+        public bool TryTake(string state, out Guid sellerId, out string platform, out string? region)
         {
             sellerId = default;
             platform = string.Empty;
+            region = null;
             if (string.IsNullOrWhiteSpace(state)) return false;
             if (!_map.TryRemove(state, out var entry)) return false;
             if (entry.ExpiresAtUtc < DateTime.UtcNow) return false;
             sellerId = entry.SellerId;
             platform = entry.Platform;
+            region = entry.Region;
             return true;
         }
 

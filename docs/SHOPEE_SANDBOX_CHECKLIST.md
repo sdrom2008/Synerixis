@@ -84,4 +84,4 @@
 - [ ] handoff + 分配/认领可用  
 - [ ] alerts 文案无「已 Push」误导  
 
-**不做（本阶段）**：APNs/FCM、支付生产、多站点 partner、承运商假轨迹。
+**不做（本阶段）**：APNs/FCM、支付生产、承运商假轨迹。多站点 partner 已支持配置与绑店 region（实机需各区 key）。

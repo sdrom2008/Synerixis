@@ -32,6 +32,7 @@ namespace Synerixis.Infrastructure.Clients
         private readonly IConfiguration _config;
         private readonly ILogger<TikTokShopPlatformClient> _logger;
         private readonly IHttpClientFactory _httpClientFactory;
+        private readonly IPlatformConnectionRepository? _connectionRepo;
 
         // 内存缓存 AccessToken，避免重复刷新
         private string? _cachedAccessToken;
@@ -40,11 +41,13 @@ namespace Synerixis.Infrastructure.Clients
         public TikTokShopPlatformClient(
             IConfiguration config,
             ILogger<TikTokShopPlatformClient> logger,
-            IHttpClientFactory httpClientFactory)
+            IHttpClientFactory httpClientFactory,
+            IPlatformConnectionRepository? connectionRepo = null)
         {
             _config = config;
             _logger = logger;
             _httpClientFactory = httpClientFactory;
+            _connectionRepo = connectionRepo;
         }
 
         /// <summary>
@@ -571,33 +574,309 @@ namespace Synerixis.Infrastructure.Clients
         }
 
         /// <summary>
-        /// TikTok Shop 物流轨迹尚未接通：诚实降级，不编造 checkpoint。
+        /// TikTok Shop Open API Get Tracking：<c>GET /fulfillment/202309/orders/{order_id}/tracking</c>。
+        /// 请求风格对齐本客户端（HttpClientFactory + access_token + 可选 202309 签名）；
+        /// 无权限/失败返回空 checkpoints + warning，不编造轨迹。
         /// </summary>
-        public Task<PlatformTrackingInfoDto> GetTrackingInfoAsync(
+        public async Task<PlatformTrackingInfoDto> GetTrackingInfoAsync(
             string orderSn,
             string? trackingNumber = null,
             string? platformShopId = null,
             string? orderStatusHint = null,
             CancellationToken cancellationToken = default)
         {
-            _logger.LogInformation("[TikTok] GetTrackingInfoAsync not implemented; degrading order={OrderSn}", orderSn);
-            return Task.FromResult(new PlatformTrackingInfoDto
+            var degraded = new PlatformTrackingInfoDto
             {
                 TrackingNumber = trackingNumber,
                 OrderStatus = orderStatusHint,
                 LogisticsStatus = null,
                 Checkpoints = new List<TrackingCheckpointDto>(),
-                Warning = "unsupported",
+                Warning = "tracking_unavailable",
                 Message = string.IsNullOrWhiteSpace(trackingNumber)
                     ? "暂无运单号，轨迹暂不可用"
                     : "仅有运单号/订单状态，轨迹暂不可用"
-            });
+            };
+
+            if (string.IsNullOrWhiteSpace(orderSn))
+            {
+                degraded.Warning = "missing_order_sn";
+                return degraded;
+            }
+
+            try
+            {
+                var accessToken = await TryResolveAccessTokenAsync(platformShopId, cancellationToken);
+                if (string.IsNullOrEmpty(accessToken))
+                {
+                    _logger.LogWarning("[TikTok] GetTrackingInfo missing credentials order={OrderSn}", orderSn);
+                    degraded.Warning = "missing_credentials";
+                    return degraded;
+                }
+
+                var basePath = (_config["TikTok:BasePath"]
+                    ?? _config["TikTok:FulfillmentBasePath"]
+                    ?? ApiBasePath).TrimEnd('/');
+                // 签名 path 使用原文；URL 对 order_id 做转义
+                var orderId = orderSn.Trim();
+                var path = $"/fulfillment/202309/orders/{orderId}/tracking";
+                var url = BuildTikTokSignedUrl(basePath, path, accessToken, pathForUrl: $"/fulfillment/202309/orders/{Uri.EscapeDataString(orderId)}/tracking");
+
+                using var http = _httpClientFactory.CreateClient();
+                http.DefaultRequestHeaders.TryAddWithoutValidation("X-Tt-Logger", "Synerixis");
+                http.DefaultRequestHeaders.TryAddWithoutValidation("x-tts-access-token", accessToken);
+
+                var response = await http.GetAsync(url, cancellationToken);
+                var respBody = await response.Content.ReadAsStringAsync(cancellationToken);
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    _logger.LogWarning("[TikTok] get tracking HTTP {Status}: {Body}", response.StatusCode, respBody);
+                    degraded.Warning = response.StatusCode is System.Net.HttpStatusCode.Forbidden
+                        or System.Net.HttpStatusCode.Unauthorized
+                        ? "no_permission"
+                        : "api_http_failed";
+                    return degraded;
+                }
+
+                return ParseTikTokTrackingResponse(respBody, trackingNumber, orderStatusHint, degraded);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[TikTok] GetTrackingInfoAsync exception order={OrderSn}", orderSn);
+                degraded.Warning = "exception";
+                return degraded;
+            }
+        }
+
+        private async Task<string?> TryResolveAccessTokenAsync(string? platformShopId, CancellationToken cancellationToken)
+        {
+            if (_connectionRepo != null && !string.IsNullOrWhiteSpace(platformShopId))
+            {
+                try
+                {
+                    var conn = await _connectionRepo.GetByShopIdAndPlatformAsync(platformShopId, "TIKTOK");
+                    if (conn != null && conn.IsActive && !string.IsNullOrWhiteSpace(conn.AccessToken))
+                        return conn.AccessToken;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "[TikTok] PlatformConnection lookup failed for shop={ShopId}", platformShopId);
+                }
+            }
+
+            try
+            {
+                return await GetValidAccessTokenAsync(cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[TikTok] GetValidAccessTokenAsync failed");
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// 现有客户端风格：access_token 查询参数；若配置了 ClientKey/Secret 则附加 TTS 202309 HMAC 签名。
+        /// </summary>
+        private string BuildTikTokSignedUrl(string basePath, string path, string accessToken, string? pathForUrl = null)
+        {
+            var appKey = FirstNonEmpty(_config["TikTok:ClientKey"], _config["TikTok:AppKey"]);
+            var appSecret = FirstNonEmpty(_config["TikTok:ClientSecret"], _config["TikTok:AppSecret"]);
+            var shopCipher = _config["TikTok:ShopCipher"];
+            var timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString();
+
+            // 官方签名：除 sign / access_token 外的 query 按 key 排序拼接，再 secret + path + params + body + secret
+            var query = new SortedDictionary<string, string>(StringComparer.Ordinal);
+            if (!string.IsNullOrEmpty(appKey))
+                query["app_key"] = appKey;
+            query["timestamp"] = timestamp;
+            if (!string.IsNullOrWhiteSpace(shopCipher))
+                query["shop_cipher"] = shopCipher;
+
+            var urlPath = pathForUrl ?? path;
+            var qs = string.Join("&", query.Select(kv => $"{kv.Key}={Uri.EscapeDataString(kv.Value)}"));
+            var url = $"{basePath}{urlPath}?{qs}&access_token={Uri.EscapeDataString(accessToken)}";
+
+            if (!string.IsNullOrEmpty(appSecret))
+            {
+                var paramString = string.Concat(query.Select(kv => kv.Key + kv.Value));
+                var baseString = $"{appSecret}{path}{paramString}{appSecret}";
+                using var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(appSecret));
+                var sign = BitConverter.ToString(hmac.ComputeHash(Encoding.UTF8.GetBytes(baseString)))
+                    .Replace("-", "").ToLowerInvariant();
+                url += $"&sign={sign}";
+            }
+
+            return url;
+        }
+
+        private PlatformTrackingInfoDto ParseTikTokTrackingResponse(
+            string json,
+            string? trackingNumber,
+            string? orderStatusHint,
+            PlatformTrackingInfoDto degraded)
+        {
+            try
+            {
+                using var doc = JsonDocument.Parse(json);
+                var root = doc.RootElement;
+
+                int? code = null;
+                if (root.TryGetProperty("code", out var codeEl))
+                {
+                    if (codeEl.ValueKind == JsonValueKind.Number && codeEl.TryGetInt32(out var n))
+                        code = n;
+                    else if (codeEl.ValueKind == JsonValueKind.String && int.TryParse(codeEl.GetString(), out var ns))
+                        code = ns;
+                }
+
+                var apiMessage = root.TryGetProperty("message", out var msgEl) ? msgEl.GetString() : null;
+                if (code.HasValue && code.Value != 0)
+                {
+                    var blob = $"{code} {apiMessage}";
+                    _logger.LogWarning("[TikTok] get tracking error code={Code} message={Message}", code, apiMessage);
+                    degraded.Warning = LooksLikePermissionError(blob) ? "no_permission" : "api_failed";
+                    return degraded;
+                }
+
+                JsonElement data = root;
+                if (root.TryGetProperty("data", out var dataEl) && dataEl.ValueKind == JsonValueKind.Object)
+                    data = dataEl;
+
+                var result = new PlatformTrackingInfoDto
+                {
+                    TrackingNumber = trackingNumber,
+                    OrderStatus = orderStatusHint,
+                    Warning = null,
+                    Message = null,
+                    Checkpoints = new List<TrackingCheckpointDto>()
+                };
+
+                if (TryGetString(data, "tracking_number", "tracking_no") is string tn && !string.IsNullOrWhiteSpace(tn))
+                    result.TrackingNumber = tn;
+                if (TryGetString(data, "logistics_status", "package_status", "status") is string ls)
+                    result.LogisticsStatus = ls;
+
+                foreach (var item in EnumerateTrackingItems(data))
+                {
+                    var desc = TryGetString(item, "description", "desc", "title", "message");
+                    var st = TryGetString(item, "status", "logistics_status", "tracking_status");
+                    var time = TryParseTikTokTime(item, "update_time_millis", "update_time", "event_time", "create_time");
+                    if (string.IsNullOrWhiteSpace(desc) && string.IsNullOrWhiteSpace(st) && time == null)
+                        continue;
+                    result.Checkpoints.Add(new TrackingCheckpointDto
+                    {
+                        Time = time,
+                        Description = desc,
+                        Status = st
+                    });
+                }
+
+                if (!result.HasTrajectory)
+                {
+                    result.Warning = "no_checkpoints";
+                    result.Message = "仅有运单号/订单状态，轨迹暂不可用";
+                    _logger.LogInformation("[TikTok] get tracking ok but empty checkpoints");
+                }
+                else
+                {
+                    _logger.LogInformation("[TikTok] get tracking ok checkpoints={Count}", result.Checkpoints.Count);
+                }
+
+                return result;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[TikTok] parse tracking JSON failed");
+                degraded.Warning = "parse_failed";
+                return degraded;
+            }
+        }
+
+        private static IEnumerable<JsonElement> EnumerateTrackingItems(JsonElement data)
+        {
+            foreach (var name in new[] { "tracking", "tracking_info", "tracking_list" })
+            {
+                if (data.TryGetProperty(name, out var arr) && arr.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var item in arr.EnumerateArray())
+                        yield return item;
+                    yield break;
+                }
+            }
+
+            if (data.TryGetProperty("tracking_info_list", out var list) && list.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var pkg in list.EnumerateArray())
+                {
+                    if (pkg.TryGetProperty("tracking_info", out var inner) && inner.ValueKind == JsonValueKind.Array)
+                    {
+                        foreach (var item in inner.EnumerateArray())
+                            yield return item;
+                    }
+                }
+            }
+        }
+
+        private static DateTime? TryParseTikTokTime(JsonElement item, params string[] names)
+        {
+            foreach (var name in names)
+            {
+                if (!item.TryGetProperty(name, out var el))
+                    continue;
+                if (el.ValueKind == JsonValueKind.Number && el.TryGetInt64(out var n))
+                    return FromUnixFlexible(n);
+                if (el.ValueKind == JsonValueKind.String && long.TryParse(el.GetString(), out var ns))
+                    return FromUnixFlexible(ns);
+            }
+            return null;
+        }
+
+        private static DateTime FromUnixFlexible(long n)
+        {
+            // 毫秒时间戳通常 > 10^12
+            return n > 10_000_000_000
+                ? DateTimeOffset.FromUnixTimeMilliseconds(n).UtcDateTime
+                : DateTimeOffset.FromUnixTimeSeconds(n).UtcDateTime;
+        }
+
+        private static string? TryGetString(JsonElement obj, params string[] names)
+        {
+            foreach (var name in names)
+            {
+                if (obj.TryGetProperty(name, out var el) && el.ValueKind == JsonValueKind.String)
+                {
+                    var s = el.GetString();
+                    if (!string.IsNullOrWhiteSpace(s))
+                        return s;
+                }
+            }
+            return null;
+        }
+
+        private static bool LooksLikePermissionError(string blob)
+        {
+            return blob.Contains("permission", StringComparison.OrdinalIgnoreCase)
+                || blob.Contains("auth", StringComparison.OrdinalIgnoreCase)
+                || blob.Contains("scope", StringComparison.OrdinalIgnoreCase)
+                || blob.Contains("forbidden", StringComparison.OrdinalIgnoreCase)
+                || blob.Contains("105005", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static string? FirstNonEmpty(params string?[] values)
+        {
+            foreach (var v in values)
+            {
+                if (!string.IsNullOrWhiteSpace(v))
+                    return v.Trim();
+            }
+            return null;
         }
 
         /// <summary>
         /// 获取 TikTok Shop OAuth 授权 URL
         /// </summary>
-        public async Task<string> GetAuthorizationUrlAsync(string state)
+        public Task<string> GetAuthorizationUrlAsync(string state, string? region = null)
         {
             var clientKey = _config["TikTok:ClientKey"];
             var redirectUri = _config["TikTok:RedirectUri"];
@@ -605,14 +884,14 @@ namespace Synerixis.Infrastructure.Clients
             if (string.IsNullOrEmpty(clientKey) || string.IsNullOrEmpty(redirectUri))
                 throw new InvalidOperationException("TikTok ClientKey 和 RedirectUri 未配置");
 
-            return $"https://www.tiktok.com/business/openapi/auth?client_key={clientKey}&redirect_uri={Uri.EscapeDataString(redirectUri)}&state={state}";
+            return Task.FromResult($"https://www.tiktok.com/business/openapi/auth?client_key={clientKey}&redirect_uri={Uri.EscapeDataString(redirectUri)}&state={state}");
         }
 
         /// <summary>
         /// 通过授权码获取 Access Token 和 Refresh Token
         /// </summary>
         public async Task<(string AccessToken, string RefreshToken)> GetAccessTokenAsync(
-            string authorizationCode, string state, CancellationToken cancellationToken = default)
+            string authorizationCode, string state, string? region = null, CancellationToken cancellationToken = default)
         {
             var clientKey = _config["TikTok:ClientKey"];
             var clientSecret = _config["TikTok:ClientSecret"];
@@ -653,7 +932,7 @@ namespace Synerixis.Infrastructure.Clients
         /// 获取店铺信息
         /// </summary>
         public async Task<(string ShopId, string Nickname, string AvatarUrl)> GetShopInfoAsync(
-            string accessToken, CancellationToken cancellationToken = default)
+            string accessToken, string? region = null, CancellationToken cancellationToken = default)
         {
             var basePath = _config["TikTok:BasePath"] ?? ApiBasePath;
             var url = $"{basePath}/v1/shop/info/get?access_token={accessToken}";

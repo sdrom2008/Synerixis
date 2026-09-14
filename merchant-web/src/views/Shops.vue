@@ -43,7 +43,7 @@
                 type="danger"
                 size="small"
                 :loading="binding"
-                @click="startBind(String(w.platform || w.Platform || 'shopee').toLowerCase())"
+                @click="startBind(String(w.platform || w.Platform || 'shopee').toLowerCase(), connRegion(w))"
               >
                 重新绑定
               </el-button>
@@ -66,7 +66,15 @@
             <span>已连接店铺</span>
             <div class="head-actions">
               <el-button size="small" :loading="loading" @click="load">刷新</el-button>
-              <el-button type="primary" size="small" :loading="binding" @click="startBind('shopee')">
+              <el-select v-model="bindRegion" size="small" style="width: 150px" placeholder="站点">
+                <el-option
+                  v-for="r in shopeeRegions"
+                  :key="r.code"
+                  :label="r.label"
+                  :value="r.code"
+                />
+              </el-select>
+              <el-button type="primary" size="small" :loading="binding" @click="startBind('shopee', bindRegion)">
                 绑定 Shopee
               </el-button>
             </div>
@@ -84,6 +92,9 @@
           </el-table-column>
           <el-table-column label="平台店铺 ID" min-width="140">
             <template #default="{ row }">{{ row.shopId || row.ShopId || '—' }}</template>
+          </el-table-column>
+          <el-table-column label="站点" width="90">
+            <template #default="{ row }">{{ row.region || row.Region || '—' }}</template>
           </el-table-column>
           <el-table-column label="Token 状态" width="130">
             <template #default="{ row }">
@@ -127,7 +138,7 @@
                 type="danger"
                 size="small"
                 :loading="binding"
-                @click="startBind(String(row.platform || row.Platform || 'shopee').toLowerCase())"
+                @click="startBind(String(row.platform || row.Platform || 'shopee').toLowerCase(), connRegion(row))"
               >
                 重新绑定
               </el-button>
@@ -146,7 +157,7 @@
         <EmptyState
           v-else
           title="尚未绑定店铺"
-          desc="点击「绑定 Shopee」跳转 OAuth。完成后回到此页将自动刷新。"
+          desc="选择站点后点击「绑定 Shopee」跳转 OAuth。无多站点 partner 时默认 SG/全球。完成后回到此页将自动刷新。"
         />
       </el-card>
     </template>
@@ -166,11 +177,28 @@ const route = useRoute()
 const router = useRouter()
 const canManage = computed(() => !!auth.permissions.canManageShops)
 
+const shopeeRegions = [
+  { code: 'SG', label: 'SG 新加坡/全球' },
+  { code: 'TW', label: 'TW 台湾' },
+  { code: 'VN', label: 'VN 越南' },
+  { code: 'PH', label: 'PH 菲律宾' },
+  { code: 'MY', label: 'MY 马来西亚' },
+  { code: 'TH', label: 'TH 泰国' },
+  { code: 'ID', label: 'ID 印尼' },
+  { code: 'BR', label: 'BR 巴西' },
+]
+
+const bindRegion = ref('SG')
 const loading = ref(false)
 const binding = ref(false)
 const refreshingId = ref<string | null>(null)
 const connections = ref<Record<string, unknown>[]>([])
 let focusHandler: (() => void) | null = null
+
+function connRegion(row: Record<string, unknown>) {
+  const r = row.region || row.Region
+  return r ? String(r) : bindRegion.value
+}
 
 function connStatus(row: Record<string, unknown>) {
   return String(row.status || row.tokenStatus || '')
@@ -253,10 +281,10 @@ async function load() {
   }
 }
 
-async function startBind(platform: string) {
+async function startBind(platform: string, region?: string) {
   binding.value = true
   try {
-    const res = await getBindUrl(platform)
+    const res = await getBindUrl(platform, platform === 'shopee' ? region || bindRegion.value : undefined)
     const url = res.url || res.authorizeUrl
     if (!url) {
       ElMessage.warning('未返回授权 URL')
@@ -283,7 +311,7 @@ async function promptRebind(row: Record<string, unknown>, detail?: string) {
         cancelButtonText: '稍后',
       },
     )
-    await startBind(platform)
+    await startBind(platform, connRegion(row))
   } catch {
     /* cancel */
   }

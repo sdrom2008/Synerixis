@@ -6,6 +6,7 @@ using Synerixis.Domain.Entities;
 using Synerixis.Infrastructure.Clients;
 using Synerixis.Infrastructure.Data;
 using Synerixis.Infrastructure.Repositories;
+using Synerixis.Infrastructure.Options;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
@@ -67,27 +68,30 @@ namespace Synerixis.Infrastructure.Services
         /// <summary>
         /// 获取指定平台的 OAuth 授权 URL
         /// </summary>
-        public async Task<string> GetAuthorizationUrlAsync(string platform, string state)
+        public async Task<string> GetAuthorizationUrlAsync(string platform, string state, string? region = null)
         {
             var client = _clientRouter.GetClient(platform);
-            return await client.GetAuthorizationUrlAsync(state);
+            return await client.GetAuthorizationUrlAsync(state, region);
         }
 
         /// <summary>
         /// 通过授权码获取平台信息并绑定店铺
         /// </summary>
-        public async Task<PlatformConnectionResult> BindShopAsync(string platform, string authorizationCode, Guid sellerId)
+        public async Task<PlatformConnectionResult> BindShopAsync(string platform, string authorizationCode, Guid sellerId, string? region = null)
         {
             try
             {
                 var client = _clientRouter.GetClient(platform);
-                var (accessToken, refreshToken) = await client.GetAccessTokenAsync(authorizationCode, state: "bind");
+                var normalizedRegion = string.IsNullOrWhiteSpace(region) ? null : region.Trim().ToUpperInvariant();
+                var (accessToken, refreshToken) = await client.GetAccessTokenAsync(authorizationCode, state: "bind", region: normalizedRegion);
                 
-                var (shopId, nickname, avatarUrl) = await client.GetShopInfoAsync(accessToken);
+                var (shopId, nickname, avatarUrl) = await client.GetShopInfoAsync(accessToken, region: normalizedRegion);
 
                 var normalizedPlatform = (platform ?? string.Empty).ToUpperInvariant();
                 var appKey = normalizedPlatform == "SHOPEE"
-                    ? (_config["Shopee:AppKey"] ?? string.Empty)
+                    ? (ShopeePartnerResolver.Resolve(_config, normalizedRegion).PartnerId
+                       ?? _config["Shopee:AppKey"]
+                       ?? string.Empty)
                     : (_config["TikTok:ClientKey"] ?? string.Empty);
 
                 // 按 ShopId + Platform 幂等 upsert，避免重复绑店产生多行
@@ -106,6 +110,7 @@ namespace Synerixis.Infrastructure.Services
                         openId: shopId,
                         nickname: nickname,
                         avatarUrl: avatarUrl);
+                    existing.SetRegion(normalizedRegion);
                     await _connectionRepository.UpdateAsync(existing);
                     await _db.SaveChangesAsync();
 
@@ -130,7 +135,8 @@ namespace Synerixis.Infrastructure.Services
                     openId: shopId ?? string.Empty,
                     shopId: shopId,
                     nickname: nickname,
-                    avatarUrl: avatarUrl
+                    avatarUrl: avatarUrl,
+                    region: normalizedRegion
                 );
 
                 if (!string.IsNullOrEmpty(refreshToken))
@@ -181,7 +187,7 @@ namespace Synerixis.Infrastructure.Services
             try
             {
                 var client = _clientRouter.GetClient(platform);
-                var (accessToken, newRefresh) = await client.GetAccessTokenAsync(connection.RefreshToken, "refresh");
+                var (accessToken, newRefresh) = await client.GetAccessTokenAsync(connection.RefreshToken, "refresh", region: connection.Region);
                 
                 connection.UpdateToken(accessToken, string.IsNullOrEmpty(newRefresh) ? connection.RefreshToken : newRefresh);
                 await _connectionRepository.UpdateAsync(connection);

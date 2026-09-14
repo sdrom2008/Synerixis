@@ -128,7 +128,7 @@
 - [x] `GET /api/merchant/usage`、`GET /api/admin/usage` → `byPurpose[{purpose,calls,tokens,costUsd}]`
 - [x] merchant-web Billing / admin-console Usage 表格展示 byPurpose
 
-**下一轮缺口**：真实承运商轨迹；ConversationService 与 Webhook 统一；支付生产；Token 告警 UI。
+**后续依赖外部账号**：支付生产；ISV 审核。Token 告警 UI、Shopee 轨迹已完成。
 
 ### P1h — 收件箱坐席分配 + Admin 可写设置（2026-09-14）
 
@@ -149,9 +149,11 @@
 - [x] merchant-web：503 `MAINTENANCE` 全局 ElMessage「系统维护中」；`/onboarding` 上手清单 + 侧栏「上手指南」+ Overview 进度条
 - [x] Admin Settings 文案同步为「真正闸流量」
 
-**明确不做**：支付生产、APNs/FCM、多站点、RegimeTrader、假承运商轨迹。
+**明确不做**：支付生产、APNs/FCM、RegimeTrader、假承运商轨迹。
 
-**下一轮缺口**：TikTok 真实轨迹；支付生产；Token 告警深化；APNs；多站点 partner；多实例限流（Redis；当前单机内存）。Shopee 轨迹与 InboundSession 入库已收拢。
+**本轮已补**：TikTok `GetTrackingInfoAsync` 真实 API（失败诚实降级）；Shopee 多站点 partner + 绑店 `region`；Webhook `RateLimitStore=Memory|Redis`。Token 告警 UI 更早已完成。
+
+**仍需外部账号才能验**：支付生产网关、APNs/FCM、Shopee/TikTok ISV 与沙箱实机。详见 [`PRODUCT_STATUS.md`](./PRODUCT_STATUS.md)。
 
 ### P2 — 可靠性与人工协同
 

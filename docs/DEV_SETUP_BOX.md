@@ -122,3 +122,10 @@ npm run build    # 生产构建校验
 - **EF 迁移**：Design-time 读取 `Synerixis.Api` 下 `appsettings.json` / `appsettings.Development.json` 的 `Database:ConnectionString`。
 - **无 MySQL 时**：不配连接串则使用 SQLite `dev.db`（仅演示，非 SaaS 目标路径）。
 
+## 8. Shopee 多站点与 Webhook Redis
+
+- **单组 key**：只填 `Shopee:AppKey`/`AppSecret`（或 `PartnerId`/`PartnerKey`）+ `Endpoint`/`ApiBaseUrl`，`Region` 默认 `SG`。
+- **多站点**：`Shopee:Partners` 数组，或 `Shopee:TW:Host` / `PartnerId` / `PartnerKey`。绑店时 merchant-web 选站点，或 `GET /api/merchant/bind/shopee?region=TW`。
+- **Webhook 限流**：`Webhook:RateLimitStore=Memory`（默认）。多实例设 `Redis` 并填写 `ConnectionStrings:Redis`。未配 Redis 时回退 Memory。
+
+产品完成度见 [`PRODUCT_STATUS.md`](./PRODUCT_STATUS.md)。

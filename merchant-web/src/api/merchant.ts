@@ -322,9 +322,10 @@ export function getConnections() {
   return request({ url: '/api/merchant/connections' })
 }
 
-export function getBindUrl(platform: string) {
-  return request<{ url?: string; authorizeUrl?: string }>({
-    url: `/api/merchant/bind/${encodeURIComponent(platform)}`,
+export function getBindUrl(platform: string, region?: string) {
+  const q = region ? `?region=${encodeURIComponent(region)}` : ''
+  return request<{ url?: string; authorizeUrl?: string; region?: string }>({
+    url: `/api/merchant/bind/${encodeURIComponent(platform)}${q}`,
   })
 }
 

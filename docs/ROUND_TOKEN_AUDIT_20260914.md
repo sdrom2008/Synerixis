@@ -27,10 +27,8 @@
 - 本文档更新；PRODUCTIZATION 补一行。
 
 ## 明确不做
-- 支付生产、APNs/FCM、完整 WebPush 服务、多站点 partner、RegimeTrader、假承运商轨迹。
+- 支付生产、APNs/FCM、完整 WebPush 服务、RegimeTrader、假承运商轨迹。
 
-## 下一轮缺口（建议）
-- WebPush / 桌面声音（alerts 已改为 `browserNotifySupported`（无 Push））。
-- Shopee/TikTok 沙箱实机验证出站 `message_id` 字段路径。
-- Admin 设置页若增加可写配置，补 `admin.sensitive` 审计。
-- Partner 多站点 / 支付生产仍不在本阶段。
+## 后续（依赖外部账号）
+- 支付生产网关、APNs/FCM、Shopee/TikTok ISV 与沙箱实机。
+- 多站点 partner / TikTok 轨迹路径 / Redis 限流开关：见后续 commit 与 [`PRODUCT_STATUS.md`](./PRODUCT_STATUS.md)。

@@ -264,6 +264,28 @@ builder.Services.AddScoped<IAuditLogger, AuditLogger>();
 builder.Services.AddScoped<ISystemSettingsService, SystemSettingsService>();
 builder.Services.Configure<Synerixis.Api.Middleware.WebhookRateLimitOptions>(
     builder.Configuration.GetSection(Synerixis.Api.Middleware.WebhookRateLimitOptions.SectionName));
+{
+    var storeMode = builder.Configuration["Webhook:RateLimitStore"] ?? "Memory";
+    var redisConn = builder.Configuration.GetConnectionString("Redis")
+        ?? builder.Configuration["Redis:ConnectionString"]
+        ?? builder.Configuration["Webhook:Redis"];
+    if (string.Equals(storeMode, "Redis", StringComparison.OrdinalIgnoreCase)
+        && !string.IsNullOrWhiteSpace(redisConn))
+    {
+        builder.Services.AddStackExchangeRedisCache(o => o.Configuration = redisConn);
+        builder.Services.AddSingleton<Synerixis.Api.Middleware.IWebhookRateLimitStore,
+            Synerixis.Api.Middleware.DistributedWebhookRateLimitStore>();
+    }
+    else
+    {
+        if (string.Equals(storeMode, "Redis", StringComparison.OrdinalIgnoreCase))
+        {
+            Console.WriteLine("[Webhook] RateLimitStore=Redis but ConnectionStrings:Redis is empty; using Memory.");
+        }
+        builder.Services.AddSingleton<Synerixis.Api.Middleware.IWebhookRateLimitStore,
+            Synerixis.Api.Middleware.MemoryWebhookRateLimitStore>();
+    }
+}
 builder.Services.AddScoped<IQuickReplyContextProvider, QuickReplyContextProvider>();
 
 // 7. AiChatService（最后注册，依赖 Router）

@@ -98,7 +98,7 @@ namespace Synerixis.Api.Controllers
         /// 获取指定平台的授权 URL
         /// </summary>
         [HttpGet("bind/{platform}")]
-        public async Task<IActionResult> GetBindUrl(string platform)
+        public async Task<IActionResult> GetBindUrl(string platform, [FromQuery] string? region = null)
         {
             if (!CanManageShopOwnerResources())
                 return Forbid();
@@ -106,9 +106,9 @@ namespace Synerixis.Api.Controllers
             {
                 var sellerId = GetShopOwnerSellerId();
                 var state = GenerateState();
-                _oauthStateStore.Put(state, sellerId, platform);
-                var url = await _platformService.GetAuthorizationUrlAsync(platform, state);
-                return Ok(new { url, state });
+                _oauthStateStore.Put(state, sellerId, platform, region);
+                var url = await _platformService.GetAuthorizationUrlAsync(platform, state, region);
+                return Ok(new { url, state, region });
             }
             catch (UnauthorizedAccessException ex)
             {
@@ -127,14 +127,14 @@ namespace Synerixis.Api.Controllers
             try
             {
                 var sellerId = GetShopOwnerSellerId();
-                var result = await _platformService.BindShopAsync(request.Platform, request.Code, sellerId);
+                var result = await _platformService.BindShopAsync(request.Platform, request.Code, sellerId, request.Region);
 
                 if (result.Success)
                 {
                     var actor = GetCurrentUser();
                     await _audit.LogAsync(actor.UserId, actor.UserType, AuditActions.ConnectionBind,
                         "PlatformConnection", result.ConnectionId.ToString(),
-                        new { platform = request.Platform },
+                        new { platform = request.Platform, region = request.Region },
                         sellerId);
                     return Ok(new { message = "绑定成功", result });
                 }
@@ -172,8 +172,9 @@ namespace Synerixis.Api.Controllers
 
             Guid sellerId = default;
             string statePlatform = string.Empty;
+            string? stateRegion = null;
             var hasState = !string.IsNullOrWhiteSpace(state)
-                && _oauthStateStore.TryTake(state!, out sellerId, out statePlatform);
+                && _oauthStateStore.TryTake(state!, out sellerId, out statePlatform, out stateRegion);
             if (hasState && string.IsNullOrWhiteSpace(plat))
                 plat = statePlatform;
 
@@ -191,12 +192,12 @@ namespace Synerixis.Api.Controllers
 
             try
             {
-                var result = await _platformService.BindShopAsync(plat, code!, sellerId);
+                var result = await _platformService.BindShopAsync(plat, code!, sellerId, stateRegion);
                 if (result.Success)
                 {
                     await _audit.LogAsync(sellerId, "Seller", AuditActions.ConnectionBind,
                         "PlatformConnection", result.ConnectionId.ToString(),
-                        new { platform = plat, via = "oauth_redirect" },
+                        new { platform = plat, region = stateRegion, via = "oauth_redirect" },
                         sellerId);
                     return Redirect(successUrl);
                 }
@@ -255,6 +256,7 @@ namespace Synerixis.Api.Controllers
                         c.Platform,
                         shopId = c.ShopId,
                         nickname = c.Nickname,
+                        region = c.Region,
                         c.AvatarUrl,
                         c.IsActive,
                         expiresAt = c.TokenExpiresAt,
@@ -2062,6 +2064,7 @@ namespace Synerixis.Api.Controllers
     {
         public string Platform { get; set; } = string.Empty;
         public string Code { get; set; } = string.Empty;
+        public string? Region { get; set; }
     }
 
     public class DraftEditRequest

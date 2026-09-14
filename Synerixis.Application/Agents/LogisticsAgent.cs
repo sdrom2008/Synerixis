@@ -14,7 +14,7 @@ using Synerixis.Domain.Enums;
 namespace Synerixis.Application.Agents
 {
     /// <summary>
-    /// 物流查询 Agent。优先 Shopee get_tracking_info 真实轨迹；
+    /// 物流查询 Agent。优先平台 GetTrackingInfoAsync（Shopee / TikTok）真实轨迹；
     /// 无 API / 无权限时返回运单号+订单状态，禁止编造 checkpoint。
     /// </summary>
     public class LogisticsAgent : IAgent
@@ -60,7 +60,7 @@ namespace Synerixis.Application.Agents
                 var orderSn = order?.OrderNo;
                 var platform = context.Platform ?? order?.Platform ?? string.Empty;
 
-                // 有 order_sn + tracking → 平台真实轨迹（Shopee get_tracking_info）
+                // 有 order_sn + tracking → 平台真实轨迹（Shopee get_tracking_info / TikTok fulfillment tracking）
                 if (_platformRouter != null
                     && !string.IsNullOrWhiteSpace(orderSn)
                     && !string.IsNullOrWhiteSpace(platform)

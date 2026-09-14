@@ -80,6 +80,7 @@ Synerixis.sln
 | [`docs/MARKET_FIT_AND_POSITIONING.md`](docs/MARKET_FIT_AND_POSITIONING.md) | 市场适配与战略再定位（工作台 + AI 起草；Shopee Chat 合规） |
 | [`docs/BUSINESS_PLAN_CBEC.md`](docs/BUSINESS_PLAN_CBEC.md) | CBEC 商业计划（替代国内 SME 幻想叙事；Y1 付费店目标 30–100） |
 | [`docs/SHOPEE_CLOSED_LOOP.md`](docs/SHOPEE_CLOSED_LOOP.md) | Shopee 闭环缺口清单（OAuth→草稿→人审→handoff） |
+| [`docs/PRODUCT_STATUS.md`](docs/PRODUCT_STATUS.md) | 产品状态总览（已完成 vs 需外部账号） |
 | [`docs/ISV_APPLICATION_CHECKLIST.md`](docs/ISV_APPLICATION_CHECKLIST.md) | Shopee+TikTok ISV 申请证据清单 |
 | [`docs/PRICING_DRAFT.md`](docs/PRICING_DRAFT.md) | 定价草案 |
 | `业务计划书.docx` | 旧版 Word，**以 docs 下 Markdown 为准**，文件保留不删 |

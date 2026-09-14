@@ -3,6 +3,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Synerixis.Application.Interfaces;
 using Synerixis.Application.DTOs;
+using Synerixis.Infrastructure.Options;
 using System.IO;
 using System.Text;
 using System.Text.Json;
@@ -36,12 +37,12 @@ namespace Synerixis.Infrastructure.Clients
         /// </summary>
         public async Task<string?> SendReplyAsync(PlatformMessage context, string content, CancellationToken cancellationToken = default)
         {
-            var partnerId = _config["Shopee:AppKey"];
-            var appSecret = _config["Shopee:AppSecret"];
-            var endpoint = _config["Shopee:Endpoint"] ?? "https://partner.shopeemobile.com";
-
-            // 优先按 webhook 的 to_shop_id（context.OpenId）从 PlatformConnection 取 per-shop token
-            var (accessToken, shopIdStr, tokenSource) = await ResolveShopCredentialsAsync(context.OpenId);
+            // 优先按 webhook 的 to_shop_id（context.OpenId）从 PlatformConnection 取 per-shop token + Region
+            var (accessToken, shopIdStr, tokenSource, region) = await ResolveShopCredentialsAsync(context.OpenId);
+            var partner = ShopeePartnerResolver.Resolve(_config, region);
+            var partnerId = partner.PartnerId;
+            var appSecret = partner.PartnerKey;
+            var endpoint = partner.Endpoint;
 
             if (string.IsNullOrEmpty(partnerId) || string.IsNullOrEmpty(appSecret) || string.IsNullOrEmpty(accessToken) || string.IsNullOrEmpty(shopIdStr))
             {
@@ -263,10 +264,10 @@ namespace Synerixis.Infrastructure.Clients
                     signature = signature.Substring(7).Trim();
                 }
 
-                var appSecret = _config["Shopee:AppSecret"];
-                if (string.IsNullOrEmpty(appSecret))
+                var secrets = ShopeePartnerResolver.AllPartnerKeys(_config).ToList();
+                if (secrets.Count == 0)
                 {
-                    _logger.LogError("[Shopee] AppSecret not configured");
+                    _logger.LogError("[Shopee] AppSecret/PartnerKey not configured");
                     return false;
                 }
 
@@ -276,18 +277,26 @@ namespace Synerixis.Infrastructure.Clients
                 // 拼接签名字符串：callbackUrl + "|" + body
                 string baseString = $"{callbackUrl}|{body}";
 
-                using var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(appSecret));
-                var hash = hmac.ComputeHash(Encoding.UTF8.GetBytes(baseString));
-                string computedSignature = BitConverter.ToString(hash).Replace("-", "").ToLowerInvariant();
-
-                bool isValid = computedSignature == signature;
+                bool isValid = false;
+                string? lastComputed = null;
+                foreach (var appSecret in secrets)
+                {
+                    using var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(appSecret));
+                    var hash = hmac.ComputeHash(Encoding.UTF8.GetBytes(baseString));
+                    lastComputed = BitConverter.ToString(hash).Replace("-", "").ToLowerInvariant();
+                    if (lastComputed == signature)
+                    {
+                        isValid = true;
+                        break;
+                    }
+                }
                 if (isValid)
                 {
                     _logger.LogInformation("[Shopee] Signature verification succeeded");
                 }
                 else
                 {
-                    _logger.LogWarning("[Shopee] Signature verification failed. Computed={Computed}, Received={Received}", computedSignature, signature);
+                    _logger.LogWarning("[Shopee] Signature verification failed. Computed={Computed}, Received={Received}", lastComputed, signature);
                 }
                 return isValid;
             }
@@ -312,11 +321,11 @@ namespace Synerixis.Infrastructure.Clients
                 return null;
             }
 
-            var partnerId = _config["Shopee:AppKey"];
-            var appSecret = _config["Shopee:AppSecret"];
-            var endpoint = _config["Shopee:Endpoint"] ?? "https://partner.shopeemobile.com";
-
-            var (accessToken, shopIdStr, tokenSource) = await ResolveShopCredentialsAsync(platformShopId);
+            var (accessToken, shopIdStr, tokenSource, region) = await ResolveShopCredentialsAsync(platformShopId);
+            var partner = ShopeePartnerResolver.Resolve(_config, region);
+            var partnerId = partner.PartnerId;
+            var appSecret = partner.PartnerKey;
+            var endpoint = partner.Endpoint;
 
             if (string.IsNullOrEmpty(partnerId) || string.IsNullOrEmpty(appSecret) ||
                 string.IsNullOrEmpty(accessToken) || string.IsNullOrEmpty(shopIdStr))
@@ -562,10 +571,11 @@ namespace Synerixis.Infrastructure.Clients
                 return degraded;
             }
 
-            var partnerId = _config["Shopee:AppKey"];
-            var appSecret = _config["Shopee:AppSecret"];
-            var endpoint = _config["Shopee:Endpoint"] ?? "https://partner.shopeemobile.com";
-            var (accessToken, shopIdStr, tokenSource) = await ResolveShopCredentialsAsync(platformShopId);
+            var (accessToken, shopIdStr, tokenSource, region) = await ResolveShopCredentialsAsync(platformShopId);
+            var partner = ShopeePartnerResolver.Resolve(_config, region);
+            var partnerId = partner.PartnerId;
+            var appSecret = partner.PartnerKey;
+            var endpoint = partner.Endpoint;
 
             if (string.IsNullOrEmpty(partnerId) || string.IsNullOrEmpty(appSecret) ||
                 string.IsNullOrEmpty(accessToken) || string.IsNullOrEmpty(shopIdStr))
@@ -709,30 +719,50 @@ namespace Synerixis.Infrastructure.Clients
         /// <summary>
         /// 获取 Shopee 授权 URL
         /// </summary>
-        public async Task<string> GetAuthorizationUrlAsync(string state)
+        public Task<string> GetAuthorizationUrlAsync(string state, string? region = null)
         {
-            var appKey = _config["Shopee:AppKey"];
-            var redirectUri = _config["Shopee:RedirectUri"];
-            
-            if (string.IsNullOrEmpty(appKey) || string.IsNullOrEmpty(redirectUri))
-                throw new InvalidOperationException("Shopee AppKey 和 RedirectUri 未配置");
+            var partner = ShopeePartnerResolver.Resolve(_config, region);
+            var partnerId = partner.PartnerId;
+            var redirectUri = partner.RedirectUri;
+            var host = partner.Endpoint;
 
-            return $"https://partner.shopeemobile.com/mobile/openplatform/seller?appkey={appKey}&redirect_uri={Uri.EscapeDataString(redirectUri)}&state={state}";
+            if (string.IsNullOrEmpty(partnerId) || string.IsNullOrEmpty(redirectUri))
+                throw new InvalidOperationException("Shopee AppKey/PartnerId 和 RedirectUri 未配置");
+
+            // Open API v2 auth_partner（按站点 Host 签名）
+            if (!string.IsNullOrEmpty(partner.PartnerKey))
+            {
+                string path = "/api/v2/shop/auth_partner";
+                long timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                string sign = GenerateSignature(partner.PartnerKey, $"{partnerId}{path}{timestamp}");
+                var url =
+                    $"{host}{path}?partner_id={Uri.EscapeDataString(partnerId)}" +
+                    $"&timestamp={timestamp}&sign={sign}&redirect={Uri.EscapeDataString(redirectUri)}";
+                if (!string.IsNullOrWhiteSpace(state))
+                    url += $"&state={Uri.EscapeDataString(state)}";
+                return Task.FromResult(url);
+            }
+
+            // 无 PartnerKey 时回退旧 mobile 授权链（兼容单组 AppKey 演示）
+            return Task.FromResult(
+                $"{host}/mobile/openplatform/seller?appkey={partnerId}&redirect_uri={Uri.EscapeDataString(redirectUri)}&state={state}");
         }
 
         /// <summary>
         /// 通过授权码获取 Token
         /// </summary>
-        public async Task<(string AccessToken, string RefreshToken)> GetAccessTokenAsync(string authorizationCode, string state, CancellationToken cancellationToken = default)
+        public async Task<(string AccessToken, string RefreshToken)> GetAccessTokenAsync(
+            string authorizationCode, string state, string? region = null, CancellationToken cancellationToken = default)
         {
-            var appKey = _config["Shopee:AppKey"];
-            var appSecret = _config["Shopee:AppSecret"];
-            var redirectUri = _config["Shopee:RedirectUri"];
+            var partner = ShopeePartnerResolver.Resolve(_config, region);
+            var appKey = partner.PartnerId;
+            var appSecret = partner.PartnerKey;
+            var redirectUri = partner.RedirectUri;
 
-            var body = $"appkey={appKey}&code={authorizationCode}&redirect_uri={Uri.EscapeDataString(redirectUri)}";
-            var hash = GenerateSignature(appSecret, body);
+            var body = $"appkey={appKey}&code={authorizationCode}&redirect_uri={Uri.EscapeDataString(redirectUri ?? string.Empty)}";
+            var hash = GenerateSignature(appSecret ?? string.Empty, body);
 
-            var endpoint = _config["Shopee:Endpoint"] ?? "https://partner.shopeemobile.com";
+            var endpoint = partner.Endpoint;
             var url = $"{endpoint}/api/v2/auth/app_token";
 
             var httpContent = new StringContent($"{body}&sign={hash}", Encoding.UTF8, "application/x-www-form-urlencoded");
@@ -760,11 +790,13 @@ namespace Synerixis.Infrastructure.Clients
         /// <summary>
         /// 获取店铺信息
         /// </summary>
-        public async Task<(string ShopId, string Nickname, string AvatarUrl)> GetShopInfoAsync(string accessToken, CancellationToken cancellationToken = default)
+        public async Task<(string ShopId, string Nickname, string AvatarUrl)> GetShopInfoAsync(
+            string accessToken, string? region = null, CancellationToken cancellationToken = default)
         {
-            var appKey = _config["Shopee:AppKey"];
-            var appSecret = _config["Shopee:AppSecret"];
-            var endpoint = _config["Shopee:Endpoint"] ?? "https://partner.shopeemobile.com";
+            var partner = ShopeePartnerResolver.Resolve(_config, region);
+            var appKey = partner.PartnerId;
+            var appSecret = partner.PartnerKey;
+            var endpoint = partner.Endpoint;
 
             // 注意：Shopee Partner API 需要先用 app_token 获取 shop_id，这里简化处理，假设先通过某种方式拿到 shopId
             // 实际流程通常是：App Token -> Get Shop List -> Get Shop Info
@@ -795,7 +827,7 @@ namespace Synerixis.Infrastructure.Clients
         /// 解析店铺凭证：优先 PlatformConnection（按 ShopId），库空/异常时回退 appsettings 单店演示配置。
         /// 不抛异常，保证 Webhook 路径优雅降级。
         /// </summary>
-        private async Task<(string? AccessToken, string? ShopId, string Source)> ResolveShopCredentialsAsync(string? preferredShopId)
+        private async Task<(string? AccessToken, string? ShopId, string Source, string? Region)> ResolveShopCredentialsAsync(string? preferredShopId)
         {
             if (_connectionRepo != null && !string.IsNullOrWhiteSpace(preferredShopId))
             {
@@ -805,7 +837,10 @@ namespace Synerixis.Infrastructure.Clients
                     if (conn != null && conn.IsActive && !string.IsNullOrWhiteSpace(conn.AccessToken))
                     {
                         var sid = !string.IsNullOrWhiteSpace(conn.ShopId) ? conn.ShopId : preferredShopId;
-                        return (conn.AccessToken, sid, "PlatformConnection");
+                        var region = !string.IsNullOrWhiteSpace(conn.Region)
+                            ? conn.Region
+                            : ShopeePartnerResolver.DefaultConfiguredRegion(_config);
+                        return (conn.AccessToken, sid, "PlatformConnection", region);
                     }
                 }
                 catch (Exception ex)
@@ -817,7 +852,7 @@ namespace Synerixis.Infrastructure.Clients
             var configToken = _config["Shopee:AccessToken"];
             var configShop = _config["Shopee:ShopId"];
             var shopId = !string.IsNullOrWhiteSpace(preferredShopId) ? preferredShopId : configShop;
-            return (configToken, shopId, "appsettings");
+            return (configToken, shopId, "appsettings", ShopeePartnerResolver.DefaultConfiguredRegion(_config));
         }
 
         private string GenerateSignature(string secret, string body)
