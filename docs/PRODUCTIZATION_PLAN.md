@@ -1,16 +1,17 @@
 # Synerixis 产品化计划（跨境电商 AI 客服 SaaS）
 
-> 目标读者：产品 / 前端 / 后端。语言：中文。首发平台：**Shopee**。
+> 目标读者：产品 / 前端 / 后端。语言：中文。首发平台：**Shopee**。  
+> **定位对齐**：主产品是 **跨境多店客服工作台 + AI 辅助起草**（draft-first / human-in-the-loop），不是对外宣称的全自动 chatbot。详见 [`MARKET_FIT_AND_POSITIONING.md`](./MARKET_FIT_AND_POSITIONING.md)。
 
 ## 1. 目标
 
 交付可对 **跨境电商（CBEC）商家** 售卖的 SaaS：
 
-- 商家绑定 Shopee 店铺后，Webhook 入站 → 意图识别 → Agent 路由 → 自动回复（订单 / 物流等）。
-- 提供 **专业商家控制台**（uni-app H5，可兼顾桌面宽屏）与 **运营 Admin 控制台**（Vue3 + Element Plus）。
-- 计费与用量可观测，首个付费店铺可闭环上线。
+- 商家绑定 Shopee 店铺后，Webhook 入站 → 意图识别 → Agent 路由 → **生成回复草稿（默认坐席确认后发送）**；订单 / 物流上下文注入。
+- 提供 **专业商家控制台**（uni-app H5，可兼顾桌面宽屏）与 **运营 Admin 控制台**（Vue3 + Element Plus）——统一收件箱为 P0/P1 重心。
+- 计费与用量可观测，首个付费店铺可闭环上线；Chat API / ISV 合规（禁止促销广播与 chatbot 滥用）写进 Onboarding。
 
-**非目标（本阶段）**：多平台同时首发、完整营销站、玩具感 Demo UI。
+**非目标（本阶段）**：多平台同时首发、完整营销站、玩具感 Demo UI、国内微信登录核心路径、竞品分析/文案 Agent。
 
 ## 2. 阶段划分
 
@@ -21,7 +22,7 @@
 - [ ] 迁移脚本在目标库一键应用；健康检查 `/health` 含 DB
 - [ ] 关键 Partner 沙箱联调清单（见 `docs/SHOPEE_CLOSED_LOOP.md`）
 
-**产出**：商家可绑店、消息可进线并自动回复（沙箱）。
+**产出**：商家可绑店、消息可进线；沙箱可草稿/按策略出站（默认人审路径优先）。
 
 ### P1 — 商家控制台重设计（frontend uni-app H5）
 

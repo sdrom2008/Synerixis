@@ -1,13 +1,13 @@
-# Synerixis — 跨境电商（CBEC）智能客服
+# Synerixis — 跨境多店客服工作台 + AI 辅助起草
 
-面向 **CBEC 商家**（Shopee / TikTok Shop 等）的店铺级 AI 客服与订单问答，而非国内淘宝/抖店中小企业通用助手。
+面向 **CBEC 商家**（Shopee / TikTok Shop 等）的 **多店统一收件箱 + 订单上下文 AI 草稿（人审后发送）**，而非「全自动聊天机器人替人值班」，也非国内淘宝/抖店通用助手。战略说明见 [`docs/MARKET_FIT_AND_POSITIONING.md`](docs/MARKET_FIT_AND_POSITIONING.md)。
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![.NET Version](https://img.shields.io/badge/.NET-8.0-blue)](https://dotnet.microsoft.com/)
 
 ## 定位（一句话）
 
-卖家绑定跨境店铺 → Webhook 收买家消息 → 意图识别 → 查单/物流 → 自动回复；复杂场景转人工。
+卖家绑定跨境店铺 → 统一收件箱 → 意图 / 查单物流 → **AI 起草回复 → 坐席确认发送**；复杂场景转人工。自动发送仅限政策允许通道（官方 autoreply / 站外等），不以 Chat API 伪装 chatbot。
 
 Phase 1 只打透 **Shopee + TikTok Shop**。淘宝 / 抖店 **不再作为 Phase1 目标**（历史代码与文案中如有残留，视为废弃方向）。
 
@@ -50,6 +50,7 @@ Synerixis.sln
 
 | 文档 | 说明 |
 |------|------|
+| [`docs/MARKET_FIT_AND_POSITIONING.md`](docs/MARKET_FIT_AND_POSITIONING.md) | 市场适配与战略再定位（工作台 + AI 起草；Shopee Chat 合规） |
 | [`docs/BUSINESS_PLAN_CBEC.md`](docs/BUSINESS_PLAN_CBEC.md) | CBEC 商业计划（替代国内 SME 幻想叙事；Y1 付费店目标 30–100） |
 | [`docs/SHOPEE_CLOSED_LOOP.md`](docs/SHOPEE_CLOSED_LOOP.md) | Shopee 闭环缺口清单（OAuth→…→handoff） |
 | [`docs/PRICING_DRAFT.md`](docs/PRICING_DRAFT.md) | 定价草案 |
