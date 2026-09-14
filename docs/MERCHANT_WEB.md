@@ -46,6 +46,8 @@ POST /api/auth/init-agent
 
 仅 Development：创建 `admin@test.com` / `Agent123!`（Admin 角色）。
 
+完整演示种子（商家/会话/订单/模拟店）见 [`LOCAL_DEMO.md`](./LOCAL_DEMO.md)：`POST /api/dev/seed-demo`，手机 `13800138000` / `123456`。
+
 ## 路由权限
 
 | 路由 | Seller | Supervisor | Admin | Agent |

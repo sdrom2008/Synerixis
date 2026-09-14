@@ -25,8 +25,11 @@
       </el-form>
       <p class="hint">
         使用 <code>POST /api/auth/agent-login</code>，账号须为
-        <strong>AgentRole.Admin</strong>。开发可先调
-        <code>POST /api/auth/init-agent</code>（仅 Development）。
+        <strong>AgentRole.Admin</strong>。<br />
+        演示：先 <code>POST /api/dev/seed-demo</code>（或登录页「加载演示数据」），再用
+        <code>admin@test.com</code> / <code>Agent123!</code>。<br />
+        亦可 <code>POST /api/auth/init-agent</code>（仅 Development）。详见
+        <code>docs/LOCAL_DEMO.md</code>。
       </p>
     </el-card>
   </div>
@@ -41,7 +44,11 @@ import { agentLogin } from '@/api/admin'
 const router = useRouter()
 const route = useRoute()
 const loading = ref(false)
-const form = reactive({ email: '', password: '' })
+const isDev = import.meta.env.DEV
+const form = reactive({
+  email: isDev ? 'admin@test.com' : '',
+  password: isDev ? 'Agent123!' : '',
+})
 
 async function onSubmit() {
   if (!form.email.trim() || !form.password.trim()) {

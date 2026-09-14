@@ -113,6 +113,24 @@ namespace Synerixis.Domain.Entities
         }
 
         /// <summary>
+        /// 本地演示/缓存补全字段（非平台同步权威）。
+        /// </summary>
+        public void ApplyLocalDemoDetails(
+            string? platform = null,
+            decimal? paymentAmount = null,
+            string? customerPhone = null,
+            string? shippingAddress = null,
+            string? externalOrderId = null)
+        {
+            if (!string.IsNullOrWhiteSpace(platform)) Platform = platform.Trim();
+            if (paymentAmount.HasValue) PaymentAmount = paymentAmount;
+            if (customerPhone != null) CustomerPhone = customerPhone;
+            if (shippingAddress != null) ShippingAddress = shippingAddress;
+            if (externalOrderId != null) ExternalOrderId = externalOrderId;
+            UpdatedAt = DateTime.UtcNow;
+        }
+
+        /// <summary>
         /// 标记已退款
         /// </summary>
         public void MarkRefunded(decimal refundAmount)
@@ -141,3 +159,4 @@ namespace Synerixis.Domain.Entities
         }
     }
 }
+

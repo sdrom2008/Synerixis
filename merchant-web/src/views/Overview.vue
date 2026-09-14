@@ -57,6 +57,15 @@
       </ul>
       <el-button type="primary" @click="$router.push('/inbox')">进入收件箱</el-button>
     </el-card>
+
+    <el-card v-if="isDev" shadow="never" class="hint-card sx-card" style="margin-top: 20px">
+      <template #header><span>本地演示工具</span></template>
+      <p class="page-desc" style="margin-top:0">Development：种子包 + 模拟进线（无需真实平台密钥）</p>
+      <div style="display:flex;flex-wrap:wrap;gap:8px">
+        <el-button type="primary" :loading="seedLoading" @click="onSeed">加载演示数据</el-button>
+        <el-button :loading="simLoading" @click="onSimulate">一键注入测试消息</el-button>
+      </div>
+    </el-card>
   </div>
 </template>
 
@@ -70,10 +79,44 @@ import {
   getMerchantDashboard,
   getMerchantUsageDaily,
   getOnboarding,
+  seedDemo,
+  simulateInbound,
   type DashboardKpis,
 } from '@/api/merchant'
-
+const isDev = import.meta.env.DEV
+const seedLoading = ref(false)
+const simLoading = ref(false)
 const loading = ref(false)
+
+async function onSeed() {
+  seedLoading.value = true
+  try {
+    const res = await seedDemo()
+    ElMessage.success(res.phoneLoginHint || '演示数据已加载')
+    location.reload()
+  } catch (e: unknown) {
+    ElMessage.error(e instanceof Error ? e.message : 'seed 失败')
+  } finally {
+    seedLoading.value = false
+  }
+}
+
+async function onSimulate() {
+  simLoading.value = true
+  try {
+    const res = await simulateInbound({
+      message: `本地测试进线 ${new Date().toLocaleString('zh-CN', { hour12: false })}`,
+    })
+    ElMessage.success(`已注入 ${res.sessionNo || res.sessionId || ''}`)
+  } catch (e: unknown) {
+    const msg =
+      (e as { response?: { data?: { message?: string } } })?.response?.data?.message ||
+      (e instanceof Error ? e.message : '注入失败')
+    ElMessage.error(msg)
+  } finally {
+    simLoading.value = false
+  }
+}
 const onboardingIncomplete = ref(false)
 const onboardingDone = ref(0)
 const onboardingTotal = ref(5)

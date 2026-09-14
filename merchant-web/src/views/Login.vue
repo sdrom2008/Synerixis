@@ -7,6 +7,28 @@
         <p>跨境多店客服 · AI 起草 · 人工审核发送</p>
       </div>
 
+      <el-alert
+        v-if="isDev"
+        type="success"
+        :closable="false"
+        show-icon
+        class="demo-alert"
+        title="本地演示账号（Development）"
+      >
+        <div class="demo-lines">
+          <div>商家手机：<code>{{ demoPhone }}</code> · 验证码 <code>123456</code></div>
+          <div>坐席邮箱：<code>{{ demoAgentEmail }}</code> · 密码 <code>{{ demoPassword }}</code></div>
+          <div class="demo-actions">
+            <el-button size="small" type="primary" :loading="seedLoading" @click="onSeedDemo">
+              加载演示数据
+            </el-button>
+            <el-button size="small" @click="fillPhoneDemo">填入商家号</el-button>
+            <el-button size="small" @click="fillAgentDemo">填入坐席</el-button>
+          </div>
+          <div class="demo-note">先点「加载演示数据」，再登录。详见 docs/LOCAL_DEMO.md</div>
+        </div>
+      </el-alert>
+
       <el-tabs v-model="tab">
         <el-tab-pane label="商家手机登录" name="phone">
           <el-form :model="phoneForm" @submit.prevent="onPhoneLogin" label-position="top">
@@ -72,15 +94,21 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { phoneLogin, agentLogin } from '@/api/auth'
 import { getApiBaseUrl } from '@/api/http'
+import { seedDemo } from '@/api/merchant'
 import { useAuthStore, type MerchantProfile } from '@/stores/auth'
 
 const router = useRouter()
 const route = useRoute()
 const auth = useAuthStore()
 const loading = ref(false)
+const seedLoading = ref(false)
 const tab = ref('phone')
 const tokenInput = ref('')
-const phoneForm = reactive({ phone: '', code: '123456' })
+const isDev = import.meta.env.DEV
+const demoPhone = '13800138000'
+const demoAgentEmail = 'agent@demo.synerixis.local'
+const demoPassword = 'Agent123!'
+const phoneForm = reactive({ phone: isDev ? demoPhone : '', code: '123456' })
 const agentForm = reactive({ email: '', password: '' })
 
 const apiHint = computed(() => getApiBaseUrl() || '同源 /api（Vite 代理）')
@@ -95,6 +123,31 @@ function errText(e: unknown): string {
   const msg = (e as { response?: { data?: string | { message?: string } } })?.response?.data
   if (typeof msg === 'string') return msg
   return msg?.message || (e as Error)?.message || '登录失败'
+}
+
+function fillPhoneDemo() {
+  tab.value = 'phone'
+  phoneForm.phone = demoPhone
+  phoneForm.code = '123456'
+}
+
+function fillAgentDemo() {
+  tab.value = 'agent'
+  agentForm.email = demoAgentEmail
+  agentForm.password = demoPassword
+}
+
+async function onSeedDemo() {
+  seedLoading.value = true
+  try {
+    const res = await seedDemo()
+    ElMessage.success(res.phoneLoginHint || '演示数据已就绪，请用手机号登录')
+    fillPhoneDemo()
+  } catch (e: unknown) {
+    ElMessage.error(errText(e) || '加载演示数据失败（确认 API 为 Development）')
+  } finally {
+    seedLoading.value = false
+  }
 }
 
 async function onPhoneLogin() {
@@ -222,5 +275,28 @@ p {
   color: #94a3b8;
   text-align: center;
   line-height: 1.5;
+}
+.demo-alert {
+  margin-bottom: 12px;
+  text-align: left;
+}
+.demo-lines {
+  font-size: 12px;
+  line-height: 1.6;
+  code {
+    background: rgba(0, 0, 0, 0.06);
+    padding: 0 4px;
+    border-radius: 4px;
+  }
+}
+.demo-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+.demo-note {
+  margin-top: 6px;
+  color: #64748b;
 }
 </style>

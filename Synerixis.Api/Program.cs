@@ -93,6 +93,7 @@ builder.Services.AddScoped<ILlmClient, AliyunLlmClient>(); // Maps the interface
 
 // --- SERVICES FOR AI CUSTOMER SUPPORT ---
 builder.Services.AddScoped<IInboundSessionService, Synerixis.Infrastructure.Services.InboundSessionService>();
+builder.Services.AddScoped<IInboundAiReplyService, Synerixis.Infrastructure.Services.InboundAiReplyService>();
 builder.Services.AddScoped<IConversationService, ConversationService>();
 builder.Services.AddScoped<IECommercePlatformClient, ECommercePlatformClient>();
 builder.Services.AddScoped<IAgentStatsService, AgentStatsService>();

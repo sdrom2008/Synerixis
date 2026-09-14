@@ -60,6 +60,18 @@
       </ol>
       <el-button type="primary" @click="$router.push('/inbox')">进入收件箱</el-button>
     </el-card>
+
+    <el-card v-if="isDev" shadow="never" class="sx-card" style="margin-top: 16px">
+      <template #header><span>本地演示（Development）</span></template>
+      <p class="page-desc" style="margin-top: 0">
+        无需真实 Shopee/TikTok Partner Key。先加载种子，Inbox / 店铺 / 团队即可看到演示数据。
+      </p>
+      <div style="display: flex; flex-wrap: wrap; gap: 8px">
+        <el-button type="primary" :loading="seedLoading" @click="onSeed">加载演示数据</el-button>
+        <el-button :loading="simLoading" @click="onSimulate">一键注入测试消息</el-button>
+        <el-button @click="$router.push('/inbox')">打开收件箱</el-button>
+      </div>
+    </el-card>
   </div>
 </template>
 
@@ -67,10 +79,57 @@
 import { computed, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { CircleCheckFilled, CircleClose } from '@element-plus/icons-vue'
-import { getOnboarding, type OnboardingResult } from '@/api/merchant'
+import {
+  getOnboarding,
+  seedDemo,
+  simulateInbound,
+  type OnboardingResult,
+} from '@/api/merchant'
 
 const loading = ref(false)
+const seedLoading = ref(false)
+const simLoading = ref(false)
+const isDev = import.meta.env.DEV
 const data = ref<OnboardingResult | null>(null)
+
+async function reloadOnboarding() {
+  data.value = await getOnboarding()
+}
+
+async function onSeed() {
+  seedLoading.value = true
+  try {
+    const res = await seedDemo()
+    ElMessage.success(res.phoneLoginHint || '演示数据已加载')
+    await reloadOnboarding()
+  } catch (e: unknown) {
+    ElMessage.error(e instanceof Error ? e.message : 'seed 失败')
+  } finally {
+    seedLoading.value = false
+  }
+}
+
+async function onSimulate() {
+  simLoading.value = true
+  try {
+    const res = await simulateInbound({
+      message: `本地测试进线 ${new Date().toLocaleString('zh-CN', { hour12: false })}：请问还有货吗？`,
+      customerName: '模拟买家·即时注入',
+    })
+    ElMessage.success(
+      res.draft?.contentPreview
+        ? `已注入，待审草稿：${res.draft.contentPreview}`
+        : `已注入会话 ${res.sessionNo || res.sessionId || ''}`,
+    )
+  } catch (e: unknown) {
+    const msg =
+      (e as { response?: { data?: { message?: string } } })?.response?.data?.message ||
+      (e instanceof Error ? e.message : '注入失败')
+    ElMessage.error(msg)
+  } finally {
+    simLoading.value = false
+  }
+}
 
 const percent = computed(() => {
   if (!data.value?.total) return 0

@@ -17,7 +17,7 @@
 
 ## 鉴权
 
-1. Development：`POST /api/auth/init-agent` 创建 `admin@test.com` / `Agent123!`（Admin）
+1. Development：优先 `POST /api/dev/seed-demo`（见 [`LOCAL_DEMO.md`](./LOCAL_DEMO.md)），或 `POST /api/auth/init-agent` 创建 `admin@test.com` / `Agent123!`（Admin）
 2. 登录页调用 `POST /api/auth/agent-login`，校验 `role === Admin`
 3. Token 存 `localStorage.sx_admin_token`；路由守卫拦截未登录
 4. 后端 `[Authorize(Roles = "Admin")]` 保护 `/api/admin/*`

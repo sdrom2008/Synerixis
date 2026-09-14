@@ -471,3 +471,65 @@ export interface OnboardingResult {
 export function getOnboarding() {
   return request<OnboardingResult>({ url: '/api/merchant/onboarding' })
 }
+
+/** Development only: POST /api/dev/seed-demo */
+export interface SeedDemoResult {
+  code?: number
+  message?: string
+  sellerId?: string
+  phone?: string
+  phoneE164?: string
+  phoneLoginHint?: string
+  agent?: { email?: string; password?: string }
+  admin?: { email?: string; password?: string; hint?: string }
+  connection?: { id?: string; platform?: string; shopId?: string; nickname?: string }
+  sessions?: { draft?: string; handoff?: string; normal?: string }
+  created?: string[]
+  skipped?: string[]
+  updated?: string[]
+  next?: string[]
+}
+
+export function seedDemo() {
+  return request<SeedDemoResult>({
+    url: '/api/dev/seed-demo',
+    method: 'POST',
+  })
+}
+
+export interface SimulateInboundPayload {
+  message: string
+  sellerId?: string
+  customerId?: string
+  customerName?: string
+  platform?: string
+}
+
+export interface SimulateInboundResult {
+  code?: number
+  message?: string
+  sessionId?: string
+  sessionNo?: string
+  customerId?: string
+  platform?: string
+  pendingHumanHandoff?: boolean
+  sessionStatus?: string
+  draft?: { id?: string; content?: string; contentPreview?: string; status?: string } | null
+  warning?: string
+}
+
+/** Development only: POST /api/dev/simulate-inbound（建议已登录商家 JWT） */
+export function simulateInbound(payload: SimulateInboundPayload) {
+  return request<SimulateInboundResult>({
+    url: '/api/dev/simulate-inbound',
+    method: 'POST',
+    data: {
+      message: payload.message,
+      sellerId: payload.sellerId,
+      customerId: payload.customerId,
+      customerName: payload.customerName,
+      platform: payload.platform || 'SHOPEE',
+    },
+  })
+}
+
