@@ -1,14 +1,16 @@
 # MVP 开发实施方案 (第一期)
 
-**版本**: 1.0
-**日期**: 2026-03-16
-**负责人**: 虾子 (AI Assistant)
+**版本**: 1.1（CBEC 修订）
+**日期**: 2026-09-14（原文 2026-03-16）
+**负责人**: 工程团队
+
+> **Phase1 平台纠正**：目标平台为 **Shopee + TikTok Shop**。原文中的淘宝 / 抖店（千牛、抖店开放平台）**已废弃为 Phase1 范围**，仅作历史记录保留在下方表格中并标注 Deprecated。
 
 ---
 
 ## 1. 概述
 
-本方案旨在明确 NexusAI Tech 项目第一期 MVP (最小可行产品) 的开发目标和实施步骤。根据项目会议决议，首期 MVP 将聚焦于两大核心功能：“营销文案生成”和“AI 客服”，旨在快速验证产品核心价值，并为后续迭代打下坚实基础。
+本方案明确 Synerixis **跨境电商（CBEC）** 第一期 MVP 的目标与步骤。首期聚焦：店铺消息闭环（Webhook → 意图 → 查单 → 回复 → 转人工），营销文案生成为辅助能力。商业目标与定价见 `docs/BUSINESS_PLAN_CBEC.md`、`docs/PRICING_DRAFT.md`；Shopee 缺口见 `docs/SHOPEE_CLOSED_LOOP.md`。
 
 ---
 
@@ -32,7 +34,9 @@
 ## 3. 目标二：AI 客服 (集成与查询能力)
 
 ### 3.1. 用户故事
-作为一名电商商家，我希望能将AI客服无缝接入我的淘宝和抖店店铺。当有顾客发起咨询时，AI不仅能进行智能对话，还能根据顾客的指令，实时查询并告知订单状态和物流信息。
+作为一名 **Shopee / TikTok Shop** 跨境卖家，我希望把 AI 客服接到店铺聊天。买家咨询时，系统能识别意图、查询订单/物流并自动回复；搞不定时转人工。
+
+（历史表述「淘宝和抖店」已废弃，不再作为 Phase1 验收。）
 
 ### 3.2. 技术实施步骤
 
@@ -43,12 +47,16 @@
 | **意图识别** | Application | **修改** | `Services/IntentClassifier.cs` | 核心改造点。利用LLM的函数调用能力，识别用户的真实意图（如查询订单、查询物流）。 |
 | **任务执行** | Application | 新建 | `Agents/OrderAgent.cs` | 封装所有与“订单查询”相关的业务逻辑。 |
 | | Application | 新建 | `Agents/LogisticsAgent.cs` | 封装所有与“物流查询”相关的业务逻辑。 |
-| **平台对接** | Infrastructure| 新建 | `Messaging/TaobaoClient.cs` | 实现与淘宝开放平台（千牛）API的认证与通信。 |
-| | Infrastructure| 新建 | `Messaging/DouyinClient.cs` | 实现与抖店开放平台API的认证与通信。 |
-| **消息入口** | Api | 新建 | `Controllers/WebhookController.cs` | 创建一个Webhook端点，用于接收来自淘宝和抖店平台推送的实时消息。 |
+| **平台对接** | Infrastructure| **已有** | `Clients/ShopeePlatformClient.cs` | Phase1 主路径：签名、Webhook、发信、订单查询。 |
+| | Infrastructure| **已有** | `Clients/TikTokShopPlatformClient.cs` | Phase1 第二平台。 |
+| | Infrastructure| Deprecated | `Messaging/TaobaoClient.cs`（计划名） | ~~淘宝千牛~~ — **非 Phase1**。 |
+| | Infrastructure| Deprecated | `Messaging/DouyinClient.cs`（计划名） | ~~抖店~~ — **非 Phase1**。 |
+| **消息入口** | Api | **已有** | `Controllers/WebhookController.cs` | `POST /api/webhook/{platform}`，面向 Shopee/TikTok。 |
 
 ---
 
-## 4. 下一步
+## 4. 下一步（2026-09 起）
 
-请审阅此方案。一旦方案获得批准，开发工作将按照上述步骤，从 **目标一：营销文案生成** 的 `Domain` 层开始，正式进入编码阶段。
+1. 按 `docs/SHOPEE_CLOSED_LOOP.md` 清缺口：Webhook 接 Intent/Agent，OrderAgent 平台回源，OAuth 落库，handoff 闸门。  
+2. 营销文案能力可并行，但 **不阻塞** Shopee 闭环验收。  
+3. 淘宝/抖店客户端 **不要** 再投入 Phase1 工期。

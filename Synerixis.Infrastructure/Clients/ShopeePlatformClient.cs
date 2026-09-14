@@ -257,10 +257,228 @@ namespace Synerixis.Infrastructure.Clients
             }
         }
 
+        /// <summary>
+        /// 查询买家订单摘要（Shopee Open API v2）。
+        /// customerId 若像 order_sn（含字母）则走 get_order_detail；
+        /// 否则按 buyer_user_id 在近期订单列表中匹配。
+        /// 缺配置时仅打警告并返回 null，不抛异常。
+        /// </summary>
         public async Task<string?> GetCustomerOrderAsync(string platform, string customerId, CancellationToken cancellationToken = default)
         {
-            _logger.LogWarning("[Shopee] GetCustomerOrderAsync stub for platform={Platform} customer={CustomerId}", platform, customerId);
-            return null; // TODO: 接入 Shopee Order API
+            if (string.IsNullOrWhiteSpace(customerId))
+            {
+                _logger.LogWarning("[Shopee] GetCustomerOrderAsync called with empty customerId");
+                return null;
+            }
+
+            var partnerId = _config["Shopee:AppKey"];
+            var appSecret = _config["Shopee:AppSecret"];
+            var accessToken = _config["Shopee:AccessToken"];
+            var shopIdStr = _config["Shopee:ShopId"];
+            var endpoint = _config["Shopee:Endpoint"] ?? "https://partner.shopeemobile.com";
+
+            if (string.IsNullOrEmpty(partnerId) || string.IsNullOrEmpty(appSecret) ||
+                string.IsNullOrEmpty(accessToken) || string.IsNullOrEmpty(shopIdStr))
+            {
+                _logger.LogWarning("[Shopee] Missing configuration (AppKey/AppSecret/AccessToken/ShopId). Skipping order lookup.");
+                return null;
+            }
+
+            if (!long.TryParse(shopIdStr, out long shopId))
+            {
+                _logger.LogWarning("[Shopee] Invalid ShopId value: {ShopId}", shopIdStr);
+                return null;
+            }
+
+            try
+            {
+                // order_sn 通常含字母（如 220314ABCDEFGH）；纯数字按 buyer_user_id 处理
+                bool looksLikeOrderSn = customerId.Any(char.IsLetter);
+
+                if (looksLikeOrderSn)
+                {
+                    var detail = await ShopeeGetOrderDetailAsync(
+                        endpoint, partnerId, appSecret, accessToken, shopId,
+                        new[] { customerId }, cancellationToken);
+                    if (detail == null || detail.Count == 0)
+                    {
+                        _logger.LogInformation("[Shopee] No order detail for order_sn={OrderSn}", customerId);
+                        return null;
+                    }
+                    return FormatOrderSummary(detail[0]);
+                }
+
+                // 近期窗口（默认 14 天）拉列表，再批量 detail 匹配 buyer_user_id
+                var orderSns = await ShopeeGetRecentOrderSnListAsync(
+                    endpoint, partnerId, appSecret, accessToken, shopId, cancellationToken);
+                if (orderSns.Count == 0)
+                {
+                    _logger.LogInformation("[Shopee] Recent order list empty for shop={ShopId}", shopId);
+                    return null;
+                }
+
+                // get_order_detail 单次最多 50 个 order_sn
+                for (int i = 0; i < orderSns.Count; i += 50)
+                {
+                    var batch = orderSns.Skip(i).Take(50).ToArray();
+                    var details = await ShopeeGetOrderDetailAsync(
+                        endpoint, partnerId, appSecret, accessToken, shopId, batch, cancellationToken);
+                    if (details == null) continue;
+
+                    foreach (var order in details)
+                    {
+                        var buyerId = order.TryGetProperty("buyer_user_id", out var bu)
+                            ? bu.ToString()
+                            : null;
+                        if (!string.IsNullOrEmpty(buyerId) &&
+                            string.Equals(buyerId, customerId, StringComparison.Ordinal))
+                        {
+                            return FormatOrderSummary(order);
+                        }
+                    }
+                }
+
+                _logger.LogInformation("[Shopee] No recent order matched buyer_user_id={BuyerId}", customerId);
+                return null;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[Shopee] GetCustomerOrderAsync exception for customer={CustomerId}", customerId);
+                return null;
+            }
+        }
+
+        private async Task<List<string>> ShopeeGetRecentOrderSnListAsync(
+            string endpoint, string partnerId, string appSecret, string accessToken, long shopId,
+            CancellationToken cancellationToken)
+        {
+            string path = "/api/v2/order/get_order_list";
+            long timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            string sign = ComputeShopApiSign(partnerId, path, timestamp, accessToken, shopId, appSecret);
+            var url = $"{endpoint}{path}?partner_id={partnerId}&timestamp={timestamp}&access_token={accessToken}&shop_id={shopId}&sign={sign}";
+
+            // 近 14 天 create_time 窗口
+            long timeTo = timestamp;
+            long timeFrom = timestamp - 14 * 24 * 3600;
+            var bodyObj = new
+            {
+                time_range_field = "create_time",
+                time_from = timeFrom,
+                time_to = timeTo,
+                page_size = 50,
+                cursor = ""
+            };
+            var json = JsonSerializer.Serialize(bodyObj);
+            var httpContent = new StringContent(json, Encoding.UTF8, "application/json");
+
+            using var http = new HttpClient();
+            var response = await http.PostAsync(url, httpContent, cancellationToken);
+            var respBody = await response.Content.ReadAsStringAsync(cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("[Shopee] get_order_list failed: {Status} {Body}", response.StatusCode, respBody);
+                return new List<string>();
+            }
+
+            var result = new List<string>();
+            using var doc = JsonDocument.Parse(respBody);
+            if (!doc.RootElement.TryGetProperty("response", out var resp))
+                return result;
+
+            if (resp.TryGetProperty("order_list", out var orderList) && orderList.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var item in orderList.EnumerateArray())
+                {
+                    if (item.TryGetProperty("order_sn", out var snElem))
+                    {
+                        var sn = snElem.GetString();
+                        if (!string.IsNullOrEmpty(sn))
+                            result.Add(sn);
+                    }
+                }
+            }
+            return result;
+        }
+
+        private async Task<List<JsonElement>?> ShopeeGetOrderDetailAsync(
+            string endpoint, string partnerId, string appSecret, string accessToken, long shopId,
+            IReadOnlyList<string> orderSnList, CancellationToken cancellationToken)
+        {
+            if (orderSnList == null || orderSnList.Count == 0)
+                return new List<JsonElement>();
+
+            string path = "/api/v2/order/get_order_detail";
+            long timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            string sign = ComputeShopApiSign(partnerId, path, timestamp, accessToken, shopId, appSecret);
+            string orderSnCsv = string.Join(",", orderSnList);
+            // 请求物流相关可选字段，便于摘要里带 tracking
+            string optional = "buyer_user_id,package_list";
+            var url =
+                $"{endpoint}{path}?partner_id={partnerId}&timestamp={timestamp}&access_token={accessToken}" +
+                $"&shop_id={shopId}&sign={sign}&order_sn_list={Uri.EscapeDataString(orderSnCsv)}" +
+                $"&response_optional_fields={Uri.EscapeDataString(optional)}";
+
+            using var http = new HttpClient();
+            var response = await http.GetAsync(url, cancellationToken);
+            var respBody = await response.Content.ReadAsStringAsync(cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("[Shopee] get_order_detail failed: {Status} {Body}", response.StatusCode, respBody);
+                return null;
+            }
+
+            using var doc = JsonDocument.Parse(respBody);
+            if (!doc.RootElement.TryGetProperty("response", out var resp) ||
+                !resp.TryGetProperty("order_list", out var orderList) ||
+                orderList.ValueKind != JsonValueKind.Array)
+            {
+                return new List<JsonElement>();
+            }
+
+            // Clone elements so they survive after disposing the document
+            var list = new List<JsonElement>();
+            foreach (var item in orderList.EnumerateArray())
+            {
+                list.Add(item.Clone());
+            }
+            return list;
+        }
+
+        private static string ComputeShopApiSign(
+            string partnerId, string path, long timestamp, string accessToken, long shopId, string appSecret)
+        {
+            // 与 SendReplyAsync 一致：partnerId + path + timestamp + accessToken + shopId
+            string baseString = $"{partnerId}{path}{timestamp}{accessToken}{shopId}";
+            using var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(appSecret));
+            var hash = hmac.ComputeHash(Encoding.UTF8.GetBytes(baseString));
+            return BitConverter.ToString(hash).Replace("-", "").ToLowerInvariant();
+        }
+
+        private static string FormatOrderSummary(JsonElement order)
+        {
+            var orderSn = order.TryGetProperty("order_sn", out var sn) ? sn.GetString() ?? "?" : "?";
+            var status = order.TryGetProperty("order_status", out var st) ? st.GetString() ?? "?" : "?";
+
+            string? tracking = null;
+            if (order.TryGetProperty("package_list", out var packages) && packages.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var pkg in packages.EnumerateArray())
+                {
+                    if (pkg.TryGetProperty("tracking_number", out var tn))
+                    {
+                        var t = tn.GetString();
+                        if (!string.IsNullOrEmpty(t))
+                        {
+                            tracking = t;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            return string.IsNullOrEmpty(tracking)
+                ? $"order_sn={orderSn}, status={status}"
+                : $"order_sn={orderSn}, status={status}, tracking={tracking}";
         }
 
         /// <summary>

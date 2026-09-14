@@ -1,6 +1,8 @@
-# Synerixis AI 智能客服 - 项目结构
+# Synerixis — 项目结构
 
-**状态**: MVP 后端代码可编译
+**定位**: CBEC 智能客服（Phase1 = **Shopee + TikTok Shop**；淘宝/抖店已从 Phase1 目标中移除）
+
+**状态**: MVP 后端可编译；闭环缺口见 `docs/SHOPEE_CLOSED_LOOP.md`
 
 ## 目录结构
 
@@ -65,15 +67,32 @@ my-project/
 PYTHONPATH=/home/rich/.local/lib/python3.12/site-packages python3 tools/query_rag.py "你的问题" top_k
 ```
 
+## Phase1 平台客户端
+
+| 客户端 | 路径 | 说明 |
+|--------|------|------|
+| `ShopeePlatformClient` | Infrastructure/Clients/ | Webhook、发信、订单查询（v2） |
+| `TikTokShopPlatformClient` | Infrastructure/Clients/ | Webhook / 发信骨架 |
+| `PlatformClientRouter` | Infrastructure/Clients/ | 按平台名路由 |
+
+淘宝 / 抖店相关命名若仍出现在旧接口注释中，视为历史残留，**不是 Phase1 交付项**。
+
+## 文档
+
+- `docs/BUSINESS_PLAN_CBEC.md` — CBEC 商业计划
+- `docs/SHOPEE_CLOSED_LOOP.md` — Shopee 闭环清单
+- `docs/PRICING_DRAFT.md` — 定价草案
+
 ## 下一步建议
 
-- [ ] 补齐 admin-console 管理后台源码（目前为空壳）
-- [ ] 实现 TikTokShop webhook 集成
-- [ ] 补充 Docker Compose 部署文件
-- [ ] 清理 AlipayPaymentProvider nullable 警告
-- [ ] 将项目从"电商平台客服"升级为"跨境电商平台智能客服"
+- [ ] 打通 Webhook → IntentClassifier → AgentRouter（替换占位 `GenerateAiReply`）
+- [ ] OrderAgent：DB 空时 fallback `IPlatformClient.GetCustomerOrderAsync`
+- [ ] 补齐 Shopee OAuth 回调与 token 落库
+- [ ] 对齐 TikTokShop 与 Shopee 同一验收清单
+- [ ] 补齐 admin-console；补充 Docker Compose
+- [ ] 修复 Webhook 幂等判断逻辑
 
 ---
 
-最后更新：2026-04-24 (RAG index + bug fixes)
-GitHub: https://github.com/sdrom2008/my-project
+最后更新：2026-09-14（CBEC Phase1 叙事）
+GitHub: https://github.com/sdrom2008/Synerixis

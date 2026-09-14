@@ -1,109 +1,66 @@
-# Synerixis AI 智能客服
+# Synerixis — 跨境电商（CBEC）智能客服
 
-Monorepo: ASP.NET Core 8 + React
+面向 **CBEC 商家**（Shopee / TikTok Shop 等）的店铺级 AI 客服与订单问答，而非国内淘宝/抖店中小企业通用助手。
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![.NET Version](https://img.shields.io/badge/.NET-8.0-blue)](https://dotnet.microsoft.com/)
 
-## Synerixis AI 智能客服 - 跨境电商智能客服平台
+## 定位（一句话）
 
-**Synerixis AI 智能客服** 专注于 AI 驱动的跨境电商智能客服解决方案，通过 agentic 方式和 intent-driven 智能，实现通过自然语言自动完成订单管理、客户支持等任务。
+卖家绑定跨境店铺 → Webhook 收买家消息 → 意图识别 → 查单/物流 → 自动回复；复杂场景转人工。
 
-## 项目愿景与使命
+Phase 1 只打透 **Shopee + TikTok Shop**。淘宝 / 抖店 **不再作为 Phase1 目标**（历史代码与文案中如有残留，视为废弃方向）。
 
-Synerixis AI 智能客服 专注于 .NET 生态下的 AI 智能客服开发，核心目标：
-- **智能对话**：通过 NLP 和用户意图识别，实现多轮对话，提升客服体验
-- **市场定位**：领先跨境电商智能客服解决方案，降低运营成本和提升效率
+## 本地开发环境
 
-## 核心能力
+| 组件 | 要求 |
+|------|------|
+| OS | Windows 11 |
+| IDE | Visual Studio 2022（打开 `Synerixis.sln`） |
+| 前端 | HBuilder（`frontend/`，多端 H5 / 小程序） |
+| 数据库 | MySQL 8.x（连接串放 `.env.mysql`，已 gitignore） |
+| 运行时 | .NET 8 |
 
-- **智能对话管理**：对话流管理，用户输入理解和自动回复
-- **订单管理功能**：订单查询，状态更新和物流跟踪
-- **自动开票功能**：AI 生成发票，合规性检查和批量处理
+密钥与店铺 Token 走配置（`Shopee:*` / `TikTok:*`），**不要**提交进仓库。
 
-项目目标是成为企业级 AI 客服操作系统。
+## Phase 1 平台
 
-## 技术栈
+| 平台 | 地区侧重 | 状态 |
+|------|----------|------|
+| **Shopee** | 东南亚 + 台湾 | 客户端 / Webhook / 发信 / 订单查询（v2）已落地，闭环见 `docs/SHOPEE_CLOSED_LOOP.md` |
+| **TikTok Shop** | 东南亚 + 英美 | 客户端与 Webhook 骨架已有，联调中 |
 
-- **后端**：.NET 8 (ASP.NET Core API), Entity Framework Core
-- **前端**：React.js with TypeScript
-  - 开发工具：HBuilder (支持多端生成：App/小程序/H5)
-  - 前端目录：`frontend/`
-- **AI 服务**：Azure OpenAI / 阿里云大模型 API
-- **数据库**：MySQL 8.4.8
-- **部署**：Docker, Kubernetes
+Phase 2 候选：Lazada、Amazon、AliExpress 等（不做承诺排期）。
 
-## 支持平台（Phase 1）
-
-| 平台 | 地区 | 状态 | API 文档 |
-|------|------|------|---------|
-| **Shopee** | 东南亚 + 台湾 | ✅ 已实现 | https://shopee.dev |
-| **TikTok Shop** | 东南亚 + 英国 + 美国 | 🚧 开发中 | https://developers.tiktok.com |
-
-> 后续 Phase 2 可扩展：Lazada、Amazon、AliExpress 等平台
-
-## 功能架构
-
-基于 Clean Architecture 确保可维护性和可扩展性。
-
-## 项目结构
+## 仓库结构（Clean Architecture）
 
 ```
-my-project/
-├── Synerixis.sln
-├── README.md
-├── PROJECT_STRUCTURE.md
-│
-├── Synerixis.Application/
-│   ├── Agents/
-│   ├── DTOs/
-│   ├── Interfaces/
-│   └── Services/
-│
-├── Synerixis.Domain/
-│   ├── Common/
-│   ├── Entities/
-│   ├── Enums/
-│   └── Repositories/
-│
-├── Synerixis.Infrastructure/
-│   ├── AIServices/
-│   ├── Repositories/
-│   ├── Services/
-│   └── Data/
-│
-└── Synerixis.Api/
-    ├── Controllers/
-    ├── Program.cs
-    └── Synerixis.Api.csproj
+Synerixis.sln
+├── Synerixis.Api/              # Webhook、商户端 API
+├── Synerixis.Application/      # Agent、意图、会话服务
+├── Synerixis.Domain/           # 实体与枚举
+├── Synerixis.Infrastructure/   # Shopee/TikTok 客户端、EF、LLM
+├── frontend/                   # HBuilder / uni-app 前端
+└── docs/                       # 商业计划、闭环清单、定价草案
 ```
 
-## 下一步
+细节见 `PROJECT_STRUCTURE.md`；实施节奏见 `MVP_IMPLEMENTATION_PLAN.md`。
 
-- [ ] 完善 Agent 路由功能
-- [ ] 添加更多的客服场景
-- [ ] 优化对话流程
-- [ ] 增强错误处理和日志记录
+## 文档索引
 
-## 贡献
+| 文档 | 说明 |
+|------|------|
+| [`docs/BUSINESS_PLAN_CBEC.md`](docs/BUSINESS_PLAN_CBEC.md) | CBEC 商业计划（替代国内 SME 幻想叙事；Y1 付费店目标 30–100） |
+| [`docs/SHOPEE_CLOSED_LOOP.md`](docs/SHOPEE_CLOSED_LOOP.md) | Shopee 闭环缺口清单（OAuth→…→handoff） |
+| [`docs/PRICING_DRAFT.md`](docs/PRICING_DRAFT.md) | 定价草案 |
+| `业务计划书.docx` | 旧版 Word，**以 docs 下 Markdown 为准**，文件保留不删 |
 
-欢迎贡献！请遵循以下步骤：
-1. Fork 仓库
-2. 创建 feature 分支
-3. Commit 变更
-4. Push 到分支
-5. 打开 Pull Request
+## 当前工程重点
 
-## 代码风格
+- 打透 Shopee：签名校验 → 会话落库 → 意图 → OrderAgent / 平台订单 API → `SendReplyAsync` → 商户转人工
+- TikTok Shop 对齐同一套 `IPlatformClient` 契约
+- 不碰 `RegimeTrader` / 量化模型；那是旁路资产，非本产品主线
 
-- 遵循 .NET 编码规范
-- 使用 EditorConfig
+## 许可证与联系
 
-## 许可证
-
-本项目采用 MIT License (LICENSE)。
-
-## 联系我们
-
-- GitHub: sdrom2008
-- Email: sdrom2008@qq.com
+MIT License。GitHub: [sdrom2008/Synerixis](https://github.com/sdrom2008/Synerixis) · Email: sdrom2008@qq.com
