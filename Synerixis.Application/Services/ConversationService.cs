@@ -8,64 +8,72 @@ using Synerixis.Domain.Entities;
 namespace Synerixis.Application.Services
 {
     /// <summary>
-    /// 早期进线草稿路径。生产 IM Webhook 由 WebhookController.ProcessInboundAiReplyAsync 负责，
-    /// 含 draft-first / handoff 硬闸；请勿为「复用」把该硬闸旁路到本类。
+    /// 早期进线路径。生产 IM 由 WebhookController.ProcessInboundAiReplyAsync 负责
+    /// （draft-first / handoff 硬闸 / 维护跳过 / 营业外 / 幂等），请勿旁路硬闸。
+    /// 会话入库已与 Webhook 共用 <see cref="IInboundSessionService"/>。
     /// </summary>
     public class ConversationService : IConversationService
     {
+        private readonly IInboundSessionService _inbound;
         private readonly IConversationRepository _conversationRepo;
         private readonly IIntentClassifier _intentClassifier;
         private readonly IAgentRouter _agentRouter;
         private readonly IGeneralChatAgent _generalChatAgent;
 
         public ConversationService(
+            IInboundSessionService inbound,
             IConversationRepository conversationRepo,
             IIntentClassifier intentClassifier,
             IAgentRouter agentRouter,
             IGeneralChatAgent generalChatAgent)
         {
+            _inbound = inbound;
             _conversationRepo = conversationRepo;
             _intentClassifier = intentClassifier;
             _agentRouter = agentRouter;
             _generalChatAgent = generalChatAgent;
         }
 
+        /// <inheritdoc />
+        [Obsolete("Production IM inbound uses WebhookController.ProcessInboundAiReplyAsync (draft-first/handoff). Prefer webhook path; this method shares FindOrCreate+Append via IInboundSessionService then runs a legacy AI reply (no draft/handoff gates).")]
         public async Task<string> ProcessIncomingMessageAsync(string platform, string customerId, string messageContent)
         {
-            var sellerId = Guid.Empty; // TODO: This must be resolved from the platform/customer context
-            
-            var session = await _conversationRepo.GetByCustomerIdAsync(customerId);
-            if (session == null)
+            var msg = new PlatformMessage
             {
-                session = ChatSession.Create(sellerId, platform, customerId);
-            }
+                Platform = platform ?? string.Empty,
+                CustomerId = customerId,
+                Content = messageContent ?? string.Empty,
+                CreatedAt = DateTime.UtcNow
+            };
 
-            // Add user message and update stats
-            var userMsg = ChatMessage.FromUser(messageContent, session.Id);
-            session.Messages.Add(userMsg);
-            session.AddUserMessage(); // This method needs to be added to ChatSession entity
+            var session = await _inbound.FindOrCreateSessionAsync(msg);
+            if (session == null)
+                return "抱歉，无法创建会话。";
 
-            // Classify intent based on history
+            await _inbound.AppendBuyerMessageAsync(session, msg);
+
             var historyDtos = session.Messages
+                .OrderBy(m => m.CreatedAt)
                 .Select(m => new ChatMessageDto
                 {
-                    IsFromUser = m.SenderType == 1,  // 1 = Customer
+                    IsFromUser = m.SenderType == 1,
                     Content = m.Content,
                     Timestamp = m.CreatedAt
                 })
                 .ToList();
-            var intent = await _intentClassifier.ClassifyAsync(messageContent, historyDtos);
 
-            string replyContent;
-            var chatContext = new ChatContext 
-            { 
+            var intent = await _intentClassifier.ClassifyAsync(messageContent, historyDtos);
+            var chatContext = new ChatContext
+            {
                 Messages = historyDtos,
                 CustomerId = customerId,
-                Platform = platform
+                Platform = platform,
+                ShopId = session.ShopId,
+                ConversationId = session.Id.ToString()
             };
-            var agent = _agentRouter.GetAgent(intent);
 
-            // Route to specific agent or general chat
+            string replyContent;
+            var agent = _agentRouter.GetAgent(intent);
             if (agent != null)
             {
                 var agentResult = await agent.ProcessAsync(messageContent, chatContext);
@@ -76,12 +84,10 @@ namespace Synerixis.Application.Services
                 replyContent = await _generalChatAgent.GenerateReplyAsync(messageContent, chatContext);
             }
 
-            // Add AI response and update stats
+            // 遗留路径：直接写 AI 消息（无草稿闸）。生产请走 Webhook DraftFirst。
             var aiMsg = ChatMessage.FromAI(replyContent, "text", null, session.Id);
             session.Messages.Add(aiMsg);
-            session.AddAiMessage(); // This method already exists
-
-            // Persist changes
+            session.AddAiMessage();
             await _conversationRepo.SaveAsync(session);
 
             return replyContent;

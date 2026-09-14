@@ -134,6 +134,22 @@ export function getShopOptions() {
   return request<{ items: ShopOption[] }>({ url: '/api/merchant/shop-options' })
 }
 
+export interface TrackingCheckpoint {
+  time?: string
+  description?: string
+  status?: string
+}
+
+export interface OrderLogistics {
+  trackingNumber?: string
+  orderStatus?: string
+  logisticsStatus?: string
+  checkpoints?: TrackingCheckpoint[]
+  available?: boolean
+  warning?: string | null
+  message?: string | null
+}
+
 export interface SessionOrderItem {
   id?: string
   orderNo?: string
@@ -149,6 +165,7 @@ export interface SessionOrderItem {
   /** local | platform */
   source?: string
   summary?: string
+  logistics?: OrderLogistics
 }
 
 export function getSessionOrders(sessionId: string) {

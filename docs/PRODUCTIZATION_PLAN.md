@@ -151,7 +151,7 @@
 
 **明确不做**：支付生产、APNs/FCM、多站点、RegimeTrader、假承运商轨迹。
 
-**下一轮缺口**：真实承运商轨迹；ConversationService 与 Webhook 统一；支付生产；Token 告警深化；多实例限流（Redis）。
+**下一轮缺口**：TikTok 真实轨迹；支付生产；Token 告警深化；APNs；多站点 partner；多实例限流（Redis；当前单机内存）。Shopee 轨迹与 InboundSession 入库已收拢。
 
 ### P2 — 可靠性与人工协同
 

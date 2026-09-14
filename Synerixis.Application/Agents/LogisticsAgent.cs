@@ -14,16 +14,13 @@ using Synerixis.Domain.Enums;
 namespace Synerixis.Application.Agents
 {
     /// <summary>
-    /// 物流查询 Agent。从会话消息 / 关联 Order.LogisticsNo 解析运单号；
-    /// 无真实承运商 API 时返回「已解析运单号 + 订单状态」，禁止编造固定模拟运单号。
+    /// 物流查询 Agent。优先 Shopee get_tracking_info 真实轨迹；
+    /// 无 API / 无权限时返回运单号+订单状态，禁止编造 checkpoint。
     /// </summary>
     public class LogisticsAgent : IAgent
     {
         public ChatIntent SupportedIntent => ChatIntent.LogisticsQuery;
 
-        /// <summary>
-        /// 常见快递单号：SF/YT/JT/ZTO 等前缀 + 数字，或 10–18 位纯数字 / 8–20 位字母数字。
-        /// </summary>
         private static readonly Regex TrackingRegex = new(
             @"\b(?:SF|YT|JT|ZT|ST|YD|HT|EMS|CP)?[A-Z0-9]{8,22}\b|\b\d{10,18}\b",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
@@ -31,15 +28,18 @@ namespace Synerixis.Application.Agents
         private readonly IECommercePlatformClient _platformClient;
         private readonly IOrderRepository? _orderRepository;
         private readonly ILlmClient? _llmClient;
+        private readonly IPlatformClientRouter? _platformRouter;
 
         public LogisticsAgent(
             IECommercePlatformClient platformClient,
             IOrderRepository? orderRepository = null,
-            ILlmClient? llmClient = null)
+            ILlmClient? llmClient = null,
+            IPlatformClientRouter? platformRouter = null)
         {
             _platformClient = platformClient;
             _orderRepository = orderRepository;
             _llmClient = llmClient;
+            _platformRouter = platformRouter;
         }
 
         public async Task<AgentProcessResult> ProcessAsync(string userInput, ChatContext context)
@@ -47,6 +47,8 @@ namespace Synerixis.Application.Agents
             var (trackingId, order, source) = await ResolveTrackingAsync(userInput, context);
 
             string responseMessage;
+            object? logisticsPayload = null;
+
             if (string.IsNullOrWhiteSpace(trackingId) && order == null)
             {
                 responseMessage =
@@ -54,54 +56,101 @@ namespace Synerixis.Application.Agents
             }
             else if (!string.IsNullOrWhiteSpace(trackingId))
             {
-                // 尝试平台客户端；模拟实现仅对特定假号有结果，真实环境无承运商 API 时忽略假数据
-                LogisticsDetailsDto? logisticsDetails = null;
-                try
+                PlatformTrackingInfoDto? trackingInfo = null;
+                var orderSn = order?.OrderNo;
+                var platform = context.Platform ?? order?.Platform ?? string.Empty;
+
+                // 有 order_sn + tracking → 平台真实轨迹（Shopee get_tracking_info）
+                if (_platformRouter != null
+                    && !string.IsNullOrWhiteSpace(orderSn)
+                    && !string.IsNullOrWhiteSpace(platform)
+                    && _platformRouter.IsSupported(platform))
                 {
-                    logisticsDetails = await _platformClient.GetLogisticsDetailsAsync(
-                        context.Platform ?? string.Empty, trackingId);
-                    // 拒绝把「含 67890 的模拟命中」当成真实承运商结果
-                    if (logisticsDetails != null &&
-                        (trackingId.Contains("67890", StringComparison.Ordinal) ||
-                         trackingId.StartsWith("SIMULATED", StringComparison.OrdinalIgnoreCase)))
+                    try
                     {
-                        logisticsDetails = null;
+                        var client = _platformRouter.GetClient(platform);
+                        trackingInfo = await client.GetTrackingInfoAsync(
+                            orderSn!,
+                            trackingId,
+                            context.PlatformShopId,
+                            order?.Status);
+                    }
+                    catch
+                    {
+                        trackingInfo = null;
                     }
                 }
-                catch
-                {
-                    logisticsDetails = null;
-                }
 
-                if (logisticsDetails != null)
+                if (trackingInfo != null && trackingInfo.HasTrajectory)
                 {
+                    var latest = trackingInfo.Checkpoints
+                        .OrderByDescending(c => c.Time ?? DateTime.MinValue)
+                        .First();
+                    var statusLabel = trackingInfo.LogisticsStatus ?? latest.Status ?? "运输中";
                     responseMessage =
-                        $"您好，运单号【{trackingId}】最新状态：【{logisticsDetails.Status}】。当前位置：{logisticsDetails.CurrentLocation}。";
+                        $"您好，运单号【{trackingInfo.TrackingNumber ?? trackingId}】物流状态：【{statusLabel}】。" +
+                        $"最新：{latest.Description ?? statusLabel}" +
+                        (latest.Time.HasValue ? $"（{latest.Time:yyyy-MM-dd HH:mm} UTC）" : "") + "。";
                     if (order != null)
                         responseMessage += $" 关联订单 {order.OrderNo} 状态：{order.Status}。";
+                    logisticsPayload = trackingInfo;
                 }
                 else
                 {
-                    // 无真实承运商 API：诚实返回已解析运单号 + 订单状态
-                    var company = order?.LogisticsCompany;
-                    var orderStatus = order?.Status;
-                    var parts = new List<string>
+                    // 尝试旧 IECommercePlatformClient（占位，通常 null）
+                    LogisticsDetailsDto? logisticsDetails = null;
+                    try
                     {
-                        $"已解析运单号：【{trackingId}】"
-                    };
-                    if (!string.IsNullOrWhiteSpace(company))
-                        parts.Add($"承运商：{company}");
-                    if (!string.IsNullOrWhiteSpace(orderStatus))
-                        parts.Add($"订单状态：{orderStatus}");
-                    if (order != null && !string.IsNullOrWhiteSpace(order.OrderNo))
-                        parts.Add($"订单号：{order.OrderNo}");
-                    parts.Add("（暂未接通真实承运商轨迹 API，以上为订单侧信息，非编造运单）");
-                    responseMessage = string.Join("；", parts) + "。";
+                        logisticsDetails = await _platformClient.GetLogisticsDetailsAsync(
+                            platform, trackingId);
+                        if (logisticsDetails != null &&
+                            (trackingId.Contains("67890", StringComparison.Ordinal) ||
+                             trackingId.StartsWith("SIMULATED", StringComparison.OrdinalIgnoreCase)))
+                        {
+                            logisticsDetails = null;
+                        }
+                    }
+                    catch
+                    {
+                        logisticsDetails = null;
+                    }
+
+                    if (logisticsDetails != null)
+                    {
+                        responseMessage =
+                            $"您好，运单号【{trackingId}】最新状态：【{logisticsDetails.Status}】。当前位置：{logisticsDetails.CurrentLocation}。";
+                        if (order != null)
+                            responseMessage += $" 关联订单 {order.OrderNo} 状态：{order.Status}。";
+                    }
+                    else
+                    {
+                        var company = order?.LogisticsCompany;
+                        var orderStatus = trackingInfo?.OrderStatus ?? order?.Status;
+                        var parts = new List<string>
+                        {
+                            $"已解析运单号：【{trackingInfo?.TrackingNumber ?? trackingId}】"
+                        };
+                        if (!string.IsNullOrWhiteSpace(company))
+                            parts.Add($"承运商：{company}");
+                        if (!string.IsNullOrWhiteSpace(orderStatus))
+                            parts.Add($"订单状态：{orderStatus}");
+                        if (order != null && !string.IsNullOrWhiteSpace(order.OrderNo))
+                            parts.Add($"订单号：{order.OrderNo}");
+                        parts.Add("仅有运单号/订单状态，轨迹暂不可用");
+                        responseMessage = string.Join("；", parts) + "。";
+                        logisticsPayload = trackingInfo ?? new PlatformTrackingInfoDto
+                        {
+                            TrackingNumber = trackingId,
+                            OrderStatus = orderStatus,
+                            Checkpoints = new List<TrackingCheckpointDto>(),
+                            Warning = "tracking_unavailable",
+                            Message = "仅有运单号/订单状态，轨迹暂不可用"
+                        };
+                    }
                 }
             }
             else
             {
-                // 有订单但无 LogisticsNo
                 responseMessage =
                     $"查到您的订单【{order!.OrderNo}】当前状态为【{order.Status}】，但尚未登记快递单号。发货后会有运单信息，您也可直接发快递单号给我查询。";
             }
@@ -140,7 +189,8 @@ namespace Synerixis.Application.Agents
                         trackingId,
                         orderNo = order?.OrderNo,
                         orderStatus = order?.Status,
-                        source
+                        source,
+                        logistics = logisticsPayload
                     }
                 }
             };
@@ -151,7 +201,6 @@ namespace Synerixis.Application.Agents
         private async Task<(string? trackingId, Order? order, string source)> ResolveTrackingAsync(
             string userInput, ChatContext context)
         {
-            // 1) 用户当前消息中的运单号
             var fromInput = ExtractTracking(userInput);
             if (!string.IsNullOrWhiteSpace(fromInput))
             {
@@ -159,7 +208,6 @@ namespace Synerixis.Application.Agents
                 return (fromInput, order, "message");
             }
 
-            // 2) 会话历史消息
             if (context.Messages != null)
             {
                 foreach (var m in context.Messages.AsEnumerable().Reverse())
@@ -173,7 +221,6 @@ namespace Synerixis.Application.Agents
                 }
             }
 
-            // 3) 关联订单 LogisticsNo（ShippingTracking 字段在本域为 LogisticsNo）
             if (_orderRepository != null && context.ShopId != Guid.Empty &&
                 !string.IsNullOrWhiteSpace(context.CustomerId))
             {
@@ -208,7 +255,6 @@ namespace Synerixis.Application.Agents
             return null;
         }
 
-        /// <summary>从文本提取运单号；过滤过短/明显非运单 token。</summary>
         internal static string? ExtractTracking(string? text)
         {
             if (string.IsNullOrWhiteSpace(text))
@@ -219,10 +265,8 @@ namespace Synerixis.Application.Agents
                 var v = m.Value.Trim();
                 if (v.Length < 8)
                     continue;
-                // 排除纯中文语境里的年份等短数字已由长度约束；排除明显模拟号
                 if (v.StartsWith("SIMULATED", StringComparison.OrdinalIgnoreCase))
                     continue;
-                // 排除常见非运单词
                 if (IsLikelyNotTracking(v))
                     continue;
                 return v.ToUpperInvariant();
@@ -236,7 +280,6 @@ namespace Synerixis.Application.Agents
             var lower = v.ToLowerInvariant();
             if (lower is "tracking" or "shipment" or "logistics" or "ordernumber")
                 return true;
-            // 纯字母短词
             if (v.All(char.IsLetter) && v.Length < 12)
                 return true;
             return false;

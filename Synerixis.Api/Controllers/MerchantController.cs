@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Synerixis.Api.Helpers;
 using Synerixis.Domain.Entities;
 using Synerixis.Application.Interfaces;
+using Synerixis.Application.DTOs;
 using Synerixis.Infrastructure.Data;
 using Synerixis.Infrastructure.Repositories;
 using Synerixis.Infrastructure.Services;
@@ -676,8 +677,7 @@ namespace Synerixis.Api.Controllers
         }
 
         /// <summary>
-        /// 会话关联订单：本地 Orders 优先；空则用会话 platform + customerId + PlatformShopOpenId 回源平台查单。
-        /// 平台失败返回 items=[] + warning，不 500。
+        /// 会话关联订单：本地 Orders 优先；空则回源平台。每条订单附 logistics（真实轨迹或诚实降级）。
         /// </summary>
         [HttpGet("sessions/{id:guid}/orders")]
         public async Task<IActionResult> GetSessionOrders(Guid id, [FromQuery] int limit = 10)
@@ -691,34 +691,47 @@ namespace Synerixis.Api.Controllers
                     return NotFound(new { message = "会话不存在" });
 
                 var take = Math.Clamp(limit, 1, 50);
-                var local = await _db.Orders
+                var localRows = await _db.Orders
                     .AsNoTracking()
                     .Where(o => o.ShopId == shopId && o.CustomerId == session.CustomerId)
                     .OrderByDescending(o => o.OrderTime)
                     .Take(take)
-                    .Select(o => new
-                    {
-                        id = (Guid?)o.Id,
-                        orderNo = o.OrderNo,
-                        status = o.Status,
-                        totalAmount = (decimal?)o.TotalAmount,
-                        paymentAmount = (decimal?)o.PaymentAmount,
-                        platform = o.Platform ?? session.Platform,
-                        orderTime = (DateTime?)o.OrderTime,
-                        paidAt = o.PaidAt,
-                        shippedAt = o.ShippedAt,
-                        logisticsNo = o.LogisticsNo,
-                        logisticsCompany = o.LogisticsCompany,
-                        source = "local",
-                        summary = (string?)null
-                    })
                     .ToListAsync();
 
                 string? warning = null;
-                object items = local;
                 var source = "local";
+                var items = new List<object>();
 
-                if (local.Count == 0)
+                if (localRows.Count > 0)
+                {
+                    foreach (var o in localRows)
+                    {
+                        var logistics = await ResolveOrderLogisticsAsync(
+                            o.Platform ?? session.Platform,
+                            session.PlatformShopOpenId,
+                            o.OrderNo,
+                            o.Status,
+                            o.LogisticsNo);
+                        items.Add(new
+                        {
+                            id = (Guid?)o.Id,
+                            orderNo = o.OrderNo,
+                            status = o.Status,
+                            totalAmount = (decimal?)o.TotalAmount,
+                            paymentAmount = (decimal?)o.PaymentAmount,
+                            platform = o.Platform ?? session.Platform,
+                            orderTime = (DateTime?)o.OrderTime,
+                            paidAt = o.PaidAt,
+                            shippedAt = o.ShippedAt,
+                            logisticsNo = o.LogisticsNo,
+                            logisticsCompany = o.LogisticsCompany,
+                            source = "local",
+                            summary = (string?)null,
+                            logistics
+                        });
+                    }
+                }
+                else
                 {
                     source = "platform";
                     try
@@ -736,30 +749,46 @@ namespace Synerixis.Api.Controllers
                             if (!string.IsNullOrWhiteSpace(summary))
                             {
                                 var parsed = ParsePlatformOrderSummary(summary!, session.Platform);
-                                items = new[] { parsed };
+                                var logistics = await ResolveOrderLogisticsAsync(
+                                    session.Platform,
+                                    session.PlatformShopOpenId,
+                                    parsed.OrderNo,
+                                    parsed.Status,
+                                    parsed.LogisticsNo);
+                                items.Add(new
+                                {
+                                    id = (Guid?)null,
+                                    orderNo = parsed.OrderNo,
+                                    status = parsed.Status,
+                                    totalAmount = (decimal?)null,
+                                    paymentAmount = (decimal?)null,
+                                    platform = session.Platform,
+                                    orderTime = (DateTime?)null,
+                                    paidAt = (DateTime?)null,
+                                    shippedAt = (DateTime?)null,
+                                    logisticsNo = parsed.LogisticsNo,
+                                    logisticsCompany = (string?)null,
+                                    source = "platform",
+                                    summary = parsed.Summary,
+                                    logistics
+                                });
                             }
                             else
                             {
-                                items = Array.Empty<object>();
                                 warning = "platform_empty";
                             }
                         }
                         else
                         {
-                            items = Array.Empty<object>();
                             warning = "platform_unsupported_or_missing_customer";
                         }
                     }
                     catch (Exception ex)
                     {
                         _logger.LogWarning(ex, "[Orders] Platform lookup failed for session {SessionId}", id);
-                        items = Array.Empty<object>();
                         warning = "platform_lookup_failed";
                     }
                 }
-
-                var itemList = items as System.Collections.ICollection;
-                var total = itemList?.Count ?? 0;
 
                 return Ok(new
                 {
@@ -768,8 +797,8 @@ namespace Synerixis.Api.Controllers
                     source,
                     warning,
                     items,
-                    total,
-                    empty = total == 0
+                    total = items.Count,
+                    empty = items.Count == 0
                 });
             }
             catch (Exception ex)
@@ -778,7 +807,71 @@ namespace Synerixis.Api.Controllers
             }
         }
 
-        private static object ParsePlatformOrderSummary(string summary, string? platform)
+        /// <summary>
+        /// 有 order_sn + tracking 时拉平台轨迹；否则诚实降级，绝不编造 checkpoint。
+        /// </summary>
+        private async Task<object> ResolveOrderLogisticsAsync(
+            string? platform, string? platformShopId, string? orderNo, string? status, string? tracking)
+        {
+            static object Degraded(string? tn, string? st, string warning, string message) => new
+            {
+                trackingNumber = tn,
+                orderStatus = st,
+                logisticsStatus = (string?)null,
+                checkpoints = Array.Empty<object>(),
+                available = false,
+                warning,
+                message
+            };
+
+            if (string.IsNullOrWhiteSpace(orderNo) || string.IsNullOrWhiteSpace(tracking))
+            {
+                return Degraded(
+                    tracking,
+                    status,
+                    string.IsNullOrWhiteSpace(tracking) ? "missing_tracking" : "missing_order_sn",
+                    string.IsNullOrWhiteSpace(tracking)
+                        ? "暂无运单号，轨迹暂不可用"
+                        : "仅有运单号/订单状态，轨迹暂不可用");
+            }
+
+            if (string.IsNullOrWhiteSpace(platform) || !_platformRouter.IsSupported(platform))
+            {
+                return Degraded(tracking, status, "unsupported", "仅有运单号/订单状态，轨迹暂不可用");
+            }
+
+            try
+            {
+                var client = _platformRouter.GetClient(platform);
+                var info = await client.GetTrackingInfoAsync(orderNo!, tracking, platformShopId, status);
+                var available = info.HasTrajectory;
+                return new
+                {
+                    trackingNumber = info.TrackingNumber ?? tracking,
+                    orderStatus = info.OrderStatus ?? status,
+                    logisticsStatus = info.LogisticsStatus,
+                    checkpoints = info.Checkpoints.Select(c => new
+                    {
+                        time = c.Time,
+                        description = c.Description,
+                        status = c.Status
+                    }).ToList(),
+                    available,
+                    warning = available ? null : (info.Warning ?? "tracking_unavailable"),
+                    message = available
+                        ? null
+                        : (info.Message ?? "仅有运单号/订单状态，轨迹暂不可用")
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[Orders] GetTrackingInfo failed order={OrderNo}", orderNo);
+                return Degraded(tracking, status, "exception", "仅有运单号/订单状态，轨迹暂不可用");
+            }
+        }
+
+        private static (string? OrderNo, string? Status, string? LogisticsNo, string Summary) ParsePlatformOrderSummary(
+            string summary, string? platform)
         {
             // FormatOrderSummary: "order_sn=X, status=Y" or "... tracking=Z"
             string? orderNo = null, status = null, tracking = null;
@@ -790,22 +883,7 @@ namespace Synerixis.Api.Controllers
                 else if (kv[0].Equals("status", StringComparison.OrdinalIgnoreCase)) status = kv[1];
                 else if (kv[0].Equals("tracking", StringComparison.OrdinalIgnoreCase)) tracking = kv[1];
             }
-            return new
-            {
-                id = (Guid?)null,
-                orderNo = orderNo ?? summary,
-                status = status ?? "unknown",
-                totalAmount = (decimal?)null,
-                paymentAmount = (decimal?)null,
-                platform,
-                orderTime = (DateTime?)null,
-                paidAt = (DateTime?)null,
-                shippedAt = (DateTime?)null,
-                logisticsNo = tracking,
-                logisticsCompany = (string?)null,
-                source = "platform",
-                summary
-            };
+            return (orderNo ?? summary, status ?? "unknown", tracking, summary);
         }
 
         /// <summary>

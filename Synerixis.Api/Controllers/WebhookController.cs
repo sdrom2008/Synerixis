@@ -33,6 +33,7 @@ namespace Synerixis.Api.Controllers
         private readonly AppDbContext _db;
         private readonly IServiceScopeFactory _scopeFactory;
         private readonly ISystemSettingsService _ops;
+        private readonly IInboundSessionService _inbound;
 
         public WebhookController(
             IPlatformClientRouter router,
@@ -40,6 +41,7 @@ namespace Synerixis.Api.Controllers
             AppDbContext db,
             IServiceScopeFactory scopeFactory,
             ISystemSettingsService ops,
+            IInboundSessionService inbound,
             ILogger<WebhookController> logger)
         {
             _router = router;
@@ -47,6 +49,7 @@ namespace Synerixis.Api.Controllers
             _db = db;
             _scopeFactory = scopeFactory;
             _ops = ops;
+            _inbound = inbound;
             _logger = logger;
         }
 
@@ -147,8 +150,8 @@ namespace Synerixis.Api.Controllers
                 return Ok(new { code = 0, message = "empty_content_ignored" });
             }
 
-            // 查找或创建会话
-            var session = await FindOrCreateSessionAsync(msg);
+            // 查找或创建会话 + 追加买家消息（与 ConversationService 共享 IInboundSessionService）
+            var session = await _inbound.FindOrCreateSessionAsync(msg);
             if (session == null)
             {
                 _logger.LogWarning("[Webhook] Session creation failed for {Platform} Customer={Customer}",
@@ -157,15 +160,7 @@ namespace Synerixis.Api.Controllers
                 return Ok(new { code = 0, message = "session_not_found" });
             }
 
-            // 刷新平台回复上下文（人审发送时需要 conversation_id / shop_id）
-            session.UpdatePlatformReplyContext(msg.ConversationId, msg.OpenId);
-
-            // 添加用户消息到数据库
-            var userMsg = ChatMessage.FromUser(msg.Content, session.Id);
-            userMsg.PlatformMsgId = msg.MsgId;  // 设置平台消息ID用于去重
-            session.Messages.Add(userMsg);
-            session.AddUserMessage();
-            await _db.SaveChangesAsync();
+            await _inbound.AppendBuyerMessageAsync(session, msg);
 
             // 维护期：已落库，跳过 AI 起草 / AutoSend
             var ops = await _ops.GetOpsAsync();
@@ -468,62 +463,7 @@ namespace Synerixis.Api.Controllers
             }
         }
 
-        /// <summary>
-        /// 查找或创建会话
-        /// </summary>
-        private async Task<ChatSession?> FindOrCreateSessionAsync(PlatformMessage msg)
-        {
-            // 通过 CustomerId + Platform 查找已有会话
-            var existing = await _db.ChatSessions
-                .Include(s => s.Messages)
-                .FirstOrDefaultAsync(s => s.Platform == msg.Platform && s.CustomerId == msg.CustomerId);
-
-            if (existing != null) return existing;
-
-            // 创建新会话：按平台店铺 ID 找 Seller（ShopId 或 OpenId 均可能存 to_shop_id）
-            var platformConn = await _db.Set<PlatformConnection>()
-                .FirstOrDefaultAsync(pc =>
-                    pc.Platform == msg.Platform &&
-                    pc.IsActive &&
-                    (pc.ShopId == msg.OpenId || pc.OpenId == msg.OpenId));
-
-            if (platformConn != null)
-            {
-                var seller = await _db.Sellers.FindAsync(platformConn.SellerId);
-                if (seller != null)
-                {
-                    var newSession = ChatSession.Create(
-                        shopId: seller.Id,
-                        platform: msg.Platform,
-                        customerId: msg.CustomerId,
-                        customerName: msg.CustomerName
-                    );
-                    _db.ChatSessions.Add(newSession);
-                    await _db.SaveChangesAsync();
-                    return newSession;
-                }
-            }
-
-            // 兜底：创建临时 Seller（演示模式）
-            _logger.LogWarning("[Webhook] No seller found for platform={Platform}, creating temporary seller", msg.Platform);
-            var tempSeller = Seller.Create(
-                openId: msg.OpenId ?? Guid.NewGuid().ToString(),
-                nickname: $"{msg.Platform} Shop"
-            );
-            _db.Sellers.Add(tempSeller);
-            await _db.SaveChangesAsync();
-
-            var fallbackSession = ChatSession.Create(
-                shopId: tempSeller.Id,
-                platform: msg.Platform,
-                customerId: msg.CustomerId,
-                customerName: msg.CustomerName
-            );
-            _db.ChatSessions.Add(fallbackSession);
-            await _db.SaveChangesAsync();
-
-            return fallbackSession;
-        }
+        // FindOrCreateSession / AppendBuyerMessage 已收拢至 IInboundSessionService（InboundSessionService）
 
         /// <summary>
         /// 已落库的用户消息 → IntentClassifier → IAgent / GeneralChat → 持久化为草稿（默认）。

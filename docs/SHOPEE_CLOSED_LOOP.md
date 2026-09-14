@@ -22,7 +22,7 @@
 | Intent ↔ Agent | ✅ | Order/Logistics/Competitor/Product → 对应 Agent | `AgentRouter` 按 `SupportedIntent` 映射 |
 | 订单查询（DB） | ✅ | `OrderAgent` → `IOrderRepository` | |
 | 订单查询（平台 API） | ✅ | `GetCustomerOrderAsync(..., platformShopId)` | DB 未命中回源；`ChatContext.PlatformShopId` 来自 webhook `to_shop_id` |
-| 物流查询 | ✅ | `LogisticsAgent` | 解析消息/Order.LogisticsNo；无承运商 API 返回运单+订单状态，不造假 |
+| 物流查询 | ✅ | `LogisticsAgent` + `ShopeePlatformClient.GetTrackingInfoAsync` | 有 order_sn+tracking 调 `get_tracking_info`；失败/无权限诚实降级（运单+订单状态，**不编造 checkpoint**）；侧栏 `GET .../orders` 附 `logistics` |
 | AI 草稿（默认） | ✅ | `DraftMessage` + `OutboundMode=DraftFirst` | 默认不 `SendReply`；`AutoSend` 显式开启才出站 |
 | 人审出站 | ✅ | `POST .../draft/approve` 等 | 调用 `SendReplyAsync`（per-shop token） |
 | 转人工 handoff | ✅ | `ChatSession.PendingHumanHandoff` + `TransferToAgent` | 硬闸 + **敏感词/低置信自动 handoff**；营业外不 AutoSend（可 handoff） |
@@ -51,10 +51,10 @@
 - ✅ Webhook：`IntentClassifier`（规则优先 LogisticsQuery / CompetitorAnalysis / OrderQuery + LLM）→ `AgentRouter` → Logistics / Competitor / Order / GeneralChat  
 - ✅ `LogisticsAgent`：解析运单号 + 订单状态，禁止固定模拟运单号  
 - ✅ `GET /api/merchant|admin/usage` 增加 `byPurpose` 分桶；商户计费 / Admin 用量表格展示  
-- ⚠️ `IConversationService.ProcessIncomingMessageAsync` 仍独立，Webhook 未复用  
+- ✅ `IInboundSessionService`（FindOrCreate + AppendBuyerMessage）Webhook 与 ConversationService 共用；`ProcessIncomingMessageAsync` 已 Obsolete 并转发入库；**AI 草稿/handoff/维护/营业外仍仅 Webhook ProcessInboundAiReply**  
 
-**本轮摘要（2026-09-14）**：意图扩展 + 真实运单解析 + AiUsage byPurpose。  
-**下一轮缺口（自动继续）**：Shopee/TT 真实承运商轨迹 API；Webhook 复用 ConversationService；Token 过期告警 UI；支付生产网关；幂等审计完善。  
+**本轮摘要（2026-09-14）**：Shopee `get_tracking_info` 真实轨迹 + 侧栏 logistics；`IInboundSessionService` 收拢 Webhook/Conversation 入库。  
+**下一轮缺口（自动继续）**：TikTok 真实轨迹；Token 过期告警 UI；支付生产网关；APNs；多站点 partner；多实例限流（当前 Webhook 限流为**单机内存**，非 Redis）；幂等审计完善。  
 
 ### 4. Order → Reply
 

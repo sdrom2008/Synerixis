@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
+using Synerixis.Application.DTOs;
 
 namespace Synerixis.Application.Interfaces
 {
@@ -50,6 +51,17 @@ namespace Synerixis.Application.Interfaces
         /// 【绑定功能】获取店铺信息
         /// </summary>
         Task<(string ShopId, string Nickname, string AvatarUrl)> GetShopInfoAsync(string accessToken, CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// 查询物流轨迹。有 order_sn（及可选 tracking）时调平台 API；
+        /// 失败/无权限时返回运单号+订单状态且 checkpoints 为空，绝不编造轨迹。
+        /// </summary>
+        Task<PlatformTrackingInfoDto> GetTrackingInfoAsync(
+            string orderSn,
+            string? trackingNumber = null,
+            string? platformShopId = null,
+            string? orderStatusHint = null,
+            CancellationToken cancellationToken = default);
     }
 
     /// <summary>

@@ -333,8 +333,29 @@
                 <span>金额 {{ formatAmount(o.totalAmount ?? o.paymentAmount) }}</span>
                 <span>{{ formatTime(o.orderTime) }}</span>
               </div>
-              <div v-if="o.logisticsNo" class="order-meta">
-                {{ o.logisticsCompany || '物流' }} {{ o.logisticsNo }}
+              <div v-if="o.logisticsNo || o.logistics?.trackingNumber" class="order-meta">
+                {{ o.logisticsCompany || '物流' }} {{ o.logistics?.trackingNumber || o.logisticsNo }}
+                <el-tag
+                  v-if="o.logistics?.logisticsStatus"
+                  size="small"
+                  effect="plain"
+                  style="margin-left: 6px"
+                >{{ o.logistics.logisticsStatus }}</el-tag>
+              </div>
+              <div v-if="o.logistics?.available && o.logistics.checkpoints?.length" class="logistics-track">
+                <div class="logistics-track-title">物流轨迹</div>
+                <ul class="logistics-checkpoints">
+                  <li v-for="(cp, idx) in o.logistics.checkpoints" :key="idx">
+                    <span class="cp-time">{{ formatTime(cp.time) }}</span>
+                    <span class="cp-desc">{{ cp.description || cp.status || '—' }}</span>
+                  </li>
+                </ul>
+              </div>
+              <div
+                v-else-if="o.logisticsNo || o.logistics?.trackingNumber || o.logistics?.message"
+                class="order-meta logistics-fallback"
+              >
+                {{ o.logistics?.message || '仅有运单号/订单状态，轨迹暂不可用' }}
               </div>
               <div v-if="o.summary && (o.source || ordersSource) === 'platform'" class="order-meta">
                 {{ o.summary }}
@@ -1307,5 +1328,46 @@ onUnmounted(() => {
 .agent-chip {
   font-size: 11px;
   color: var(--el-color-primary);
+}
+
+.logistics-track {
+  margin-top: 6px;
+  padding: 6px 8px;
+  background: var(--el-fill-color-light, #f5f7fa);
+  border-radius: 6px;
+  font-size: 12px;
+}
+.logistics-track-title {
+  font-weight: 600;
+  margin-bottom: 4px;
+  color: var(--el-text-color-secondary);
+}
+.logistics-checkpoints {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 160px;
+  overflow-y: auto;
+}
+.logistics-checkpoints li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 0;
+  border-bottom: 1px dashed var(--el-border-color-lighter, #ebeef5);
+}
+.logistics-checkpoints li:last-child {
+  border-bottom: none;
+}
+.cp-time {
+  color: var(--el-text-color-secondary);
+  font-size: 11px;
+}
+.cp-desc {
+  color: var(--el-text-color-primary);
+  line-height: 1.4;
+}
+.logistics-fallback {
+  color: var(--el-color-warning);
 }
 </style>

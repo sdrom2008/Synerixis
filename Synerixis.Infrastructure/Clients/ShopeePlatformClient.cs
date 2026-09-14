@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Synerixis.Application.Interfaces;
+using Synerixis.Application.DTOs;
 using System.IO;
 using System.Text;
 using System.Text.Json;
@@ -521,6 +522,188 @@ namespace Synerixis.Infrastructure.Clients
             return string.IsNullOrEmpty(tracking)
                 ? $"order_sn={orderSn}, status={status}"
                 : $"order_sn={orderSn}, status={status}, tracking={tracking}";
+        }
+
+
+        /// <summary>
+        /// Shopee Open API <c>/api/v2/logistics/get_tracking_info</c>。
+        /// 仅当有 order_sn 且（建议）有 tracking 时调用；失败/无权限诚实降级，checkpoints 仅来自 API。
+        /// </summary>
+        public async Task<PlatformTrackingInfoDto> GetTrackingInfoAsync(
+            string orderSn,
+            string? trackingNumber = null,
+            string? platformShopId = null,
+            string? orderStatusHint = null,
+            CancellationToken cancellationToken = default)
+        {
+            var degraded = new PlatformTrackingInfoDto
+            {
+                TrackingNumber = trackingNumber,
+                OrderStatus = orderStatusHint,
+                LogisticsStatus = null,
+                Checkpoints = new List<TrackingCheckpointDto>(),
+                Warning = "tracking_unavailable",
+                Message = "仅有运单号/订单状态，轨迹暂不可用"
+            };
+
+            if (string.IsNullOrWhiteSpace(orderSn))
+            {
+                degraded.Warning = "missing_order_sn";
+                return degraded;
+            }
+
+            // 任务约定：有 order_sn + tracking 才拉轨迹；仅有其一则诚实降级
+            if (string.IsNullOrWhiteSpace(trackingNumber))
+            {
+                degraded.Warning = "missing_tracking";
+                degraded.Message = string.IsNullOrWhiteSpace(orderStatusHint)
+                    ? "暂无运单号，轨迹暂不可用"
+                    : "仅有订单状态，轨迹暂不可用（缺运单号）";
+                return degraded;
+            }
+
+            var partnerId = _config["Shopee:AppKey"];
+            var appSecret = _config["Shopee:AppSecret"];
+            var endpoint = _config["Shopee:Endpoint"] ?? "https://partner.shopeemobile.com";
+            var (accessToken, shopIdStr, tokenSource) = await ResolveShopCredentialsAsync(platformShopId);
+
+            if (string.IsNullOrEmpty(partnerId) || string.IsNullOrEmpty(appSecret) ||
+                string.IsNullOrEmpty(accessToken) || string.IsNullOrEmpty(shopIdStr))
+            {
+                _logger.LogWarning("[Shopee] GetTrackingInfo missing credentials. Source={Source}", tokenSource);
+                degraded.Warning = "missing_credentials";
+                return degraded;
+            }
+
+            if (!long.TryParse(shopIdStr, out long shopId))
+            {
+                _logger.LogWarning("[Shopee] GetTrackingInfo invalid ShopId={ShopId}", shopIdStr);
+                degraded.Warning = "invalid_shop_id";
+                return degraded;
+            }
+
+            try
+            {
+                string path = "/api/v2/logistics/get_tracking_info";
+                long timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                string sign = ComputeShopApiSign(partnerId, path, timestamp, accessToken, shopId, appSecret);
+                var url =
+                    $"{endpoint}{path}?partner_id={partnerId}&timestamp={timestamp}&access_token={accessToken}" +
+                    $"&shop_id={shopId}&sign={sign}&order_sn={Uri.EscapeDataString(orderSn.Trim())}";
+
+                using var http = new HttpClient();
+                var response = await http.GetAsync(url, cancellationToken);
+                var respBody = await response.Content.ReadAsStringAsync(cancellationToken);
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    _logger.LogWarning("[Shopee] get_tracking_info HTTP {Status}: {Body}", response.StatusCode, respBody);
+                    degraded.Warning = "api_http_failed";
+                    return degraded;
+                }
+
+                using var doc = JsonDocument.Parse(respBody);
+                var root = doc.RootElement;
+
+                // error / message 非空 → 无权限或业务失败，诚实降级
+                var err = root.TryGetProperty("error", out var errEl) ? errEl.GetString() : null;
+                if (!string.IsNullOrWhiteSpace(err))
+                {
+                    var msg = root.TryGetProperty("message", out var mEl) ? mEl.GetString() : err;
+                    _logger.LogWarning("[Shopee] get_tracking_info error={Error} message={Message}", err, msg);
+                    degraded.Warning = err!.Contains("permission", StringComparison.OrdinalIgnoreCase)
+                        || err.Contains("auth", StringComparison.OrdinalIgnoreCase)
+                        ? "no_permission"
+                        : "api_failed";
+                    return degraded;
+                }
+
+                if (!root.TryGetProperty("response", out var resp) || resp.ValueKind != JsonValueKind.Object)
+                {
+                    degraded.Warning = "empty_response";
+                    return degraded;
+                }
+
+                var result = new PlatformTrackingInfoDto
+                {
+                    TrackingNumber = trackingNumber,
+                    OrderStatus = orderStatusHint,
+                    Warning = null,
+                    Message = null,
+                    Checkpoints = new List<TrackingCheckpointDto>()
+                };
+
+                if (resp.TryGetProperty("tracking_number", out var tnEl))
+                {
+                    var tn = tnEl.GetString();
+                    if (!string.IsNullOrWhiteSpace(tn))
+                        result.TrackingNumber = tn;
+                }
+
+                if (resp.TryGetProperty("logistics_status", out var lsEl))
+                    result.LogisticsStatus = lsEl.GetString();
+
+                // 部分站点把订单状态也放在 response
+                if (resp.TryGetProperty("order_status", out var osEl))
+                {
+                    var os = osEl.GetString();
+                    if (!string.IsNullOrWhiteSpace(os))
+                        result.OrderStatus = os;
+                }
+
+                if (resp.TryGetProperty("tracking_info", out var ti) && ti.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var item in ti.EnumerateArray())
+                    {
+                        DateTime? time = null;
+                        if (item.TryGetProperty("update_time", out var ut))
+                        {
+                            if (ut.ValueKind == JsonValueKind.Number && ut.TryGetInt64(out var unix))
+                                time = DateTimeOffset.FromUnixTimeSeconds(unix).UtcDateTime;
+                        }
+                        string? desc = null;
+                        if (item.TryGetProperty("description", out var dEl))
+                            desc = dEl.GetString();
+                        string? st = null;
+                        if (item.TryGetProperty("logistics_status", out var sEl))
+                            st = sEl.GetString();
+
+                        // 仅收录 API 真实条目；跳过空描述且无状态的废行
+                        if (string.IsNullOrWhiteSpace(desc) && string.IsNullOrWhiteSpace(st) && time == null)
+                            continue;
+
+                        result.Checkpoints.Add(new TrackingCheckpointDto
+                        {
+                            Time = time,
+                            Description = desc,
+                            Status = st
+                        });
+                    }
+                }
+
+                if (!result.HasTrajectory)
+                {
+                    result.Warning = "no_checkpoints";
+                    result.Message = "仅有运单号/订单状态，轨迹暂不可用";
+                    _logger.LogInformation(
+                        "[Shopee] get_tracking_info ok but empty tracking_info order_sn={OrderSn}", orderSn);
+                }
+                else
+                {
+                    result.Message = null;
+                    _logger.LogInformation(
+                        "[Shopee] get_tracking_info ok order_sn={OrderSn} checkpoints={Count} source={Source}",
+                        orderSn, result.Checkpoints.Count, tokenSource);
+                }
+
+                return result;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[Shopee] GetTrackingInfoAsync exception order_sn={OrderSn}", orderSn);
+                degraded.Warning = "exception";
+                return degraded;
+            }
         }
 
         /// <summary>

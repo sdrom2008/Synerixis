@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Synerixis.Application.Interfaces;
+using Synerixis.Application.DTOs;
 using System.Diagnostics;
 using System.IO;
 using System.Security.Cryptography;
@@ -567,6 +568,30 @@ namespace Synerixis.Infrastructure.Clients
                 _logger.LogError(ex, "[TikTok] GetCustomerOrderAsync exception");
                 return null;
             }
+        }
+
+        /// <summary>
+        /// TikTok Shop 物流轨迹尚未接通：诚实降级，不编造 checkpoint。
+        /// </summary>
+        public Task<PlatformTrackingInfoDto> GetTrackingInfoAsync(
+            string orderSn,
+            string? trackingNumber = null,
+            string? platformShopId = null,
+            string? orderStatusHint = null,
+            CancellationToken cancellationToken = default)
+        {
+            _logger.LogInformation("[TikTok] GetTrackingInfoAsync not implemented; degrading order={OrderSn}", orderSn);
+            return Task.FromResult(new PlatformTrackingInfoDto
+            {
+                TrackingNumber = trackingNumber,
+                OrderStatus = orderStatusHint,
+                LogisticsStatus = null,
+                Checkpoints = new List<TrackingCheckpointDto>(),
+                Warning = "unsupported",
+                Message = string.IsNullOrWhiteSpace(trackingNumber)
+                    ? "暂无运单号，轨迹暂不可用"
+                    : "仅有运单号/订单状态，轨迹暂不可用"
+            });
         }
 
         /// <summary>
