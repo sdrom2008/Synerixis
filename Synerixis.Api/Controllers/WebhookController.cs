@@ -409,9 +409,12 @@ namespace Synerixis.Api.Controllers
 
             if (existing != null) return existing;
 
-            // 创建新会话：需要找到 Seller
+            // 创建新会话：按平台店铺 ID 找 Seller（ShopId 或 OpenId 均可能存 to_shop_id）
             var platformConn = await _db.Set<PlatformConnection>()
-                .FirstOrDefaultAsync(pc => pc.Platform == msg.Platform && pc.OpenId == msg.OpenId);
+                .FirstOrDefaultAsync(pc =>
+                    pc.Platform == msg.Platform &&
+                    pc.IsActive &&
+                    (pc.ShopId == msg.OpenId || pc.OpenId == msg.OpenId));
 
             if (platformConn != null)
             {
@@ -491,6 +494,8 @@ namespace Synerixis.Api.Controllers
                     SellerId = session.ShopId.ToString(),
                     Platform = session.Platform,
                     CustomerId = session.CustomerId ?? msg.CustomerId ?? string.Empty,
+                    // Shopee ParseWebhook 把 to_shop_id 放在 OpenId，供 OrderAgent / SendReply 按店取 token
+                    PlatformShopId = msg.OpenId,
                     Messages = historyDtos
                 };
 

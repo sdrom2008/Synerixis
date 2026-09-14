@@ -65,6 +65,27 @@ namespace Synerixis.Domain.Entities
             UpdatedAt = DateTime.UtcNow;
         }
 
+        /// <summary>
+        /// OAuth 重新绑定时刷新店铺画像，并确保 ShopId/OpenId 与平台侧一致。
+        /// </summary>
+        public void UpsertFromOAuth(
+            string accessToken,
+            string? refreshToken,
+            string? shopId,
+            string? openId,
+            string? nickname,
+            string? avatarUrl)
+        {
+            AccessToken = accessToken;
+            if (refreshToken != null) RefreshToken = refreshToken;
+            if (!string.IsNullOrEmpty(shopId)) ShopId = shopId;
+            if (!string.IsNullOrEmpty(openId)) OpenId = openId;
+            if (!string.IsNullOrEmpty(nickname)) Nickname = nickname;
+            if (!string.IsNullOrEmpty(avatarUrl)) AvatarUrl = avatarUrl;
+            IsActive = true;
+            UpdatedAt = DateTime.UtcNow;
+        }
+
         public void SetActive(bool isActive)
         {
             IsActive = isActive;

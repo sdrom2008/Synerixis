@@ -32,7 +32,7 @@ namespace Synerixis.Application.Interfaces
         /// <summary>
         /// 获取客户（买家）的订单信息（非商户订单，而是客户在平台的订单）
         /// </summary>
-        Task<string?> GetCustomerOrderAsync(string platform, string customerId, CancellationToken cancellationToken = default);
+        Task<string?> GetCustomerOrderAsync(string platform, string customerId, string? platformShopId = null, CancellationToken cancellationToken = default);
 
         /// <summary>
         /// 【绑定功能】获取 OAuth 授权 URL

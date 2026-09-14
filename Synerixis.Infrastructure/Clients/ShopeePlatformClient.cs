@@ -17,11 +17,16 @@ namespace Synerixis.Infrastructure.Clients
     {
         private readonly IConfiguration _config;
         private readonly ILogger<ShopeePlatformClient> _logger;
+        private readonly IPlatformConnectionRepository? _connectionRepo;
 
-        public ShopeePlatformClient(IConfiguration config, ILogger<ShopeePlatformClient> logger)
+        public ShopeePlatformClient(
+            IConfiguration config,
+            ILogger<ShopeePlatformClient> logger,
+            IPlatformConnectionRepository? connectionRepo = null)
         {
             _config = config;
             _logger = logger;
+            _connectionRepo = connectionRepo;
         }
 
         /// <summary>
@@ -29,16 +34,16 @@ namespace Synerixis.Infrastructure.Clients
         /// </summary>
         public async Task SendReplyAsync(PlatformMessage context, string content, CancellationToken cancellationToken = default)
         {
-            // 读取配置
             var partnerId = _config["Shopee:AppKey"];
             var appSecret = _config["Shopee:AppSecret"];
-            var accessToken = _config["Shopee:AccessToken"];
-            var shopIdStr = _config["Shopee:ShopId"];
             var endpoint = _config["Shopee:Endpoint"] ?? "https://partner.shopeemobile.com";
+
+            // 优先按 webhook 的 to_shop_id（context.OpenId）从 PlatformConnection 取 per-shop token
+            var (accessToken, shopIdStr, tokenSource) = await ResolveShopCredentialsAsync(context.OpenId);
 
             if (string.IsNullOrEmpty(partnerId) || string.IsNullOrEmpty(appSecret) || string.IsNullOrEmpty(accessToken) || string.IsNullOrEmpty(shopIdStr))
             {
-                _logger.LogWarning("[Shopee] Missing configuration (AppKey/AppSecret/AccessToken/ShopId). Skipping send reply.");
+                _logger.LogWarning("[Shopee] Missing credentials (AppKey/AppSecret/AccessToken/ShopId). Skipping send reply. Source={Source}", tokenSource);
                 return;
             }
 
@@ -47,6 +52,8 @@ namespace Synerixis.Infrastructure.Clients
                 _logger.LogWarning("[Shopee] Invalid ShopId value: {ShopId}", shopIdStr);
                 return;
             }
+
+            _logger.LogDebug("[Shopee] SendReply using credentials from {Source}, shop={ShopId}", tokenSource, shopId);
 
             long timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
             string path = "/api/v2/sellerchat/send_message";
@@ -263,7 +270,7 @@ namespace Synerixis.Infrastructure.Clients
         /// 否则按 buyer_user_id 在近期订单列表中匹配。
         /// 缺配置时仅打警告并返回 null，不抛异常。
         /// </summary>
-        public async Task<string?> GetCustomerOrderAsync(string platform, string customerId, CancellationToken cancellationToken = default)
+        public async Task<string?> GetCustomerOrderAsync(string platform, string customerId, string? platformShopId = null, CancellationToken cancellationToken = default)
         {
             if (string.IsNullOrWhiteSpace(customerId))
             {
@@ -273,14 +280,14 @@ namespace Synerixis.Infrastructure.Clients
 
             var partnerId = _config["Shopee:AppKey"];
             var appSecret = _config["Shopee:AppSecret"];
-            var accessToken = _config["Shopee:AccessToken"];
-            var shopIdStr = _config["Shopee:ShopId"];
             var endpoint = _config["Shopee:Endpoint"] ?? "https://partner.shopeemobile.com";
+
+            var (accessToken, shopIdStr, tokenSource) = await ResolveShopCredentialsAsync(platformShopId);
 
             if (string.IsNullOrEmpty(partnerId) || string.IsNullOrEmpty(appSecret) ||
                 string.IsNullOrEmpty(accessToken) || string.IsNullOrEmpty(shopIdStr))
             {
-                _logger.LogWarning("[Shopee] Missing configuration (AppKey/AppSecret/AccessToken/ShopId). Skipping order lookup.");
+                _logger.LogWarning("[Shopee] Missing credentials (AppKey/AppSecret/AccessToken/ShopId). Skipping order lookup. Source={Source}", tokenSource);
                 return null;
             }
 
@@ -289,6 +296,8 @@ namespace Synerixis.Infrastructure.Clients
                 _logger.LogWarning("[Shopee] Invalid ShopId value: {ShopId}", shopIdStr);
                 return null;
             }
+
+            _logger.LogDebug("[Shopee] GetCustomerOrder using credentials from {Source}, shop={ShopId}", tokenSource, shopId);
 
             try
             {
@@ -563,6 +572,36 @@ namespace Synerixis.Infrastructure.Clients
             var nickname = root.TryGetProperty("nickname", out var nickElem) ? nickElem.GetString() : "Shopee 店铺";
             
             return (shopId, nickname, string.Empty);
+        }
+
+
+        /// <summary>
+        /// 解析店铺凭证：优先 PlatformConnection（按 ShopId），库空/异常时回退 appsettings 单店演示配置。
+        /// 不抛异常，保证 Webhook 路径优雅降级。
+        /// </summary>
+        private async Task<(string? AccessToken, string? ShopId, string Source)> ResolveShopCredentialsAsync(string? preferredShopId)
+        {
+            if (_connectionRepo != null && !string.IsNullOrWhiteSpace(preferredShopId))
+            {
+                try
+                {
+                    var conn = await _connectionRepo.GetByShopIdAndPlatformAsync(preferredShopId, "SHOPEE");
+                    if (conn != null && conn.IsActive && !string.IsNullOrWhiteSpace(conn.AccessToken))
+                    {
+                        var sid = !string.IsNullOrWhiteSpace(conn.ShopId) ? conn.ShopId : preferredShopId;
+                        return (conn.AccessToken, sid, "PlatformConnection");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "[Shopee] PlatformConnection lookup failed for shop={ShopId}; falling back to config", preferredShopId);
+                }
+            }
+
+            var configToken = _config["Shopee:AccessToken"];
+            var configShop = _config["Shopee:ShopId"];
+            var shopId = !string.IsNullOrWhiteSpace(preferredShopId) ? preferredShopId : configShop;
+            return (configToken, shopId, "appsettings");
         }
 
         private string GenerateSignature(string secret, string body)

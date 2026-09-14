@@ -84,13 +84,50 @@ namespace Synerixis.Infrastructure.Services
                 var (accessToken, refreshToken) = await client.GetAccessTokenAsync(authorizationCode, state: "bind");
                 
                 var (shopId, nickname, avatarUrl) = await client.GetShopInfoAsync(accessToken);
-                
+
+                var normalizedPlatform = (platform ?? string.Empty).ToUpperInvariant();
+                var appKey = normalizedPlatform == "SHOPEE"
+                    ? (_config["Shopee:AppKey"] ?? string.Empty)
+                    : (_config["TikTok:ClientKey"] ?? string.Empty);
+
+                // 按 ShopId + Platform 幂等 upsert，避免重复绑店产生多行
+                PlatformConnection? existing = null;
+                if (!string.IsNullOrEmpty(shopId))
+                {
+                    existing = await _connectionRepository.GetByShopIdAndPlatformAsync(shopId, normalizedPlatform);
+                }
+
+                if (existing != null)
+                {
+                    existing.UpsertFromOAuth(
+                        accessToken: accessToken,
+                        refreshToken: refreshToken,
+                        shopId: shopId,
+                        openId: shopId,
+                        nickname: nickname,
+                        avatarUrl: avatarUrl);
+                    await _connectionRepository.UpdateAsync(existing);
+                    await _db.SaveChangesAsync();
+
+                    _logger.LogInformation(
+                        "平台店铺 token 已更新: Platform={Platform}, ShopId={ShopId}, ConnectionId={Id}",
+                        normalizedPlatform, shopId, existing.Id);
+
+                    return new PlatformConnectionResult(
+                        existing.Id,
+                        normalizedPlatform,
+                        success: true,
+                        shopId: shopId,
+                        nickname: nickname
+                    );
+                }
+
                 var connection = PlatformConnection.Create(
                     sellerId: sellerId,
-                    platform: platform,
-                    appKey: platform == "SHOPEE" ? _config["Shopee:AppKey"] : _config["TikTok:ClientKey"],
+                    platform: normalizedPlatform,
+                    appKey: appKey,
                     accessToken: accessToken,
-                    openId: shopId,
+                    openId: shopId ?? string.Empty,
                     shopId: shopId,
                     nickname: nickname,
                     avatarUrl: avatarUrl
@@ -104,9 +141,13 @@ namespace Synerixis.Infrastructure.Services
                 await _connectionRepository.AddAsync(connection);
                 await _db.SaveChangesAsync();
 
+                _logger.LogInformation(
+                    "平台店铺已绑定: Platform={Platform}, ShopId={ShopId}, ConnectionId={Id}",
+                    normalizedPlatform, shopId, connection.Id);
+
                 return new PlatformConnectionResult(
                     connection.Id,
-                    platform,
+                    normalizedPlatform,
                     success: true,
                     shopId: shopId,
                     nickname: nickname

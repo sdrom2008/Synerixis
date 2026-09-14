@@ -493,7 +493,7 @@ namespace Synerixis.Infrastructure.Clients
             }
         }
 
-        public async Task<string?> GetCustomerOrderAsync(string platform, string customerId, CancellationToken cancellationToken = default)
+        public async Task<string?> GetCustomerOrderAsync(string platform, string customerId, string? platformShopId = null, CancellationToken cancellationToken = default)
         {
             _logger.LogInformation("[TikTok] GetCustomerOrderAsync for customer: {CustomerId}", customerId);
 

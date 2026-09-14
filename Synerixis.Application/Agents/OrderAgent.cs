@@ -57,7 +57,7 @@ namespace Synerixis.Application.Agents
                 {
                     // DB 未命中 → 回源平台 GetCustomerOrderAsync
                     var platformSummary = await TryGetPlatformCustomerOrderAsync(
-                        context.Platform, customerId);
+                        context.Platform, customerId, context.PlatformShopId);
 
                     if (!string.IsNullOrWhiteSpace(platformSummary))
                     {
@@ -143,7 +143,7 @@ namespace Synerixis.Application.Agents
         /// <summary>
         /// 通过 Application 层 IPlatformClientRouter 回源查单；任何失败静默返回 null。
         /// </summary>
-        private async Task<string?> TryGetPlatformCustomerOrderAsync(string? platform, string customerId)
+        private async Task<string?> TryGetPlatformCustomerOrderAsync(string? platform, string customerId, string? platformShopId = null)
         {
             if (_platformClientRouter == null)
                 return null;
@@ -157,7 +157,7 @@ namespace Synerixis.Application.Agents
                     return null;
 
                 var client = _platformClientRouter.GetClient(platform);
-                return await client.GetCustomerOrderAsync(platform, customerId);
+                return await client.GetCustomerOrderAsync(platform, customerId, platformShopId);
             }
             catch
             {
