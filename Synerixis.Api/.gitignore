@@ -14,3 +14,6 @@ secrets.json
 bin/
 obj/
 .vs/
+# 允许提交无密钥的示例配置
+!appsettings.*.example.json
+!appsettings.example.json

@@ -41,3 +41,12 @@ venv/
 .env.mysql
 .env
 *.env
+
+# Local ASP.NET config with secrets (example files are committed)
+**/appsettings.Development.json
+**/appsettings.Box.json
+!**/appsettings.*.example.json
+
+# Admin build output
+admin-console/dist/
+
