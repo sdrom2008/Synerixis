@@ -6,8 +6,8 @@ using Synerixis.Application.Interfaces.Infrastructure;
 namespace Synerixis.Infrastructure.Services
 {
     /// <summary>
-    /// A client to interact with various e-commerce platforms like Taobao and Douyin.
-    /// This is a concrete implementation of the IECommercePlatformClient interface.
+    /// 电商平台客户端占位实现。承运商轨迹 API 未接通时物流查询返回 null，
+    /// 由 LogisticsAgent 回退到「已解析运单号 + 订单状态」，禁止编造模拟运单。
     /// </summary>
     public class ECommercePlatformClient : IECommercePlatformClient
     {
@@ -20,33 +20,18 @@ namespace Synerixis.Infrastructure.Services
 
         public async Task<OrderDetailsDto> GetOrderDetailsAsync(string platform, string orderId)
         {
-            // In a real implementation, we would use the HttpClient to call the platform's API.
-            // For now, we return mock data to allow for end-to-end testing.
-
-            Console.WriteLine($"[Infrastructure] Simulating API call to {platform} for order: {orderId}");
-
-            // TODO: Replace this mock implementation with actual API calls.
-            await Task.Delay(150); // Simulate network latency
-
-            if (orderId.Contains("12345"))
-            {
-                return new OrderDetailsDto(orderId, "已发货", 199.99m);
-            }
-            return null; // Simulate order not found
+            Console.WriteLine($"[Infrastructure] GetOrderDetailsAsync platform={platform} order={orderId} (stub)");
+            await Task.Delay(50);
+            // 订单详情请走 IPlatformClientRouter / OrderAgent 回源；此处不再返回假数据
+            return null!;
         }
 
         public async Task<LogisticsDetailsDto> GetLogisticsDetailsAsync(string platform, string trackingId)
         {
-            Console.WriteLine($"[Infrastructure] Simulating API call to {platform} for tracking: {trackingId}");
-
-            // TODO: Replace this mock implementation with actual API calls.
-            await Task.Delay(150); // Simulate network latency
-
-            if (trackingId.Contains("67890"))
-            {
-                return new LogisticsDetailsDto(trackingId, "运输中", "包裹已到达 [深圳福田] 中转中心");
-            }
-            return null; // Simulate tracking not found
+            Console.WriteLine($"[Infrastructure] GetLogisticsDetailsAsync platform={platform} tracking={trackingId} (no carrier API)");
+            await Task.Delay(50);
+            // 无真实承运商 API：一律 null，避免 SIMULATED_TRACKING_67890 类假命中
+            return null!;
         }
     }
 }

@@ -912,6 +912,19 @@ namespace Synerixis.Api.Controllers
                 var exactTokensThisMonth = (aiMonth?.exactPrompt ?? 0) + (aiMonth?.exactCompletion ?? 0);
                 var estimatedTokensThisMonth = (aiMonth?.estimatedPrompt ?? 0) + (aiMonth?.estimatedCompletion ?? 0);
 
+                var byPurpose = await _db.AiUsageLogs.AsNoTracking()
+                    .Where(a => a.SellerId == shopId && a.CreatedAt >= monthStart)
+                    .GroupBy(a => a.Purpose)
+                    .Select(g => new
+                    {
+                        purpose = g.Key,
+                        calls = g.Count(),
+                        tokens = g.Sum(x => x.PromptTokens + x.CompletionTokens),
+                        costUsd = g.Sum(x => x.EstimatedCostUsd)
+                    })
+                    .OrderByDescending(x => x.calls)
+                    .ToListAsync();
+
                 return Ok(new
                 {
                     periodStart = monthStart,
@@ -943,7 +956,8 @@ namespace Synerixis.Api.Controllers
                     isEstimatedSummaryThisMonth = (aiMonth?.estimatedCalls ?? 0) > 0,
                     estimatedCostUsdThisMonth = aiMonth?.estimatedCostUsd ?? 0m,
                     aiCallsThisMonth = aiMonth?.calls ?? 0,
-                    note = "exactTokens=模型 Usage；estimatedTokens=无 Usage 时 chars/4 粗估（IsEstimated）"
+                    byPurpose,
+                    note = "exactTokens=模型 Usage；estimatedTokens=无 Usage 时 chars/4 粗估（IsEstimated）；byPurpose=本月按 Purpose 分桶"
                 });
             }
             catch (Exception ex)

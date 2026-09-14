@@ -32,6 +32,11 @@ public class IntentClassifier : IIntentClassifier
         Guid? sellerId = null,
         Guid? sessionId = null)
     {
+        // 规则优先：关键词命中直接返回，高置信，与 AgentRouter 对齐
+        var ruleHit = TryClassifyByRules(userInput);
+        if (ruleHit != null)
+            return ruleHit;
+
         var historyText = string.Join("\n", recentHistory
             .TakeLast(6)
             .Select(m => $"{(m.IsFromUser ? "用户" : "AI")}: {m.Content.Trim()}"));
@@ -42,10 +47,12 @@ public class IntentClassifier : IIntentClassifier
 
 可用类别（严格只能选其中之一）：
 GeneralChat          - 普通闲聊、问候、天气、表情、夸赞、无明确业务需求
-OrderQuery           - 查询订单、物流状态、发货时间、到货时间、订单详情
+OrderQuery           - 查询订单、发货时间、到货时间、订单详情、查单号、退款进度
+LogisticsQuery       - 运单号、快递、物流轨迹、tracking、shipment、包裹在哪
+CompetitorAnalysis   - 竞品、对手、对比价格、竞品分析、市场对比
 ProductOptimization  - 商品标题/描述/主图/详情页优化、文案建议、图片分析
 Appointment          - 预约时间、咨询档期、空位查询、安排见面
-AfterSale            - 退款、退货、换货、投诉、售后服务问题
+AfterSale            - 退款纠纷、退货、换货、投诉、售后服务问题（不含单纯查退款进度）
 MarketingFollowup    - 复购引导、商品推荐、催评价、感谢、促销活动相关
 
 """;
@@ -91,6 +98,8 @@ MarketingFollowup    - 复购引导、商品推荐、催评价、感谢、促销
             {
                 "generalchat" => ChatIntent.GeneralChat,
                 "orderquery" => ChatIntent.OrderQuery,
+                "logisticsquery" => ChatIntent.LogisticsQuery,
+                "competitoranalysis" => ChatIntent.CompetitorAnalysis,
                 "productoptimization" => ChatIntent.ProductOptimization,
                 "appointment" => ChatIntent.Appointment,
                 "aftersale" => ChatIntent.AfterSale,
@@ -123,5 +132,65 @@ MarketingFollowup    - 复购引导、商品推荐、催评价、感谢、促销
                 RawLabel = null
             };
         }
+    }
+
+    /// <summary>
+    /// 关键词规则优先于 LLM。优先级：物流 → 竞品 → 订单。
+    /// </summary>
+    internal static IntentClassificationResult? TryClassifyByRules(string? userInput)
+    {
+        if (string.IsNullOrWhiteSpace(userInput))
+            return null;
+
+        var text = userInput.Trim();
+        var lower = text.ToLowerInvariant();
+
+        // LogisticsQuery：运单/快递/物流/tracking/shipment
+        if (ContainsAny(text, "运单", "快递", "物流") ||
+            ContainsAny(lower, "tracking", "shipment"))
+        {
+            return new IntentClassificationResult
+            {
+                Intent = ChatIntent.LogisticsQuery,
+                Confidence = 0.95,
+                RawLabel = "LogisticsQuery(rule)"
+            };
+        }
+
+        // CompetitorAnalysis：竞品/对手/对比价格/竞品分析
+        if (ContainsAny(text, "竞品", "对手", "对比价格", "竞品分析") ||
+            ContainsAny(lower, "competitor"))
+        {
+            return new IntentClassificationResult
+            {
+                Intent = ChatIntent.CompetitorAnalysis,
+                Confidence = 0.95,
+                RawLabel = "CompetitorAnalysis(rule)"
+            };
+        }
+
+        // OrderQuery：订单/退款进度/查单号
+        if (ContainsAny(text, "订单", "退款进度", "查单号") ||
+            ContainsAny(lower, "order"))
+        {
+            return new IntentClassificationResult
+            {
+                Intent = ChatIntent.OrderQuery,
+                Confidence = 0.92,
+                RawLabel = "OrderQuery(rule)"
+            };
+        }
+
+        return null;
+    }
+
+    private static bool ContainsAny(string haystack, params string[] needles)
+    {
+        foreach (var n in needles)
+        {
+            if (!string.IsNullOrEmpty(n) && haystack.Contains(n, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+        return false;
     }
 }

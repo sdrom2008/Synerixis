@@ -37,6 +37,17 @@
       </el-descriptions>
       <p class="hint">支付网关未接入：本页仅展示说明与计数，无法在线升级。</p>
     </el-card>
+
+    <el-card shadow="never" class="sx-card" style="margin-top: 16px" v-loading="loading">
+      <template #header>AI 用量按 Purpose（本月）</template>
+      <el-table v-if="byPurpose.length" :data="byPurpose" stripe size="small">
+        <el-table-column prop="purpose" label="Purpose" min-width="120" />
+        <el-table-column prop="calls" label="调用次数" width="100" />
+        <el-table-column prop="tokens" label="Tokens" width="120" />
+        <el-table-column prop="costUsd" label="估算费用(USD)" min-width="140" />
+      </el-table>
+      <el-empty v-else description="本月暂无按 Purpose 分桶数据" :image-size="64" />
+    </el-card>
   </div>
 </template>
 
@@ -58,6 +69,8 @@ const usageRows = ref<{ label: string; value: string }[]>([
   { label: '本月消息', value: '—' },
   { label: '本月会话', value: '—' },
 ])
+
+const byPurpose = ref<{ purpose: string; calls: number; tokens: number; costUsd: number | string }[]>([])
 
 const plans = [
   {
@@ -175,6 +188,16 @@ onMounted(async () => {
       { label: '已连接店铺', value: fmt(pick(usage, 'connectedShops', 'ConnectedShops')) },
       { label: '统计截止', value: fmt(pick(usage, 'periodEnd', 'PeriodEnd')) },
     ]
+
+    const rawPurpose = (usage.byPurpose || usage.ByPurpose || []) as Array<Record<string, unknown>>
+    byPurpose.value = Array.isArray(rawPurpose)
+      ? rawPurpose.map((r) => ({
+          purpose: String(r.purpose ?? r.Purpose ?? 'other'),
+          calls: Number(r.calls ?? r.Calls ?? 0),
+          tokens: Number(r.tokens ?? r.Tokens ?? 0),
+          costUsd: Number(r.costUsd ?? r.CostUsd ?? 0),
+        }))
+      : []
   } catch {
     ElMessage.warning('用量接口暂不可用')
   } finally {

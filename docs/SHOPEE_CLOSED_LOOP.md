@@ -18,10 +18,11 @@
 | Webhook 解析 | ✅ | `ParseWebhookAsync` | `type=message` 抽 CustomerId / ConversationId / Content；`OpenId=to_shop_id` |
 | 多店会话归属 | ✅ | `FindOrCreateSessionAsync` | 按 `ShopId` **或** `OpenId` 匹配 `PlatformConnection` |
 | 幂等 | ✅ | `ProcessedWebhookEvent` + `TryClaimWebhookEventAsync` | Platform+EventKey 唯一 try-insert；EventKey=MsgId，空则弱键 hash 并 Warning；冲突返回 duplicate，成功后再落消息 |
-| 意图识别 | ✅ | `IntentClassifier` ← `ProcessInboundAiReplyAsync` | classify → AgentRouter / GeneralChat；缺 AI Key 降级 |
-| Intent ↔ Agent | ✅ | `OrderAgent.SupportedIntent = OrderQuery` | |
+| 意图识别 | ✅ | `IntentClassifier` ← `ProcessInboundAiReplyAsync` | 规则优先 Logistics/Competitor/Order + LLM 枚举对齐；低置信仍 auto-handoff |
+| Intent ↔ Agent | ✅ | Order/Logistics/Competitor/Product → 对应 Agent | `AgentRouter` 按 `SupportedIntent` 映射 |
 | 订单查询（DB） | ✅ | `OrderAgent` → `IOrderRepository` | |
 | 订单查询（平台 API） | ✅ | `GetCustomerOrderAsync(..., platformShopId)` | DB 未命中回源；`ChatContext.PlatformShopId` 来自 webhook `to_shop_id` |
+| 物流查询 | ✅ | `LogisticsAgent` | 解析消息/Order.LogisticsNo；无承运商 API 返回运单+订单状态，不造假 |
 | AI 草稿（默认） | ✅ | `DraftMessage` + `OutboundMode=DraftFirst` | 默认不 `SendReply`；`AutoSend` 显式开启才出站 |
 | 人审出站 | ✅ | `POST .../draft/approve` 等 | 调用 `SendReplyAsync`（per-shop token） |
 | 转人工 handoff | ✅ | `ChatSession.PendingHumanHandoff` + `TransferToAgent` | 硬闸 + **敏感词/低置信自动 handoff**；营业外不 AutoSend（可 handoff） |
@@ -47,8 +48,13 @@
 
 ### 3. Intent → Agent
 
-- ✅ Webhook：`IntentClassifier` → `OrderAgent` / `GeneralChat`  
+- ✅ Webhook：`IntentClassifier`（规则优先 LogisticsQuery / CompetitorAnalysis / OrderQuery + LLM）→ `AgentRouter` → Logistics / Competitor / Order / GeneralChat  
+- ✅ `LogisticsAgent`：解析运单号 + 订单状态，禁止固定模拟运单号  
+- ✅ `GET /api/merchant|admin/usage` 增加 `byPurpose` 分桶；商户计费 / Admin 用量表格展示  
 - ⚠️ `IConversationService.ProcessIncomingMessageAsync` 仍独立，Webhook 未复用  
+
+**本轮摘要（2026-09-14）**：意图扩展 + 真实运单解析 + AiUsage byPurpose。  
+**下一轮缺口（自动继续）**：Shopee/TT 真实承运商轨迹 API；Webhook 复用 ConversationService；Token 过期告警 UI；支付生产网关；幂等审计完善。  
 
 ### 4. Order → Reply
 

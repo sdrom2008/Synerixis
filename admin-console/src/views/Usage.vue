@@ -34,7 +34,18 @@
         <el-table-column prop="totalQuota" label="额度合计" />
       </el-table>
     </el-card>
-    <el-empty v-else-if="!loading" description="暂无用量数据" />
+    <el-empty v-else-if="!loading && !byPurpose.length" description="暂无用量数据" />
+
+    <el-card shadow="never" class="block" style="margin-top: 16px">
+      <template #header>AI 用量按 Purpose（本月）</template>
+      <el-table v-if="byPurpose.length" :data="byPurpose" stripe>
+        <el-table-column prop="purpose" label="Purpose" min-width="120" />
+        <el-table-column prop="calls" label="调用次数" width="120" />
+        <el-table-column prop="tokens" label="Tokens" width="140" />
+        <el-table-column prop="costUsd" label="估算费用(USD)" min-width="140" />
+      </el-table>
+      <el-empty v-else-if="!loading" description="本月暂无按 Purpose 分桶数据" :image-size="64" />
+    </el-card>
 
     <p v-if="note" class="note">{{ note }}</p>
   </div>
@@ -49,6 +60,7 @@ import { getUsage, getUsageDaily } from '@/api/admin'
 const loading = ref(false)
 const cards = ref<{ label: string; value: string }[]>([])
 const bySub = ref<{ level: string; count: number; totalQuota: number }[]>([])
+const byPurpose = ref<{ purpose: string; calls: number; tokens: number; costUsd: number | string }[]>([])
 const note = ref('')
 const chartReady = ref(false)
 const chartPoints = ref<{ date: string; count: number }[]>([])
@@ -78,6 +90,15 @@ onMounted(async () => {
       { label: '连接店铺', value: fmt(u.connectedShops) },
     ]
     bySub.value = (u.bySubscription as typeof bySub.value) || []
+    const rawPurpose = (u.byPurpose || []) as Array<Record<string, unknown>>
+    byPurpose.value = Array.isArray(rawPurpose)
+      ? rawPurpose.map((r) => ({
+          purpose: String(r.purpose ?? 'other'),
+          calls: Number(r.calls ?? 0),
+          tokens: Number(r.tokens ?? 0),
+          costUsd: (r.costUsd as number | string) ?? 0,
+        }))
+      : []
     note.value = String(u.note || '')
 
     const items = daily?.items || (u.dailySessions as { date: string; count: number }[]) || []

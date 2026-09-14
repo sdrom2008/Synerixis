@@ -119,6 +119,15 @@
 - [x] Merchant CRUD `/api/merchant/quick-replies`；merchant-web 管理页 + Inbox 插入；AI 起草注入上下文
 - [x] Admin Settings 可拉取 health 摘要
 
+### P1g — 意图扩展 / 物流诚实 / Purpose 分桶（2026-09-14）
+
+- [x] `IntentClassifier`：LogisticsQuery / CompetitorAnalysis 规则优先 + LLM 枚举；AgentRouter 已映射
+- [x] `LogisticsAgent`：消息/Order.LogisticsNo 解析运单；无承运商 API 不造假
+- [x] `GET /api/merchant/usage`、`GET /api/admin/usage` → `byPurpose[{purpose,calls,tokens,costUsd}]`
+- [x] merchant-web Billing / admin-console Usage 表格展示 byPurpose
+
+**下一轮缺口**：真实承运商轨迹；ConversationService 与 Webhook 统一；支付生产；Token 告警 UI。
+
 ### P2 — 可靠性与人工协同
 
 - Token 刷新（Shopee refresh）与过期告警
