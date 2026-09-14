@@ -24,6 +24,7 @@ namespace Synerixis.Infrastructure.Data
         public DbSet<QuickReply> QuickReplies { get; set; }
         public DbSet<AgentStat> AgentStats { get; set; }
         public DbSet<PlatformConnection> PlatformConnections { get; set; }
+        public DbSet<DraftMessage> DraftMessages { get; set; }
 
 
 
@@ -87,6 +88,11 @@ namespace Synerixis.Infrastructure.Data
                 entity.Property(c => c.BusinessHoursEnd)
                       .HasColumnType("varchar(8)")
                       .HasMaxLength(8);
+
+                entity.Property(c => c.OutboundMode)
+                      .HasColumnType("varchar(32)")
+                      .HasMaxLength(32)
+                      .HasDefaultValue("DraftFirst");
 
                 entity.HasOne(c => c.Seller)
                       .WithOne(s => s.Config)
@@ -192,6 +198,13 @@ namespace Synerixis.Infrastructure.Data
                       .HasDatabaseName("IX_chat_sessions_SessionId");
 
                 entity.HasIndex(s => s.CustomerId);
+
+                entity.Property(s => s.PlatformConversationId)
+                      .HasColumnType("varchar(191)")
+                      .HasMaxLength(191);
+                entity.Property(s => s.PlatformShopOpenId)
+                      .HasColumnType("varchar(128)")
+                      .HasMaxLength(128);
 
                 entity.HasOne(s => s.Shop)
                       .WithMany()
@@ -318,6 +331,27 @@ namespace Synerixis.Infrastructure.Data
                       .WithOne(c => c.Seller)
                       .HasForeignKey(c => c.SellerId)
                       .OnDelete(DeleteBehavior.Restrict);
+            });
+
+            modelBuilder.Entity<DraftMessage>(entity =>
+            {
+                entity.ToTable("draft_messages");
+                entity.HasKey(d => d.Id);
+
+                entity.Property(d => d.Status)
+                      .HasColumnType("varchar(32)")
+                      .HasMaxLength(32)
+                      .IsRequired();
+
+                entity.Property(d => d.Content)
+                      .HasColumnType("longtext");
+
+                entity.HasIndex(d => new { d.ChatSessionId, d.Status });
+
+                entity.HasOne(d => d.ChatSession)
+                      .WithMany(s => s.Drafts)
+                      .HasForeignKey(d => d.ChatSessionId)
+                      .OnDelete(DeleteBehavior.Cascade);
             });
 
             modelBuilder.Entity<PlatformConnection>(entity =>

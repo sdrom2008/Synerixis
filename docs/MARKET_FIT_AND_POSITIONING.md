@@ -30,7 +30,7 @@
 | 订单 / 物流 / 退款协助 | OrderAgent + 平台订单 API 路径已有 | **匹配** | 主产品价值锚点，保留并加深 |
 | 人工转接（handoff） | 有转人工标记与会话状态 | **部分** | 需坐席工作台、认领、SLA 计时 |
 | ROI / 用量可观测 | dashboard / usage 已接诚实聚合 | **部分** | 缺「人工 vs 草稿采纳」对比与成本面板 |
-| AI 草稿（人审后发） | 意图 + 回复链路偏「自动 Send」 | **错位→改** | 默认改为 **draft → 坐席确认 → send**；自动 send 需显式策略 + 合规开关 |
+| AI 草稿（人审后发） | `OutboundMode=DraftFirst` 默认；`DraftMessage` + 商户审核 API | **匹配** | 默认草稿 → 坐席确认 → send；`AutoSend` 仅显式开启并带合规风险文案 |
 | Chat API Partner / ISV 准入产品化 | 代码有 OAuth/Webhook；申请与门槛未产品化 | **部分** | 申请材料、店铺订单量门槛、Customer Service 应用类型需进 Onboarding |
 | 国内微信登录 / 国内店 | 残留 auth | **砍掉** | 国内平台已封杀路径；不作核心 |
 | 竞品分析 / 文案 / 营销 Agent | 能力稀释 | **砍掉** | 偏离客服工作台主线 |
@@ -60,7 +60,7 @@
 
 | 旧默认 | 新默认 |
 |--------|--------|
-| EnableAutoReply = 真·自动出站 | EnableAutoReply 拆成：草稿生成 / 官方允许的 autoreply / 人工确认后发送 |
+| EnableAutoReply = 真·自动出站 | `EnableAutoReply`=是否生成草稿；`OutboundMode=DraftFirst\|AutoSend`（默认草稿优先） |
 | 营销文案强调「机器人值班」 | 营销强调「统一工作台、秒出草稿、坐席一键发送、Shop Rating 响应」 |
 | 国内 WeChat 登录残留 | 从核心路径移除；CBEC 账号体系自洽 |
 
@@ -197,3 +197,13 @@
 ---
 
 修订：2026-09-14 · 战略再定位包（国内 pivot 后 CBEC 工作台）
+
+
+---
+
+## 6. Draft-first 落地（2026-09-14）
+
+- Webhook：`ProcessInboundAiReplyAsync` 默认将 AI 回复写入 `draft_messages`，**不**调用 `SendReplyAsync`。
+- 商户收件箱：待发送草稿角标；会话详情可编辑 / 发送 / 丢弃。
+- 设置：`OutboundMode` 切换；自动发送带风险提示。**不宣称**自动回复计入 TikTok 响应率。
+- ISV 申请证据清单见 [`ISV_APPLICATION_CHECKLIST.md`](./ISV_APPLICATION_CHECKLIST.md)。

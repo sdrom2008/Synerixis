@@ -48,10 +48,22 @@ namespace Synerixis.Domain.Entities
         public DateTime? LastActiveAt { get; private set; }
         public DateTime? UpdatedAt { get; private set; }
 
+        /// <summary>平台会话 ID（Shopee conversation_id / TikTok conversation_id），用于人审后 SendReply</summary>
+        [MaxLength(191)]
+        public string? PlatformConversationId { get; private set; }
+
+        /// <summary>平台店铺标识（如 Shopee to_shop_id），用于按店取 token</summary>
+        [MaxLength(128)]
+        public string? PlatformShopOpenId { get; private set; }
+
+        /// <summary>最近一条买家消息时间（UTC），用于超时唤醒 / 收件箱排序</summary>
+        public DateTime? LastBuyerMessageAt { get; private set; }
+
         // 导航属性
         public Seller? Shop { get; private set; }
         public Agent? AssignedAgent { get; private set; }
         public ICollection<ChatMessage> Messages { get; private set; } = new List<ChatMessage>();
+        public ICollection<DraftMessage> Drafts { get; private set; } = new List<DraftMessage>();
 
         private ChatSession() { }
 
@@ -128,6 +140,32 @@ namespace Synerixis.Domain.Entities
         {
             MessageCount++;
             LastActiveAt = DateTime.UtcNow;
+            LastBuyerMessageAt = DateTime.UtcNow;
+        }
+
+        /// <summary>刷新平台回复上下文（每次入站 webhook 更新）</summary>
+        public void UpdatePlatformReplyContext(string? conversationId, string? platformShopOpenId)
+        {
+            if (!string.IsNullOrWhiteSpace(conversationId))
+                PlatformConversationId = conversationId.Trim();
+            if (!string.IsNullOrWhiteSpace(platformShopOpenId))
+                PlatformShopOpenId = platformShopOpenId.Trim();
+            UpdatedAt = DateTime.UtcNow;
+        }
+
+        /// <summary>SLA 提示：距买家最后消息已过小时数（UTC）</summary>
+        public double HoursSinceLastBuyerMessage(DateTime? utcNow = null)
+        {
+            var anchor = LastBuyerMessageAt ?? LastActiveAt ?? CreatedAt;
+            var now = utcNow ?? DateTime.UtcNow;
+            return Math.Max(0, (now - anchor).TotalHours);
+        }
+
+        /// <summary>建议回复截止时间（默认买家消息后 12 小时，仅排序/提醒用，非平台硬 SLA）</summary>
+        public DateTime NeedsResponseBy(double hours = 12, DateTime? utcNow = null)
+        {
+            var anchor = LastBuyerMessageAt ?? LastActiveAt ?? CreatedAt;
+            return anchor.AddHours(hours);
         }
 
         /// <summary>

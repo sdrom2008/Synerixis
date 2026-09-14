@@ -4,7 +4,7 @@
       <view class="sx-page-header">
         <view>
           <view class="sx-page-title">AI 设置</view>
-          <view class="sx-page-sub">语气、自动回复与营业时段</view>
+          <view class="sx-page-sub">语气、草稿生成、出站模式与营业时段</view>
         </view>
       </view>
 
@@ -27,8 +27,8 @@
       <view class="sx-card section">
         <view class="row-between">
           <view>
-            <view class="section-label">自动回复</view>
-            <text class="hint">关闭后仅记录进线，不自动发送回复</text>
+            <view class="section-label">生成 AI 草稿</view>
+            <text class="hint">关闭后仅记录买家进线，不生成草稿</text>
           </view>
           <switch
             :checked="form.autoReplyEnabled"
@@ -36,6 +36,28 @@
             @change="onAutoReply"
           />
         </view>
+      </view>
+
+      <view class="sx-card section">
+        <view class="section-label">出站模式</view>
+        <view class="segmented">
+          <view
+            class="segment"
+            :class="{ active: form.outboundMode === 'DraftFirst' }"
+            @tap="setOutbound('DraftFirst')"
+          >草稿优先（默认）</view>
+          <view
+            class="segment"
+            :class="{ active: form.outboundMode === 'AutoSend' }"
+            @tap="setOutbound('AutoSend')"
+          >自动发送</view>
+        </view>
+        <text v-if="form.outboundMode === 'DraftFirst'" class="hint">
+          AI 只写草稿，需坐席在收件箱确认后才会发到 Shopee/TikTok。符合「人机协同工作台」定位。
+        </text>
+        <text v-else class="hint risk">
+          风险提示：自动 SendReply 可能被平台视为 chatbot 滥用；不保证计入 TikTok/Shopee 响应率指标；仅在充分理解合规要求后显式开启。
+        </text>
       </view>
 
       <view class="sx-card section">
@@ -88,6 +110,7 @@ export default {
         defaultReplyTone: 'professional',
         preferredLanguage: 'zh',
         autoReplyEnabled: true,
+        outboundMode: 'DraftFirst',
         businessStart: '09:00',
         businessEnd: '22:00'
       },
@@ -121,6 +144,9 @@ export default {
     onAutoReply(e) {
       this.form.autoReplyEnabled = !!e.detail.value;
     },
+    setOutbound(mode) {
+      this.form.outboundMode = mode;
+    },
     onStart(e) {
       this.form.businessStart = e.detail.value;
     },
@@ -150,6 +176,8 @@ export default {
         const end = cfg.businessHoursEnd || cfg.BusinessHoursEnd;
         if (start) this.form.businessStart = start;
         if (end) this.form.businessEnd = end;
+        const mode = cfg.outboundMode || cfg.OutboundMode;
+        if (mode) this.form.outboundMode = mode === 'AutoSend' ? 'AutoSend' : 'DraftFirst';
       } catch (e) {
         /* keep local fallback */
       }
@@ -170,11 +198,13 @@ export default {
         defaultReplyTone: this.form.defaultReplyTone,
         preferredLanguage: this.form.preferredLanguage,
         enableAutoReply: this.form.autoReplyEnabled,
+        outboundMode: this.form.outboundMode,
         businessHoursStart: this.form.businessStart,
         businessHoursEnd: this.form.businessEnd
       };
       uni.setStorageSync(LOCAL_KEY, {
         autoReplyEnabled: this.form.autoReplyEnabled,
+        outboundMode: this.form.outboundMode,
         businessStart: this.form.businessStart,
         businessEnd: this.form.businessEnd,
         defaultReplyTone: this.form.defaultReplyTone,
@@ -271,5 +301,9 @@ export default {
 .save {
   width: 100%;
   margin-top: 16rpx;
+}
+
+.risk {
+  color: #B91C1C !important;
 }
 </style>

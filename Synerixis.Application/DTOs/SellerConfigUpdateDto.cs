@@ -15,5 +15,7 @@ namespace Synerixis.Application.DTOs
         public bool? EnableAutoReply { get; set; }
         public string? BusinessHoursStart { get; set; }
         public string? BusinessHoursEnd { get; set; }
+        /// <summary>DraftFirst | AutoSend</summary>
+        public string? OutboundMode { get; set; }
     }
 }

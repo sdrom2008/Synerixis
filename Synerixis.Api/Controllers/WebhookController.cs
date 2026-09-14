@@ -153,6 +153,9 @@ namespace Synerixis.Api.Controllers
                 return Ok(new { code = 0, message = "session_not_found" });
             }
 
+            // 刷新平台回复上下文（人审发送时需要 conversation_id / shop_id）
+            session.UpdatePlatformReplyContext(msg.ConversationId, msg.OpenId);
+
             // 添加用户消息到数据库
             var userMsg = ChatMessage.FromUser(msg.Content, session.Id);
             userMsg.PlatformMsgId = msg.MsgId;  // 设置平台消息ID用于去重
@@ -455,7 +458,8 @@ namespace Synerixis.Api.Controllers
         }
 
         /// <summary>
-        /// 已落库的用户消息 → IntentClassifier → IAgent / GeneralChat → SendReplyAsync。
+        /// 已落库的用户消息 → IntentClassifier → IAgent / GeneralChat → 持久化为草稿（默认）。
+        /// 仅当 SellerConfig.OutboundMode=AutoSend 时才调用平台 SendReplyAsync。
         /// 缺 AI Key / 平台 Token 时仅打日志，不向上抛（Webhook 已返回 200）。
         /// </summary>
         private async Task ProcessInboundAiReplyAsync(Guid sessionId, PlatformMessage msg, string userContent)
@@ -476,17 +480,22 @@ namespace Synerixis.Api.Controllers
                     return;
                 }
 
-                // Respect merchant AI auto-reply toggle (default true if no config row)
+                // EnableAutoReply=false：不生成草稿；默认仍生成 AI 草稿（DraftFirst）
                 var sellerConfig = await db.SellerConfigs
                     .AsNoTracking()
                     .FirstOrDefaultAsync(c => c.SellerId == session.ShopId);
                 if (sellerConfig != null && !sellerConfig.EnableAutoReply)
                 {
                     logger.LogInformation(
-                        "[Webhook] Auto-reply disabled for shop {ShopId}; skipping AI reply",
+                        "[Webhook] AI draft/reply disabled for shop {ShopId}; skipping",
                         session.ShopId);
                     return;
                 }
+
+                // 转人工 Pending：不自动出站；仍可生成草稿供坐席发送
+                var outboundMode = OutboundModes.Normalize(sellerConfig?.OutboundMode);
+                var allowAutoSend = OutboundModes.IsAutoSend(outboundMode)
+                    && session.Status != SessionStatus.Pending;
 
                 var historyDtos = session.Messages
                     .OrderBy(m => m.CreatedAt)
@@ -550,22 +559,58 @@ namespace Synerixis.Api.Controllers
                     replyContent = "您好！您的消息已收到，我们会尽快为您处理。";
                 }
 
-                var aiMsg = ChatMessage.FromAI(replyContent, chatSessionId: session.Id);
-                session.Messages.Add(aiMsg);
-                session.AddAiMessage();
-                await db.SaveChangesAsync();
+                session.UpdatePlatformReplyContext(msg.ConversationId, msg.OpenId);
 
-                try
+                // 作废同会话旧 Pending 草稿（一会话一待发草稿）
+                var oldDrafts = await db.DraftMessages
+                    .Where(d => d.ChatSessionId == session.Id && d.Status == DraftStatuses.Pending)
+                    .ToListAsync();
+                foreach (var d in oldDrafts)
                 {
-                    var platformRouter = sp.GetRequiredService<IPlatformClientRouter>();
-                    var client = platformRouter.GetClient(msg.Platform);
-                    await client.SendReplyAsync(msg, replyContent);
+                    d.Status = DraftStatuses.Discarded;
+                    d.UpdatedAt = DateTime.UtcNow;
                 }
-                catch (Exception ex)
+
+                if (allowAutoSend)
                 {
-                    logger.LogWarning(ex,
-                        "[Webhook] SendReply skipped/failed for {Platform} (missing token/config?)",
-                        msg.Platform);
+                    // 合规风险路径：显式 AutoSend 才直接出站
+                    var aiMsg = ChatMessage.FromAI(replyContent, chatSessionId: session.Id);
+                    session.Messages.Add(aiMsg);
+                    session.AddAiMessage();
+                    await db.SaveChangesAsync();
+
+                    try
+                    {
+                        var platformRouter = sp.GetRequiredService<IPlatformClientRouter>();
+                        var client = platformRouter.GetClient(msg.Platform);
+                        await client.SendReplyAsync(msg, replyContent);
+                        logger.LogWarning(
+                            "[Webhook] AutoSend used for shop {ShopId} platform {Platform} — compliance risk; prefer DraftFirst",
+                            session.ShopId, msg.Platform);
+                    }
+                    catch (Exception ex)
+                    {
+                        logger.LogWarning(ex,
+                            "[Webhook] SendReply skipped/failed for {Platform} (missing token/config?)",
+                            msg.Platform);
+                    }
+                }
+                else
+                {
+                    // 默认 DraftFirst：只落草稿，不调用平台 SendReply
+                    var draft = new DraftMessage
+                    {
+                        Id = Guid.NewGuid(),
+                        ChatSessionId = session.Id,
+                        Content = replyContent,
+                        Status = DraftStatuses.Pending,
+                        CreatedAt = DateTime.UtcNow
+                    };
+                    db.DraftMessages.Add(draft);
+                    await db.SaveChangesAsync();
+                    logger.LogInformation(
+                        "[Webhook] Draft saved Session={SessionId} DraftId={DraftId} Mode={Mode} (no SendReply)",
+                        sessionId, draft.Id, outboundMode);
                 }
             }
             catch (Exception ex)

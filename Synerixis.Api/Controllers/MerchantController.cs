@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Synerixis.Api.Helpers;
@@ -7,6 +8,7 @@ using Synerixis.Application.Interfaces;
 using Synerixis.Infrastructure.Data;
 using Synerixis.Infrastructure.Repositories;
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Security.Cryptography;
@@ -138,11 +140,9 @@ namespace Synerixis.Api.Controllers
                     }
                 }
 
-                query = query
-                    .OrderByDescending(s => s.CreatedAt);
-
+                // 待发草稿 / 未读买家消息优先；其次按买家最近消息时间
                 var total = await query.CountAsync();
-                var items = await query
+                var raw = await query
                     .Select(s => new
                     {
                         id = s.Id,
@@ -159,13 +159,52 @@ namespace Synerixis.Api.Controllers
                         assignedAt = s.AssignedAt,
                         createdAt = s.CreatedAt,
                         lastActiveAt = s.LastActiveAt,
+                        lastBuyerMessageAt = s.LastBuyerMessageAt,
                         messageCount = s.MessageCount,
                         aiMessageCount = s.AiMessageCount,
-                        agentMessageCount = s.AgentMessageCount
+                        agentMessageCount = s.AgentMessageCount,
+                        hasPendingDraft = _db.DraftMessages.Any(d =>
+                            d.ChatSessionId == s.Id && d.Status == DraftStatuses.Pending),
+                        unreadBuyerCount = _db.ChatMessages.Count(m =>
+                            m.ChatSessionId == s.Id && m.SenderType == 1 && !m.IsRead)
                     })
                     .ToListAsync();
 
-                return Ok(new { items, total });
+                var now = DateTime.UtcNow;
+                var items = raw
+                    .Select(s =>
+                    {
+                        var anchor = s.lastBuyerMessageAt ?? s.lastActiveAt ?? s.createdAt;
+                        var hours = Math.Max(0, (now - anchor).TotalHours);
+                        return new
+                        {
+                            s.id,
+                            s.sessionId,
+                            s.customerName,
+                            s.platform,
+                            s.status,
+                            s.priority,
+                            s.assignedAgent,
+                            s.assignedAt,
+                            s.createdAt,
+                            s.lastActiveAt,
+                            s.lastBuyerMessageAt,
+                            s.messageCount,
+                            s.aiMessageCount,
+                            s.agentMessageCount,
+                            s.hasPendingDraft,
+                            s.unreadBuyerCount,
+                            hoursSinceLastBuyerMsg = Math.Round(hours, 2),
+                            needsResponseBy = anchor.AddHours(12)
+                        };
+                    })
+                    .OrderByDescending(s => s.hasPendingDraft)
+                    .ThenByDescending(s => s.unreadBuyerCount > 0)
+                    .ThenBy(s => s.needsResponseBy)
+                    .ToList();
+
+                var pendingDraftCount = items.Count(i => i.hasPendingDraft);
+                return Ok(new { items, total, pendingDraftCount });
             }
             catch (Exception ex)
             {
@@ -202,7 +241,25 @@ namespace Synerixis.Api.Controllers
                     })
                     .ToListAsync();
 
-                return Ok(messages);
+                var draft = await _db.DraftMessages
+                    .Where(d => d.ChatSessionId == id && d.Status == DraftStatuses.Pending)
+                    .OrderByDescending(d => d.CreatedAt)
+                    .Select(d => new { d.Id, d.Content, d.Status, d.CreatedAt, d.UpdatedAt })
+                    .FirstOrDefaultAsync();
+
+                var anchor = session.LastBuyerMessageAt ?? session.LastActiveAt ?? session.CreatedAt;
+                var now = DateTime.UtcNow;
+
+                return Ok(new
+                {
+                    sessionStatus = session.Status.ToString(),
+                    lastBuyerMessageAt = session.LastBuyerMessageAt,
+                    hoursSinceLastBuyerMsg = Math.Round(Math.Max(0, (now - anchor).TotalHours), 2),
+                    needsResponseBy = anchor.AddHours(12),
+                    pendingDraft = draft,
+                    items = messages,
+                    // 兼容旧前端：根级也可当数组用时请改读 items
+                });
             }
             catch (Exception ex)
             {
@@ -261,6 +318,13 @@ namespace Synerixis.Api.Controllers
                 var pendingHandoff = await _db.ChatSessions
                     .CountAsync(s => s.ShopId == shopId && s.Status == SessionStatus.Pending);
 
+                var pendingDrafts = await (
+                    from d in _db.DraftMessages
+                    join s in _db.ChatSessions on d.ChatSessionId equals s.Id
+                    where s.ShopId == shopId && d.Status == DraftStatuses.Pending
+                    select d.Id
+                ).CountAsync();
+
                 var connectedShops = await _db.PlatformConnections
                     .CountAsync(c => c.SellerId == sellerId && c.IsActive);
 
@@ -290,6 +354,7 @@ namespace Synerixis.Api.Controllers
                 {
                     sessionsToday,
                     pendingHandoff,
+                    pendingDrafts,
                     connectedShops,
                     autoResolveRate,
                     messagesThisMonth,
@@ -339,6 +404,239 @@ namespace Synerixis.Api.Controllers
             }
         }
 
+
+        /// <summary>
+        /// 列出具有待发送草稿的会话（收件箱「待发送草稿」）
+        /// </summary>
+        [HttpGet("drafts")]
+        public async Task<IActionResult> ListPendingDrafts()
+        {
+            try
+            {
+                var shopId = GetCurrentSellerShopId();
+                var now = DateTime.UtcNow;
+                var rows = await (
+                    from d in _db.DraftMessages
+                    join s in _db.ChatSessions on d.ChatSessionId equals s.Id
+                    where s.ShopId == shopId && d.Status == DraftStatuses.Pending
+                    orderby d.CreatedAt descending
+                    select new
+                    {
+                        draftId = d.Id,
+                        content = d.Content,
+                        createdAt = d.CreatedAt,
+                        sessionId = s.Id,
+                        sessionBizId = s.SessionId,
+                        customerName = s.CustomerName,
+                        platform = s.Platform,
+                        lastBuyerMessageAt = s.LastBuyerMessageAt,
+                        hoursSinceLastBuyerMsg = s.LastBuyerMessageAt.HasValue
+                            ? (double?)Math.Round((now - s.LastBuyerMessageAt.Value).TotalHours, 2)
+                            : null,
+                        needsResponseBy = (s.LastBuyerMessageAt ?? s.LastActiveAt ?? s.CreatedAt).AddHours(12)
+                    }
+                ).ToListAsync();
+
+                return Ok(new { items = rows, total = rows.Count });
+            }
+            catch (Exception ex)
+            {
+                return HandleError(ex);
+            }
+        }
+
+        /// <summary>
+        /// 获取会话当前待发送草稿
+        /// </summary>
+        [HttpGet("sessions/{id}/draft")]
+        public async Task<IActionResult> GetDraft(Guid id)
+        {
+            try
+            {
+                var shopId = GetCurrentSellerShopId();
+                var session = await _db.ChatSessions.FirstOrDefaultAsync(s => s.Id == id && s.ShopId == shopId);
+                if (session == null)
+                    return NotFound(new { message = "会话不存在" });
+
+                var draft = await _db.DraftMessages
+                    .Where(d => d.ChatSessionId == id && d.Status == DraftStatuses.Pending)
+                    .OrderByDescending(d => d.CreatedAt)
+                    .FirstOrDefaultAsync();
+
+                if (draft == null)
+                    return Ok(new { draft = (object?)null, message = "无待发送草稿" });
+
+                return Ok(new
+                {
+                    draft = new
+                    {
+                        draft.Id,
+                        draft.Content,
+                        draft.Status,
+                        draft.CreatedAt,
+                        draft.UpdatedAt
+                    },
+                    hoursSinceLastBuyerMsg = Math.Round(session.HoursSinceLastBuyerMessage(), 2),
+                    needsResponseBy = session.NeedsResponseBy()
+                });
+            }
+            catch (Exception ex)
+            {
+                return HandleError(ex);
+            }
+        }
+
+        /// <summary>
+        /// 审核通过并发送草稿到平台（人审出站）
+        /// </summary>
+        [HttpPost("sessions/{id}/draft/approve")]
+        public async Task<IActionResult> ApproveAndSendDraft(Guid id)
+        {
+            return await SendDraftInternalAsync(id, editedContent: null);
+        }
+
+        /// <summary>
+        /// 编辑草稿内容后发送
+        /// </summary>
+        [HttpPost("sessions/{id}/draft/edit-send")]
+        public async Task<IActionResult> EditAndSendDraft(Guid id, [FromBody] DraftEditRequest body)
+        {
+            if (body == null || string.IsNullOrWhiteSpace(body.Content))
+                return BadRequest(new { message = "内容不能为空" });
+            return await SendDraftInternalAsync(id, editedContent: body.Content.Trim());
+        }
+
+        /// <summary>
+        /// 仅保存编辑后的草稿（不发送）
+        /// </summary>
+        [HttpPut("sessions/{id}/draft")]
+        public async Task<IActionResult> UpdateDraft(Guid id, [FromBody] DraftEditRequest body)
+        {
+            try
+            {
+                if (body == null || string.IsNullOrWhiteSpace(body.Content))
+                    return BadRequest(new { message = "内容不能为空" });
+
+                var shopId = GetCurrentSellerShopId();
+                var session = await _db.ChatSessions.FirstOrDefaultAsync(s => s.Id == id && s.ShopId == shopId);
+                if (session == null)
+                    return NotFound(new { message = "会话不存在" });
+
+                var draft = await _db.DraftMessages
+                    .Where(d => d.ChatSessionId == id && d.Status == DraftStatuses.Pending)
+                    .OrderByDescending(d => d.CreatedAt)
+                    .FirstOrDefaultAsync();
+                if (draft == null)
+                    return NotFound(new { message = "无待发送草稿" });
+
+                draft.Content = body.Content.Trim();
+                draft.UpdatedAt = DateTime.UtcNow;
+                await _db.SaveChangesAsync();
+                return Ok(new { message = "草稿已更新", draftId = draft.Id, content = draft.Content });
+            }
+            catch (Exception ex)
+            {
+                return HandleError(ex);
+            }
+        }
+
+        /// <summary>
+        /// 丢弃待发送草稿
+        /// </summary>
+        [HttpPost("sessions/{id}/draft/discard")]
+        public async Task<IActionResult> DiscardDraft(Guid id)
+        {
+            try
+            {
+                var shopId = GetCurrentSellerShopId();
+                var session = await _db.ChatSessions.FirstOrDefaultAsync(s => s.Id == id && s.ShopId == shopId);
+                if (session == null)
+                    return NotFound(new { message = "会话不存在" });
+
+                var drafts = await _db.DraftMessages
+                    .Where(d => d.ChatSessionId == id && d.Status == DraftStatuses.Pending)
+                    .ToListAsync();
+                if (drafts.Count == 0)
+                    return Ok(new { message = "无待发送草稿" });
+
+                foreach (var d in drafts)
+                {
+                    d.Status = DraftStatuses.Discarded;
+                    d.UpdatedAt = DateTime.UtcNow;
+                }
+                await _db.SaveChangesAsync();
+                return Ok(new { message = "草稿已丢弃", discarded = drafts.Count });
+            }
+            catch (Exception ex)
+            {
+                return HandleError(ex);
+            }
+        }
+
+        private async Task<IActionResult> SendDraftInternalAsync(Guid sessionId, string? editedContent)
+        {
+            try
+            {
+                var shopId = GetCurrentSellerShopId();
+                var session = await _db.ChatSessions
+                    .FirstOrDefaultAsync(s => s.Id == sessionId && s.ShopId == shopId);
+                if (session == null)
+                    return NotFound(new { message = "会话不存在" });
+
+                var draft = await _db.DraftMessages
+                    .Where(d => d.ChatSessionId == sessionId && d.Status == DraftStatuses.Pending)
+                    .OrderByDescending(d => d.CreatedAt)
+                    .FirstOrDefaultAsync();
+                if (draft == null)
+                    return NotFound(new { message = "无待发送草稿" });
+
+                if (!string.IsNullOrWhiteSpace(editedContent))
+                {
+                    draft.Content = editedContent.Trim();
+                    draft.UpdatedAt = DateTime.UtcNow;
+                }
+
+                if (string.IsNullOrWhiteSpace(session.PlatformConversationId))
+                    return BadRequest(new { message = "缺少平台会话 ID，无法出站。请等待买家再次进线或检查 Webhook 解析。" });
+
+                var platformRouter = HttpContext.RequestServices.GetRequiredService<IPlatformClientRouter>();
+                var client = platformRouter.GetClient(session.Platform);
+                var platformMsg = new PlatformMessage
+                {
+                    Platform = session.Platform,
+                    OpenId = session.PlatformShopOpenId ?? string.Empty,
+                    CustomerId = session.CustomerId,
+                    CustomerName = session.CustomerName,
+                    ConversationId = session.PlatformConversationId,
+                    Content = draft.Content
+                };
+
+                await client.SendReplyAsync(platformMsg, draft.Content);
+
+                var aiMsg = ChatMessage.FromAI(draft.Content, chatSessionId: session.Id);
+                _db.ChatMessages.Add(aiMsg);
+                session.AddAiMessage();
+
+                draft.Status = DraftStatuses.Sent;
+                draft.SentAt = DateTime.UtcNow;
+                draft.SentMessageId = aiMsg.Id;
+                draft.UpdatedAt = DateTime.UtcNow;
+
+                await _db.SaveChangesAsync();
+                return Ok(new
+                {
+                    message = "已发送到平台",
+                    draftId = draft.Id,
+                    messageId = aiMsg.Id
+                });
+            }
+            catch (Exception ex)
+            {
+                return HandleError(ex);
+            }
+        }
+
+
                 private string GenerateState()
         {
             var buffer = new byte[16];
@@ -352,5 +650,10 @@ namespace Synerixis.Api.Controllers
     {
         public string Platform { get; set; } = string.Empty;
         public string Code { get; set; } = string.Empty;
+    }
+
+    public class DraftEditRequest
+    {
+        public string Content { get; set; } = string.Empty;
     }
 }

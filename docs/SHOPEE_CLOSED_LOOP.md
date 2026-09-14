@@ -2,7 +2,7 @@
 
 链路目标：
 
-**OAuth 绑店 → Webhook 收信 → 意图识别 → 订单查询 → 自动回复 → 转人工（handoff）**
+**OAuth 绑店 → Webhook 收信 → 意图识别 → 订单查询 → AI 草稿（默认）→ 人审 SendReply → 转人工（handoff）**
 
 状态以当前仓库代码为准（2026-09-14）。`✅` 已有可用实现 · `⚠️` 半成品/演示 · `❌` TODO。
 
@@ -13,7 +13,7 @@
 | OAuth / Token | ⚠️ | `MerchantController` + `MerchantPlatformService.BindShopAsync` + `ShopeePlatformClient` | 成功回调会 **upsert** `PlatformConnection`（ShopId/Access/Refresh/Platform=SHOPEE）；`GetShopInfo` 仍偏占位；无 GET 重定向回调与 state 落库 |
 | Token 读取 | ✅ | `ShopeePlatformClient.ResolveShopCredentialsAsync` | 回复 / 查单：优先按 shop 读 `PlatformConnection`，库空或异常回退 `Shopee:AccessToken`/`ShopId` |
 | Token 过期字段 | ❌ | — | `expire_in` 未落库（避免无迁移改表）；`RefreshToken` 已存，自动按过期调度刷新仍 TODO |
-| Webhook 入口 | ✅ | `WebhookController` `POST /api/webhook/{platform}` | 路由、签名校验、解析、会话落库、异步 `SendReplyAsync` |
+| Webhook 入口 | ✅ | `WebhookController` `POST /api/webhook/{platform}` | 路由、签名校验、解析、会话落库、异步 AI；**默认落草稿** |
 | Webhook 签名 | ✅ | `VerifySignatureAsync` | HMAC；缺 `AppSecret` 直接失败 |
 | Webhook 解析 | ✅ | `ParseWebhookAsync` | `type=message` 抽 CustomerId / ConversationId / Content；`OpenId=to_shop_id` |
 | 多店会话归属 | ✅ | `FindOrCreateSessionAsync` | 按 `ShopId` **或** `OpenId` 匹配 `PlatformConnection` |
@@ -22,7 +22,8 @@
 | Intent ↔ Agent | ✅ | `OrderAgent.SupportedIntent = OrderQuery` | |
 | 订单查询（DB） | ✅ | `OrderAgent` → `IOrderRepository` | |
 | 订单查询（平台 API） | ✅ | `GetCustomerOrderAsync(..., platformShopId)` | DB 未命中回源；`ChatContext.PlatformShopId` 来自 webhook `to_shop_id` |
-| 自动回复 | ✅ | `SendReplyAsync` | 使用 per-shop token（同上） |
+| AI 草稿（默认） | ✅ | `DraftMessage` + `OutboundMode=DraftFirst` | 默认不 `SendReply`；`AutoSend` 显式开启才出站 |
+| 人审出站 | ✅ | `POST .../draft/approve` 等 | 调用 `SendReplyAsync`（per-shop token） |
 | 转人工 handoff | ⚠️ | `MerchantController.TransferToAgent` | 商户手动；Webhook 无自动升级 / 无停止 AI 闸 |
 | 配置 | ⚠️ | `Shopee:AppKey/AppSecret/AccessToken/ShopId/Endpoint` | 缺配置 Warning + skip；appsettings 已 gitignore |
 
@@ -58,12 +59,13 @@
 
 - ✅ 商户 API 转人工  
 - ❌ 低置信度 / 敏感词自动 handoff  
-- ❌ 转人工后停止 AI `SendReplyAsync` 硬闸  
+- ✅ 转人工 Pending 时禁止 AutoSend；仍可生成草稿供坐席发送  
 
 ## 建议验收用例（人工 · Win11 + VS2022）
 
 1. **绑店写库**：登录商户 JWT → `GET /api/merchant/bind/SHOPEE` → 浏览器授权 → 前端把 `code` `POST /api/merchant/bind/callback` `{ "platform":"SHOPEE","code":"..." }` → DB `platform_connections` 有 AccessToken/ShopId；再授权一次应 **更新同行** 而非插入重复。  
-2. **per-shop 回复**：清空或注释 appsettings 里 `Shopee:AccessToken`，仅保留 DB 行；推一条真实/签名 webhook（`to_shop_id`=该 ShopId）→ 日志出现 credentials from `PlatformConnection`，尝试 `send_message`。  
+2. **草稿优先**：推一条 webhook → 日志 `Draft saved ... (no SendReply)`；商户 `GET /api/merchant/sessions/{id}/draft` → `POST .../draft/approve` 才 `send_message`。
+2b. **per-shop 出站**：仅 AutoSend 或人审 approve 时走 `SendReplyAsync`；优先 `PlatformConnection` token。  
 3. **config 回退**：删掉/空库连接，只配 `Shopee:AccessToken`+`ShopId` → 同上链路仍可发（演示单店）。  
 4. **查单**：买家问订单；`PlatformShopId` 传入后按该店 token 调 order API；无 token 仅 Warning +「暂无订单」友好话术。  
 5. 商户转人工后会话 Pending。

@@ -35,8 +35,8 @@
 | 设计 Token / 共享组件 | `styles/tokens.scss`、KpiCard、EmptyState、SessionTimeline、AppShell | [x] |
 | 仪表盘 Dashboard | KPI：今日会话、自动解决率、待人工、店铺状态；折线/柱状占位；无数据用「—」 | [x] |
 | 店铺绑定 | Shopee OAuth 入口、连接状态、Token 过期提示 UI | [x] |
-| 收件箱 / 会话 | 会话列表、消息时间线、转人工标记（接 `/api/merchant/sessions*`） | [x] |
-| AI 设置 | 语气、自动回复、营业时段已持久化 `SellerConfig`（`EnableAutoReply` / `BusinessHours*`） | [x] |
+| 收件箱 / 会话 | 待发送草稿角标、草稿编辑/发送/丢弃、超时排序字段 | [x] |
+| AI 设置 | 语气、草稿生成、`OutboundMode`、营业时段持久化 | [x] |
 | 计费 Billing | 套餐卡片对齐 `PRICING_DRAFT.md`；本月消息数接 `/api/merchant/usage` | [x] |
 | 知识片段（简版） | AI 设置内知识库片段编辑 | [ ] |
 | 真实 KPI / 图表数据 | `GET /api/merchant/dashboard` 已接真实聚合；趋势图/ECharts 仍占位 | [~] |
@@ -50,6 +50,16 @@
 - `SellerConfig` 新增 `EnableAutoReply` / `BusinessHoursStart` / `BusinessHoursEnd`；启动时 `SchemaPatcher` + `Migrations/AddSellerConfigAiSettings_20260914.sql`（因 `EnsureCreated` 不改已有表）。
 - Webhook：关闭自动回复时仅落库不 `SendReply`（不打断验签与会话创建）。
 - 商家 JWT：`shopId` 回退为 `Seller.Id`，修复 sessions 接口无 shop 声明失败。
+
+
+### P1c — Draft-first 出站（2026-09-14）
+
+- [x] `SellerConfig.OutboundMode` 默认 `DraftFirst`；`AutoSend` 显式开启
+- [x] Webhook AI 路径落 `draft_messages`，默认不 `SendReplyAsync`
+- [x] 商户 API：list drafts / get / approve / edit-send / discard
+- [x] 会话暴露 `NeedsResponseBy` / `hoursSinceLastBuyerMsg`
+- [x] 前端收件箱角标 + 会话详情草稿操作 + 设置风险文案
+- [x] ISV 清单：`docs/ISV_APPLICATION_CHECKLIST.md`
 
 ### P1b — Admin 控制台从零搭建（admin-console）
 

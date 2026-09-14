@@ -22,8 +22,13 @@ namespace Synerixis.Domain.Entities
         public bool EnableAutoMarketingReminder { get; set; } = true;  // 是否开启主动营销提醒
         public int MemoryRetentionDays { get; set; } = 180;            // 记忆保留天数，0=永久
 
-        /// <summary>Webhook 入站是否自动 AI 回复；false 时仅落库不 SendReply</summary>
+        /// <summary>Webhook 入站是否生成 AI 草稿/回复；false 时仅落库买家消息</summary>
         public bool EnableAutoReply { get; set; } = true;
+
+        /// <summary>
+        /// 出站模式：DraftFirst（默认，人审后发送）| AutoSend（显式开启才自动 SendReply，有合规风险）
+        /// </summary>
+        public string OutboundMode { get; set; } = OutboundModes.DraftFirst;
 
         /// <summary>营业开始时间 HH:mm（本地业务约定，存字符串）</summary>
         public string BusinessHoursStart { get; set; } = "09:00";

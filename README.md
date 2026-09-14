@@ -27,7 +27,7 @@ Phase 1 只打透 **Shopee + TikTok Shop**。淘宝 / 抖店 **不再作为 Phas
 
 | 平台 | 地区侧重 | 状态 |
 |------|----------|------|
-| **Shopee** | 东南亚 + 台湾 | 客户端 / Webhook / 发信 / 订单查询（v2）已落地，闭环见 `docs/SHOPEE_CLOSED_LOOP.md` |
+| **Shopee** | 东南亚 + 台湾 | 客户端 / Webhook / 草稿优先出站 / 订单查询（v2）已落地，见 [`docs/SHOPEE_CLOSED_LOOP.md`](docs/SHOPEE_CLOSED_LOOP.md)、[`docs/ISV_APPLICATION_CHECKLIST.md`](docs/ISV_APPLICATION_CHECKLIST.md) |
 | **TikTok Shop** | 东南亚 + 英美 | 客户端与 Webhook 骨架已有，联调中 |
 
 Phase 2 候选：Lazada、Amazon、AliExpress 等（不做承诺排期）。
@@ -52,13 +52,14 @@ Synerixis.sln
 |------|------|
 | [`docs/MARKET_FIT_AND_POSITIONING.md`](docs/MARKET_FIT_AND_POSITIONING.md) | 市场适配与战略再定位（工作台 + AI 起草；Shopee Chat 合规） |
 | [`docs/BUSINESS_PLAN_CBEC.md`](docs/BUSINESS_PLAN_CBEC.md) | CBEC 商业计划（替代国内 SME 幻想叙事；Y1 付费店目标 30–100） |
-| [`docs/SHOPEE_CLOSED_LOOP.md`](docs/SHOPEE_CLOSED_LOOP.md) | Shopee 闭环缺口清单（OAuth→…→handoff） |
+| [`docs/SHOPEE_CLOSED_LOOP.md`](docs/SHOPEE_CLOSED_LOOP.md) | Shopee 闭环缺口清单（OAuth→草稿→人审→handoff） |
+| [`docs/ISV_APPLICATION_CHECKLIST.md`](docs/ISV_APPLICATION_CHECKLIST.md) | Shopee+TikTok ISV 申请证据清单 |
 | [`docs/PRICING_DRAFT.md`](docs/PRICING_DRAFT.md) | 定价草案 |
 | `业务计划书.docx` | 旧版 Word，**以 docs 下 Markdown 为准**，文件保留不删 |
 
 ## 当前工程重点
 
-- 打透 Shopee：签名校验 → 会话落库 → 意图 → OrderAgent / 平台订单 API → `SendReplyAsync` → 商户转人工
+- 打透 Shopee：签名校验 → 会话落库 → 意图 → OrderAgent → **AI 草稿（默认）** → 人审 `SendReplyAsync` → 商户转人工
 - TikTok Shop 对齐同一套 `IPlatformClient` 契约
 - 不碰 `RegimeTrader` / 量化模型；那是旁路资产，非本产品主线
 

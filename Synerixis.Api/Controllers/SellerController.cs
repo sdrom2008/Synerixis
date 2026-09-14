@@ -114,6 +114,8 @@ namespace Synerixis.Api.Controllers
                 config.BusinessHoursStart = dto.BusinessHoursStart.Trim();
             if (!string.IsNullOrWhiteSpace(dto.BusinessHoursEnd))
                 config.BusinessHoursEnd = dto.BusinessHoursEnd.Trim();
+            if (!string.IsNullOrWhiteSpace(dto.OutboundMode))
+                config.OutboundMode = OutboundModes.Normalize(dto.OutboundMode);
             config.UpdatedAt = DateTime.UtcNow;
 
             await _db.SaveChangesAsync();
@@ -509,5 +511,6 @@ namespace Synerixis.Api.Controllers
         public bool? EnableAutoReply { get; set; }
         public string? BusinessHoursStart { get; set; }
         public string? BusinessHoursEnd { get; set; }
+        public string? OutboundMode { get; set; }
     }
 }

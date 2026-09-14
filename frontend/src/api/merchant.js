@@ -78,3 +78,32 @@ export async function getDashboardKpis() {
     };
   }
 }
+
+/** Pending drafts inbox */
+export function getPendingDrafts() {
+  return request({ url: '/api/merchant/drafts' });
+}
+
+export function getSessionDraft(id) {
+  return request({ url: `/api/merchant/sessions/${id}/draft` });
+}
+
+export function updateDraft(id, content) {
+  return request({ url: `/api/merchant/sessions/${id}/draft`, method: 'PUT', data: { content } });
+}
+
+export function approveDraft(id) {
+  return request({ url: `/api/merchant/sessions/${id}/draft/approve`, method: 'POST' });
+}
+
+export function editAndSendDraft(id, content) {
+  return request({
+    url: `/api/merchant/sessions/${id}/draft/edit-send`,
+    method: 'POST',
+    data: { content }
+  });
+}
+
+export function discardDraft(id) {
+  return request({ url: `/api/merchant/sessions/${id}/draft/discard`, method: 'POST' });
+}
