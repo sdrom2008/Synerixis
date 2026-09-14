@@ -20,7 +20,7 @@
 - [x] .NET 分层 API、EF、Shopee OAuth / Webhook / Agent 路由
 - [x] Box / 本机开发文档与本地 MySQL 示例配置
 - [x] 健康检查 `/health`（live）与 `/health/ready`（含 EF DbContext）；迁移脚本仍需目标库按需执行
-- [ ] 关键 Partner 沙箱联调清单（见 `docs/SHOPEE_CLOSED_LOOP.md`）
+- [x] 关键 Partner 沙箱联调清单（见 `docs/SHOPEE_SANDBOX_CHECKLIST.md`；闭环细节见 `docs/SHOPEE_CLOSED_LOOP.md`）
 
 **产出**：商家可绑店、消息可进线；沙箱可草稿/按策略出站（默认人审路径优先）。
 
@@ -109,7 +109,7 @@
 | 店铺连接 | PlatformConnection 列表 |
 | 会话监控 | 最近会话只读 |
 | 用量计费 | 全站消息/会话诚实计数 |
-| 系统设置 | 只读配置说明 |
+| 系统设置 | 可写运营开关（MaintenanceMode / DefaultOutboundMode / AllowNewRegistration）+ 只读说明 |
 
 技术：Vue3 + Element Plus + Pinia + Vue Router + ECharts；支持 **深色 / 浅色** 专业风。
 
@@ -130,6 +130,15 @@
 
 **下一轮缺口**：真实承运商轨迹；ConversationService 与 Webhook 统一；支付生产；Token 告警 UI。
 
+### P1h — 收件箱坐席分配 + Admin 可写设置（2026-09-14）
+
+- [x] Merchant：`POST /api/merchant/sessions/{id}/assign`、`.../claim`、`GET /api/merchant/agents`
+- [x] Inbox：显示 assignedAgent；下拉分配 / 认领给我；筛「未分配 / 分给我」；审计 `session.assign` / `session.claim`
+- [x] TransferToAgent 仍可不指定人；分配与 handoff 并存
+- [x] Admin：`GET/PUT /api/admin/settings` → `system_settings`；审计 `admin.settings.update`；无密钥明文
+- [x] alerts：去掉误导性 `pushStub`，改为 `browserNotifySupported` / `pushEnabled=false`
+- [x] `docs/SHOPEE_SANDBOX_CHECKLIST.md` 可执行沙箱清单
+
 ### P2 — 可靠性与人工协同
 
 - Token 刷新（Shopee refresh）与过期告警
@@ -139,7 +148,7 @@
 - 幂等表（Webhook / 出站消息去重）
 - 基础审计日志
 - [x] SLA 超时唤醒 UI + alerts API；merchant-web 收件箱 **声音提醒**已落地；**浏览器 Notification** 已有
-- [ ] ~~Push 推送~~ **真实 APNs/FCM Push 仍无**（本阶段不做）
+- [x] alerts 已澄清无 Push（`browserNotifySupported`）；~~APNs/FCM~~ 本阶段不做
 
 ### P3 — 增长面
 

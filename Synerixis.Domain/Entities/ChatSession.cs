@@ -114,21 +114,27 @@ namespace Synerixis.Domain.Entities
         /// <summary>
         /// 客服接管会话
         /// </summary>
+        /// <summary>
+        /// 分配/重分配坐席。Pending→Active；Active 可改派。Closed/Resolved 不可。
+        /// </summary>
         public void AssignToAgent(Guid? agentId)
         {
-            if (Status != SessionStatus.Pending)
-                throw new InvalidOperationException("只能处理订阅中的会话");
+            if (agentId == null || agentId == Guid.Empty)
+                throw new ArgumentException("必须指定坐席", nameof(agentId));
+            if (Status == SessionStatus.Closed || Status == SessionStatus.Resolved)
+                throw new InvalidOperationException("已结束的会话不能分配坐席");
 
+            var firstAssign = !AssignedAgentId.HasValue;
             AssignedAgentId = agentId;
             AssignedAt = DateTime.UtcNow;
-            Status = SessionStatus.Active;
+            if (Status == SessionStatus.Pending)
+                Status = SessionStatus.Active;
             LastActiveAt = DateTime.UtcNow;
+            UpdatedAt = DateTime.UtcNow;
 
-            // 计算响应时长（从创建到分配）
-            if (AssignedAt.HasValue)
-            {
+            // 首次分配时记录响应时长（创建→分配）
+            if (firstAssign)
                 ResponseTime = AssignedAt.Value - CreatedAt;
-            }
         }
 
         /// <summary>

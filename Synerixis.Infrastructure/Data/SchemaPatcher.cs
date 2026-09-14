@@ -253,6 +253,17 @@ DEALLOCATE PREPARE stmt2;
             await db.Database.ExecuteSqlRawAsync(refreshErrSql);
             logger?.LogInformation("[SchemaPatcher] platform_connections.LastRefreshError/At ensured (MySQL)");
 
+            const string settingsSql = @"
+CREATE TABLE IF NOT EXISTS `system_settings` (
+  `Key` varchar(64) NOT NULL,
+  `Value` varchar(512) NOT NULL,
+  `UpdatedAt` datetime(6) NOT NULL,
+  PRIMARY KEY (`Key`)
+) CHARACTER SET utf8mb4;
+";
+            await db.Database.ExecuteSqlRawAsync(settingsSql);
+            logger?.LogInformation("[SchemaPatcher] system_settings table ensured (MySQL)");
+
         }
 
         private static async Task TrySqliteAsync(AppDbContext db, ILogger? logger)
@@ -322,7 +333,12 @@ DEALLOCATE PREPARE stmt2;
                     ShopId BLOB NULL
                 )",
                 @"CREATE INDEX IF NOT EXISTS IX_audit_logs_ShopId_CreatedAt ON audit_logs (ShopId, CreatedAt)",
-                @"CREATE INDEX IF NOT EXISTS IX_audit_logs_CreatedAt ON audit_logs (CreatedAt)"
+                @"CREATE INDEX IF NOT EXISTS IX_audit_logs_CreatedAt ON audit_logs (CreatedAt)",
+                @"CREATE TABLE IF NOT EXISTS system_settings (
+                    ""Key"" TEXT NOT NULL PRIMARY KEY,
+                    Value TEXT NOT NULL,
+                    UpdatedAt TEXT NOT NULL
+                )"
 
             })
             {

@@ -58,6 +58,32 @@ export function getSettings() {
   return request<Record<string, unknown>>({ url: '/api/admin/settings' })
 }
 
+export interface AdminSettingsUpdate {
+  maintenanceMode?: boolean
+  defaultOutboundMode?: string
+  allowNewRegistration?: boolean
+}
+
+export function updateSettings(data: AdminSettingsUpdate) {
+  return request<{
+    message?: string
+    maintenanceMode?: boolean
+    defaultOutboundMode?: string
+    allowNewRegistration?: boolean
+  }>({
+    url: '/api/admin/settings',
+    method: 'PUT',
+    data: {
+      maintenanceMode: data.maintenanceMode,
+      MaintenanceMode: data.maintenanceMode,
+      defaultOutboundMode: data.defaultOutboundMode,
+      DefaultOutboundMode: data.defaultOutboundMode,
+      allowNewRegistration: data.allowNewRegistration,
+      AllowNewRegistration: data.allowNewRegistration,
+    },
+  })
+}
+
 export function getAuditLogs(take = 50, shopId?: string, action?: string) {
   const params = new URLSearchParams({ take: String(take) })
   if (shopId) params.set('shopId', shopId)

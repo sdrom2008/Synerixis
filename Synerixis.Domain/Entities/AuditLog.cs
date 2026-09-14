@@ -47,6 +47,9 @@ namespace Synerixis.Domain.Entities
         public const string DraftApprove = "draft.approve";
         public const string DraftReject = "draft.reject";
         public const string SessionHandoff = "session.handoff";
+        public const string SessionAssign = "session.assign";
+        public const string SessionClaim = "session.claim";
+        public const string AdminSettingsUpdate = "admin.settings.update";
         public const string AiSettingsUpdate = "ai_settings.update";
         public const string AdminSensitive = "admin.sensitive";
         public const string AdminLogin = "admin.login";

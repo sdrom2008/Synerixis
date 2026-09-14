@@ -475,14 +475,21 @@ namespace Synerixis.Api.Controllers
             return Guid.TryParse(claim, out var id) ? id : null;
         }
 
+        /// <summary>
+        /// 运营设置：只读说明 + DB 可覆盖的安全开关（无密钥）。
+        /// </summary>
         [HttpGet("settings")]
-        public IActionResult GetSettings([FromServices] IConfiguration config, [FromServices] IWebHostEnvironment env)
+        public async Task<IActionResult> GetSettings([FromServices] IConfiguration config, [FromServices] IWebHostEnvironment env)
         {
+            var writable = await LoadWritableSettingsAsync(config);
             return Ok(new
             {
                 environment = env.EnvironmentName,
                 productPositioning = "工作台 + AI 草稿人审（draft-first），禁止全自动 chatbot 宣称",
-                defaultOutboundMode = OutboundModes.DraftFirst,
+                defaultOutboundMode = writable.DefaultOutboundMode,
+                maintenanceMode = writable.MaintenanceMode,
+                allowNewRegistration = writable.AllowNewRegistration,
+                writableKeys = SystemSettingKeys.WritableKeys,
                 adminAuth = "POST /api/auth/agent-login，需 Agents.Role=Admin",
                 apiBaseHint = "/api/admin/*",
                 frontends = new
@@ -507,8 +514,104 @@ namespace Synerixis.Api.Controllers
                     live = "/health",
                     ready = "/health/ready",
                     note = "ready 含 EF DbContext 连通检查"
-                }
+                },
+                note = "仅 MaintenanceMode / DefaultOutboundMode / AllowNewRegistration 可写；密钥不可通过本接口读写"
             });
+        }
+
+        /// <summary>更新安全运营开关，审计 admin.settings.update</summary>
+        [HttpPut("settings")]
+        public async Task<IActionResult> UpdateSettings([FromBody] AdminSettingsUpdateDto dto, [FromServices] IConfiguration config)
+        {
+            if (dto == null)
+                return BadRequest(new { message = "body 不能为空" });
+
+            var before = await LoadWritableSettingsAsync(config);
+            var changed = new Dictionary<string, object?>();
+
+            if (dto.MaintenanceMode.HasValue)
+            {
+                await UpsertSettingAsync(SystemSettingKeys.MaintenanceMode, dto.MaintenanceMode.Value ? "true" : "false");
+                changed[SystemSettingKeys.MaintenanceMode] = dto.MaintenanceMode.Value;
+            }
+            if (!string.IsNullOrWhiteSpace(dto.DefaultOutboundMode))
+            {
+                var mode = OutboundModes.Normalize(dto.DefaultOutboundMode);
+                await UpsertSettingAsync(SystemSettingKeys.DefaultOutboundMode, mode);
+                changed[SystemSettingKeys.DefaultOutboundMode] = mode;
+            }
+            if (dto.AllowNewRegistration.HasValue)
+            {
+                await UpsertSettingAsync(SystemSettingKeys.AllowNewRegistration, dto.AllowNewRegistration.Value ? "true" : "false");
+                changed[SystemSettingKeys.AllowNewRegistration] = dto.AllowNewRegistration.Value;
+            }
+
+            if (changed.Count == 0)
+                return BadRequest(new { message = "未提供可写字段（maintenanceMode / defaultOutboundMode / allowNewRegistration）" });
+
+            await _db.SaveChangesAsync();
+
+            var actorId = TryGetActorId();
+            await _audit.LogAsync(
+                actorId,
+                "Admin",
+                AuditActions.AdminSettingsUpdate,
+                "SystemSettings",
+                null,
+                new { before = new { before.MaintenanceMode, before.DefaultOutboundMode, before.AllowNewRegistration }, changed },
+                null);
+
+            var after = await LoadWritableSettingsAsync(config);
+            return Ok(new
+            {
+                message = "设置已保存",
+                maintenanceMode = after.MaintenanceMode,
+                defaultOutboundMode = after.DefaultOutboundMode,
+                allowNewRegistration = after.AllowNewRegistration
+            });
+        }
+
+        private async Task UpsertSettingAsync(string key, string value)
+        {
+            var row = await _db.SystemSettings.FirstOrDefaultAsync(s => s.Key == key);
+            if (row == null)
+            {
+                _db.SystemSettings.Add(new SystemSetting
+                {
+                    Key = key,
+                    Value = value,
+                    UpdatedAt = DateTime.UtcNow
+                });
+            }
+            else
+            {
+                row.Value = value;
+                row.UpdatedAt = DateTime.UtcNow;
+            }
+        }
+
+        private async Task<(bool MaintenanceMode, string DefaultOutboundMode, bool AllowNewRegistration)> LoadWritableSettingsAsync(IConfiguration config)
+        {
+            var rows = await _db.SystemSettings.AsNoTracking()
+                .Where(s => SystemSettingKeys.WritableKeys.Contains(s.Key))
+                .ToListAsync();
+            string? Get(string key) => rows.FirstOrDefault(r => r.Key == key)?.Value;
+
+            var maint = Get(SystemSettingKeys.MaintenanceMode)
+                ?? config["Ops:MaintenanceMode"]
+                ?? "false";
+            var mode = Get(SystemSettingKeys.DefaultOutboundMode)
+                ?? config["Ops:DefaultOutboundMode"]
+                ?? OutboundModes.DraftFirst;
+            var allowReg = Get(SystemSettingKeys.AllowNewRegistration)
+                ?? config["Ops:AllowNewRegistration"]
+                ?? "true";
+
+            return (
+                string.Equals(maint, "true", StringComparison.OrdinalIgnoreCase) || maint == "1",
+                OutboundModes.Normalize(mode),
+                string.Equals(allowReg, "true", StringComparison.OrdinalIgnoreCase) || allowReg == "1"
+            );
         }
     }
 
@@ -520,5 +623,12 @@ namespace Synerixis.Api.Controllers
     public class AdminMerchantSubscriptionDto
     {
         public string Level { get; set; } = "Free";
+    }
+
+    public class AdminSettingsUpdateDto
+    {
+        public bool? MaintenanceMode { get; set; }
+        public string? DefaultOutboundMode { get; set; }
+        public bool? AllowNewRegistration { get; set; }
     }
 }

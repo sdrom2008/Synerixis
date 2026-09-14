@@ -388,7 +388,8 @@ namespace Synerixis.Api.Controllers
             [FromQuery] string? status = null,
             [FromQuery] string? platform = null,
             [FromQuery] Guid? connectionId = null,
-            [FromQuery] string? platformShopId = null)
+            [FromQuery] string? platformShopId = null,
+            [FromQuery] string? assignment = null)
         {
             try
             {
@@ -397,6 +398,24 @@ namespace Synerixis.Api.Controllers
                 var query = _db.ChatSessions
                     .Include(s => s.AssignedAgent)
                     .Where(s => s.ShopId == shopId);
+
+                // assignment: unassigned | mine（mine 仅坐席有效）
+                if (!string.IsNullOrWhiteSpace(assignment))
+                {
+                    var a = assignment.Trim().ToLowerInvariant();
+                    if (a == "unassigned")
+                    {
+                        query = query.Where(s => s.AssignedAgentId == null);
+                    }
+                    else if (a == "mine")
+                    {
+                        var current = GetCurrentUser();
+                        if (current.IsStaff)
+                            query = query.Where(s => s.AssignedAgentId == current.UserId);
+                        else
+                            query = query.Where(s => false); // Seller 无「分给我」
+                    }
+                }
 
                 if (!string.IsNullOrEmpty(status))
                 {
@@ -570,7 +589,7 @@ namespace Synerixis.Api.Controllers
                     total,
                     pendingDraftCount,
                     responseSlaHours = slaHours,
-                    filters = new { platform = filterPlatform, connectionId, platformShopId = filterShopOpenId }
+                    filters = new { platform = filterPlatform, connectionId, platformShopId = filterShopOpenId, assignment }
                 });
             }
             catch (Exception ex)
@@ -590,6 +609,7 @@ namespace Synerixis.Api.Controllers
                 var shopId = GetMerchantShopId();
 
                 var session = await _db.ChatSessions
+                    .Include(s => s.AssignedAgent)
                     .FirstOrDefaultAsync(s => s.Id == id && s.ShopId == shopId);
                 if (session == null)
                     return NotFound(new { message = "会话不存在" });
@@ -633,6 +653,13 @@ namespace Synerixis.Api.Controllers
                     sessionStatus = session.Status.ToString(),
                     pendingHumanHandoff = session.PendingHumanHandoff,
                     handoffAt = session.HandoffAt,
+                    assignedAgent = session.AssignedAgent != null ? new
+                    {
+                        session.AssignedAgent.Id,
+                        session.AssignedAgent.Name,
+                        role = session.AssignedAgent.Role.ToString()
+                    } : null,
+                    assignedAt = session.AssignedAt,
                     lastBuyerMessageAt = session.LastBuyerMessageAt,
                     responseSlaHours = slaHours,
                     hoursSinceLastBuyerMsg = Math.Round(Math.Max(0, (now - anchor).TotalHours), 2),
@@ -836,6 +863,146 @@ namespace Synerixis.Api.Controllers
                 return HandleError(ex);
             }
         }
+
+        /// <summary>
+        /// 本店坐席简表（收件箱分配下拉）：id / name / role / online
+        /// </summary>
+        [HttpGet("agents")]
+        public async Task<IActionResult> GetShopAgents()
+        {
+            try
+            {
+                var shopId = GetMerchantShopId();
+                var items = await _db.Agents
+                    .AsNoTracking()
+                    .Where(a => a.ShopId == shopId && a.IsActive)
+                    .OrderBy(a => a.Role)
+                    .ThenBy(a => a.Name)
+                    .Select(a => new
+                    {
+                        id = a.Id,
+                        name = a.Name,
+                        role = a.Role.ToString(),
+                        online = a.IsOnline
+                    })
+                    .ToListAsync();
+                return Ok(new { items, total = items.Count });
+            }
+            catch (Exception ex)
+            {
+                return HandleError(ex);
+            }
+        }
+
+        /// <summary>
+        /// 商家工作台：将会话分配给本店坐席（Seller / Supervisor；Admin 同店亦可）。
+        /// 与 TransferToAgent（handoff 闸）可并存：转人工后仍可指定人。
+        /// </summary>
+        [HttpPost("sessions/{id:guid}/assign")]
+        public async Task<IActionResult> AssignSession(Guid id, [FromBody] MerchantAssignDto dto)
+        {
+            try
+            {
+                var current = GetCurrentUser();
+                if (!current.IsSeller && !current.IsSupervisor && !current.IsAdmin)
+                    return Forbid();
+
+                var shopId = GetMerchantShopId();
+                if (dto == null || dto.AgentId == Guid.Empty)
+                    return BadRequest(new { message = "请指定 agentId" });
+
+                var session = await _db.ChatSessions
+                    .FirstOrDefaultAsync(s => s.Id == id && s.ShopId == shopId);
+                if (session == null)
+                    return NotFound(new { message = "会话不存在" });
+                if (session.Status == SessionStatus.Closed || session.Status == SessionStatus.Resolved)
+                    return BadRequest(new { message = "已结束的会话不能分配" });
+
+                var agent = await _db.Agents
+                    .FirstOrDefaultAsync(a => a.Id == dto.AgentId && a.ShopId == shopId && a.IsActive);
+                if (agent == null)
+                    return BadRequest(new { message = "坐席不存在或不属于本店" });
+
+                session.AssignToAgent(agent.Id);
+                await _db.SaveChangesAsync();
+
+                try
+                {
+                    await _audit.LogAsync(current.UserId, current.UserType, AuditActions.SessionAssign,
+                        "ChatSession", session.Id.ToString(),
+                        new { agentId = agent.Id, agentName = agent.Name, pendingHumanHandoff = session.PendingHumanHandoff },
+                        shopId);
+                }
+                catch { /* ignore */ }
+
+                return Ok(new
+                {
+                    message = "已分配坐席",
+                    sessionId = session.Id,
+                    assignedAgent = new { id = agent.Id, name = agent.Name, role = agent.Role.ToString() },
+                    assignedAt = session.AssignedAt,
+                    status = session.Status.ToString(),
+                    pendingHumanHandoff = session.PendingHumanHandoff
+                });
+            }
+            catch (Exception ex)
+            {
+                return HandleError(ex);
+            }
+        }
+
+        /// <summary>
+        /// 当前坐席认领自己（Agent / Supervisor）。Seller 请用 assign。
+        /// </summary>
+        [HttpPost("sessions/{id:guid}/claim")]
+        public async Task<IActionResult> ClaimSession(Guid id)
+        {
+            try
+            {
+                var current = GetCurrentUser();
+                if (!current.IsStaff)
+                    return BadRequest(new { message = "仅坐席可认领；商家请使用分配" });
+
+                var shopId = GetMerchantShopId();
+                var session = await _db.ChatSessions
+                    .FirstOrDefaultAsync(s => s.Id == id && s.ShopId == shopId);
+                if (session == null)
+                    return NotFound(new { message = "会话不存在" });
+                if (session.Status == SessionStatus.Closed || session.Status == SessionStatus.Resolved)
+                    return BadRequest(new { message = "已结束的会话不能认领" });
+
+                var agent = await _db.Agents.FirstOrDefaultAsync(a => a.Id == current.UserId && a.ShopId == shopId);
+                if (agent == null || !agent.IsActive)
+                    return BadRequest(new { message = "当前账号不是本店有效坐席" });
+
+                session.AssignToAgent(agent.Id);
+                await _db.SaveChangesAsync();
+
+                try
+                {
+                    await _audit.LogAsync(current.UserId, current.UserType, AuditActions.SessionClaim,
+                        "ChatSession", session.Id.ToString(),
+                        new { agentId = agent.Id, pendingHumanHandoff = session.PendingHumanHandoff },
+                        shopId);
+                }
+                catch { /* ignore */ }
+
+                return Ok(new
+                {
+                    message = "已认领",
+                    sessionId = session.Id,
+                    assignedAgent = new { id = agent.Id, name = agent.Name, role = agent.Role.ToString() },
+                    assignedAt = session.AssignedAt,
+                    status = session.Status.ToString(),
+                    pendingHumanHandoff = session.PendingHumanHandoff
+                });
+            }
+            catch (Exception ex)
+            {
+                return HandleError(ex);
+            }
+        }
+
 
         /// <summary>
         /// 商家仪表盘真实 KPI（仅 DB 聚合；不可计算字段返回 null）
@@ -1260,8 +1427,9 @@ namespace Synerixis.Api.Controllers
                     tokenAlertCount = tokenAlerts.Count,
                     responseSlaHours = slaHours,
                     thresholds = hoursList,
-                    // TODO: WebPush / 桌面声音
-                    pushStub = true
+                    // 应用内 + 浏览器 Notification；无 APNs/FCM Push
+                    browserNotifySupported = true,
+                    pushEnabled = false
                 });
             }
             catch (Exception ex)
@@ -1776,4 +1944,10 @@ namespace Synerixis.Api.Controllers
         public int? SortOrder { get; set; }
         public bool? IsActive { get; set; }
     }
+
+    public class MerchantAssignDto
+    {
+        public Guid AgentId { get; set; }
+    }
+
 }

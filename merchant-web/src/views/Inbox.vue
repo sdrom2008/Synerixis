@@ -58,6 +58,11 @@
           <el-radio-button label="Active">进行中</el-radio-button>
           <el-radio-button label="Pending">待处理</el-radio-button>
         </el-radio-group>
+        <el-radio-group v-model="assignmentFilter" size="small" @change="onFilterChange" class="assign-filter">
+          <el-radio-button label="">全部分配</el-radio-button>
+          <el-radio-button label="unassigned">未分配</el-radio-button>
+          <el-radio-button label="mine">分给我</el-radio-button>
+        </el-radio-group>
       </div>
 
       <div v-if="displaySessions.length === 0 && !listLoading" class="list-empty">
@@ -82,6 +87,8 @@
           </div>
           <div class="row2">
             <span>{{ platformShopLabel(s) }}</span>
+            <span v-if="s.assignedAgent" class="agent-chip">{{ s.assignedAgent.name }}</span>
+            <span v-else class="agent-chip muted">未分配</span>
             <span v-if="s.unreadBuyerCount" class="unread">未读 {{ s.unreadBuyerCount }}</span>
           </div>
           <div class="row3">
@@ -127,19 +134,65 @@
                 即将超时
               </el-tag>
             </div>
-            <el-button
-              v-if="canTransfer"
-              type="warning"
-              plain
-              size="small"
-              :loading="transferring"
-              @click="onTransfer"
-            >
-              转人工客服
-            </el-button>
+            <div class="assign-actions">
+              <el-select
+                v-if="canAssign"
+                v-model="assignAgentId"
+                size="small"
+                clearable
+                filterable
+                placeholder="分配给坐席"
+                style="width: 140px"
+                :loading="agentsLoading"
+              >
+                <el-option
+                  v-for="a in shopAgents"
+                  :key="a.id"
+                  :label="agentOptionLabel(a)"
+                  :value="a.id"
+                />
+              </el-select>
+              <el-button
+                v-if="canAssign"
+                size="small"
+                type="primary"
+                plain
+                :loading="assigning"
+                :disabled="!assignAgentId"
+                @click="onAssign"
+              >
+                分配
+              </el-button>
+              <el-button
+                v-if="canClaim"
+                size="small"
+                type="success"
+                plain
+                :loading="claiming"
+                @click="onClaim"
+              >
+                认领给我
+              </el-button>
+              <el-button
+                v-if="canTransfer"
+                type="warning"
+                plain
+                size="small"
+                :loading="transferring"
+                @click="onTransfer"
+              >
+                转人工客服
+              </el-button>
+            </div>
+          </div>
+          <div class="assign-meta">
+            当前坐席：
+            <strong v-if="displayAssignedAgent">{{ displayAssignedAgent.name }}</strong>
+            <span v-else class="muted">未分配</span>
+            <span v-if="messagesMeta.assignedAt" class="muted"> · {{ formatTime(messagesMeta.assignedAt) }}</span>
           </div>
           <div v-if="messagesMeta.pendingHumanHandoff" class="handoff-hint">
-            已转人工：入站消息不再生成新 AI 草稿，也不 AutoSend；下方旧草稿仍可编辑后手动发送。
+            已转人工：入站消息不再生成新 AI 草稿，也不 AutoSend；下方旧草稿仍可编辑后手动发送。分配坐席与 handoff 可并存。
           </div>
           <div class="meta">
             <span v-if="messagesMeta.hoursSinceLastBuyerMsg != null">
@@ -308,6 +361,9 @@ import {
   getSessionOrders,
   getSessions,
   getShopOptions,
+  getShopAgents,
+  assignSession,
+  claimSession,
   transferSession,
   updateDraft,
   listQuickReplies,
@@ -316,9 +372,11 @@ import {
   type SessionItem,
   type SessionOrderItem,
   type ShopOption,
+  type ShopAgentItem,
   type DraftInfo,
   type SlaUrgency,
 } from '@/api/merchant'
+import { useAuthStore } from '@/stores/auth'
 
 const listLoading = ref(false)
 const detailLoading = ref(false)
@@ -326,6 +384,13 @@ const saving = ref(false)
 const sending = ref(false)
 const discarding = ref(false)
 const transferring = ref(false)
+const assigning = ref(false)
+const claiming = ref(false)
+const agentsLoading = ref(false)
+const shopAgents = ref<ShopAgentItem[]>([])
+const assignAgentId = ref<string>('')
+const assignmentFilter = ref('')
+const auth = useAuthStore()
 const statusFilter = ref('')
 const shopFilter = ref('')
 const shopOptions = ref<ShopOption[]>([])
@@ -354,6 +419,8 @@ const messagesMeta = ref<{
   sessionStatus?: string
   pendingHumanHandoff?: boolean
   handoffAt?: string | null
+  assignedAgent?: { id: string; name: string; role?: string } | null
+  assignedAt?: string | null
   hoursSinceLastBuyerMsg?: number
   needsResponseBy?: string
   responseSlaHours?: number
@@ -373,6 +440,24 @@ const canTransfer = computed(() => {
   return st === 'Pending' || st === 'Active'
 })
 
+const canAssign = computed(() => {
+  const t = auth.userType
+  if (t !== 'Seller' && t !== 'Supervisor' && t !== 'Admin') return false
+  const st = messagesMeta.value.sessionStatus || currentSession.value?.status
+  return st === 'Pending' || st === 'Active'
+})
+
+const canClaim = computed(() => {
+  const t = auth.userType
+  if (t !== 'Agent' && t !== 'Supervisor' && t !== 'Admin') return false
+  const st = messagesMeta.value.sessionStatus || currentSession.value?.status
+  return st === 'Pending' || st === 'Active'
+})
+
+const displayAssignedAgent = computed(() => {
+  return messagesMeta.value.assignedAgent || currentSession.value?.assignedAgent || null
+})
+
 const displaySessions = computed(() => {
   let list = sessions.value.slice()
   if (statusFilter.value === 'draft') {
@@ -384,6 +469,13 @@ const displaySessions = computed(() => {
       const u = computeUrgency(s)
       return u === 'soon' || u === 'overdue'
     })
+  }
+  if (assignmentFilter.value === 'unassigned') {
+    list = list.filter((s) => !s.assignedAgent)
+  } else if (assignmentFilter.value === 'mine') {
+    const uid = auth.profile?.userId
+    if (uid) list = list.filter((s) => s.assignedAgent?.id === uid)
+    else list = []
   }
   // Sort: overdue first, then soon, then pending draft, then by needsResponseBy asc
   return list.sort((a, b) => {
@@ -498,6 +590,7 @@ function onFilterChange() {
 
 async function refreshAll() {
   void loadQuickReplies()
+  void loadShopAgents()
   await Promise.all([loadSessions(), loadAlerts()])
   if (selectedId.value) await selectSession(selectedId.value)
 }
@@ -620,6 +713,7 @@ async function loadSessions() {
       getSessions({
         status: apiStatus,
         connectionId: shopFilter.value || undefined,
+        assignment: assignmentFilter.value || undefined,
       }),
       loadAlerts(),
     ])
@@ -653,11 +747,14 @@ async function selectSession(id: string) {
       sessionStatus: res.sessionStatus,
       pendingHumanHandoff: !!res.pendingHumanHandoff,
       handoffAt: res.handoffAt,
+      assignedAgent: res.assignedAgent || null,
+      assignedAt: res.assignedAt || null,
       hoursSinceLastBuyerMsg: res.hoursSinceLastBuyerMsg,
       needsResponseBy: res.needsResponseBy,
       responseSlaHours: res.responseSlaHours,
       slaUrgency: res.slaUrgency,
     }
+    assignAgentId.value = res.assignedAgent?.id || ''
     draft.value = res.pendingDraft || null
     draftContent.value = res.pendingDraft?.content || ''
     await loadOrders(id)
@@ -697,6 +794,53 @@ async function onTransfer() {
     ElMessage.error('转接失败')
   } finally {
     transferring.value = false
+  }
+}
+
+function agentOptionLabel(a: ShopAgentItem) {
+  const online = a.online ? '在线' : '离线'
+  return `${a.name} · ${a.role || 'Agent'} · ${online}`
+}
+
+async function loadShopAgents() {
+  agentsLoading.value = true
+  try {
+    const res = await getShopAgents()
+    shopAgents.value = res.items || []
+  } catch {
+    shopAgents.value = []
+  } finally {
+    agentsLoading.value = false
+  }
+}
+
+async function onAssign() {
+  if (!selectedId.value || !assignAgentId.value || !canAssign.value) return
+  assigning.value = true
+  try {
+    await assignSession(selectedId.value, assignAgentId.value)
+    ElMessage.success('已分配坐席')
+    await selectSession(selectedId.value)
+    await loadSessions()
+  } catch {
+    ElMessage.error('分配失败')
+  } finally {
+    assigning.value = false
+  }
+}
+
+async function onClaim() {
+  if (!selectedId.value || !canClaim.value) return
+  claiming.value = true
+  try {
+    await claimSession(selectedId.value)
+    ElMessage.success('已认领')
+    await selectSession(selectedId.value)
+    await loadSessions()
+  } catch {
+    ElMessage.error('认领失败')
+  } finally {
+    claiming.value = false
   }
 }
 
@@ -798,6 +942,7 @@ async function onDiscard() {
 
 onMounted(() => {
   loadShopOptions()
+  loadShopAgents()
   refreshAll()
   alertPollTimer = setInterval(() => {
     loadAlerts()
@@ -1137,5 +1282,30 @@ onUnmounted(() => {
   font-size: 12px;
   color: #64748b;
   margin-right: 4px;
+}
+
+.assign-filter {
+  margin-top: 6px;
+  display: flex;
+  flex-wrap: wrap;
+}
+.assign-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+.assign-meta {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+.assign-meta .muted,
+.agent-chip.muted {
+  color: var(--el-text-color-placeholder);
+}
+.agent-chip {
+  font-size: 11px;
+  color: var(--el-color-primary);
 }
 </style>

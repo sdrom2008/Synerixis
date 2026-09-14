@@ -47,6 +47,8 @@ export interface SessionMessagesResult {
   sessionStatus?: string
   pendingHumanHandoff?: boolean
   handoffAt?: string | null
+  assignedAgent?: { id: string; name: string; role?: string } | null
+  assignedAt?: string | null
   lastBuyerMessageAt?: string | null
   hoursSinceLastBuyerMsg?: number
   needsResponseBy?: string
@@ -78,6 +80,9 @@ export interface MerchantAlertsResult {
   total?: number
   responseSlaHours?: number
   thresholds?: number[] | string
+  /** 浏览器 Notification 可用说明；无 APNs/FCM */
+  browserNotifySupported?: boolean
+  pushEnabled?: boolean
 }
 
 export interface DashboardKpis {
@@ -95,6 +100,8 @@ export interface SessionQuery {
   platform?: string
   connectionId?: string
   platformShopId?: string
+  /** unassigned | mine */
+  assignment?: string
 }
 
 export function getSessions(params: SessionQuery | string = {}) {
@@ -109,6 +116,7 @@ export function getSessions(params: SessionQuery | string = {}) {
   if (q.platform) sp.set('platform', q.platform)
   if (q.connectionId) sp.set('connectionId', q.connectionId)
   if (q.platformShopId) sp.set('platformShopId', q.platformShopId)
+  if (q.assignment) sp.set('assignment', q.assignment)
   const qs = sp.toString()
   return request<SessionsListResult>({
     url: `/api/merchant/sessions${qs ? `?${qs}` : ''}`,
@@ -168,7 +176,47 @@ export function transferSession(id: string) {
   })
 }
 
-/** SLA / timeout wake alerts (in-app; push TODO) */
+export interface ShopAgentItem {
+  id: string
+  name: string
+  role?: string
+  online?: boolean
+}
+
+export function getShopAgents() {
+  return request<{ items: ShopAgentItem[]; total?: number }>({
+    url: '/api/merchant/agents',
+  })
+}
+
+export function assignSession(sessionId: string, agentId: string) {
+  return request<{
+    message?: string
+    assignedAgent?: { id: string; name: string; role?: string }
+    assignedAt?: string
+    status?: string
+    pendingHumanHandoff?: boolean
+  }>({
+    url: `/api/merchant/sessions/${sessionId}/assign`,
+    method: 'POST',
+    data: { agentId, AgentId: agentId },
+  })
+}
+
+export function claimSession(sessionId: string) {
+  return request<{
+    message?: string
+    assignedAgent?: { id: string; name: string; role?: string }
+    assignedAt?: string
+    status?: string
+    pendingHumanHandoff?: boolean
+  }>({
+    url: `/api/merchant/sessions/${sessionId}/claim`,
+    method: 'POST',
+  })
+}
+
+/** SLA / timeout wake alerts（应用内 + 浏览器 Notification；无 Push） */
 export function getMerchantAlerts(params: { thresholds?: string } = {}) {
   const q = params.thresholds ? `?thresholds=${encodeURIComponent(params.thresholds)}` : ''
   return request<MerchantAlertsResult>({

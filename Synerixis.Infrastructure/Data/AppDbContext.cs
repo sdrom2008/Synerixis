@@ -28,6 +28,7 @@ namespace Synerixis.Infrastructure.Data
         public DbSet<ProcessedWebhookEvent> ProcessedWebhookEvents { get; set; }
         public DbSet<AiUsageLog> AiUsageLogs { get; set; }
         public DbSet<AuditLog> AuditLogs { get; set; }
+        public DbSet<SystemSetting> SystemSettings { get; set; }
 
 
 
@@ -461,6 +462,26 @@ namespace Synerixis.Infrastructure.Data
                       .WithMany(s => s.PlatformConnections)
                       .HasForeignKey(e => e.SellerId)
                       .OnDelete(DeleteBehavior.Restrict);
+            });
+
+
+            modelBuilder.Entity<SystemSetting>(entity =>
+            {
+                entity.ToTable("system_settings");
+                entity.HasKey(e => e.Key);
+
+                entity.Property(e => e.Key)
+                      .HasColumnType("varchar(64)")
+                      .HasMaxLength(64)
+                      .IsRequired();
+
+                entity.Property(e => e.Value)
+                      .HasColumnType("varchar(512)")
+                      .HasMaxLength(512)
+                      .IsRequired();
+
+                entity.Property(e => e.UpdatedAt)
+                      .HasColumnType("datetime2");
             });
 
             modelBuilder.Entity<AuditLog>(entity =>
