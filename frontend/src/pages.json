@@ -1,35 +1,218 @@
 {
   "pages": [
-	{ "path": "pages/splash/splash", "style": {"navigationBarTitleText": "","navigationStyle": "custom"}},
-	{ "path": "pages/login/choose-login", "style": { "navigationBarTitleText": "登录方式" } },
-    { "path": "pages/login/agent-login", "style": { "navigationBarTitleText": "客服登录" } },
-    { "path": "pages/login/login", "style": { "navigationBarTitleText": "手机号短信验证登录" } }, 
-	{ "path": "pages/login/wechat-login", "style": { "navigationBarTitleText": "微信登录" } }, 
-	{ "path": "pages/login/bind-phone", "style": { "navigationBarTitleText": "绑定电话" } },
-    { "path": "pages/merchant/sessions", "style": { "navigationBarTitleText": "我的会话" } },
-    { "path": "pages/merchant/session-detail", "style": { "navigationBarTitleText": "会话详情" } },
-    { "path": "pages/merchant/team", "style": { "navigationBarTitleText": "团队管理" } },
-    { "path": "pages/support/workbench", "style": { "navigationBarTitleText": "客服工作台" } },
-    { "path": "pages/support/supervisor", "style": { "navigationBarTitleText": "主管监控" } },
-    { "path": "pages/dashboard/dashboard", "style": { "navigationBarTitleText": "仪表盘" } },
-    { "path": "pages/profile/index", "style": { "navigationBarTitleText": "我的" } },
-    { "path": "pages/profile/shop-setting", "style": { "navigationBarTitleText": "店铺信息设置" } },
-    { "path": "pages/profile/ai-preference", "style": { "navigationBarTitleText": "AI 偏好设置" } },
-    { "path": "pages/profile/account-security", "style": { "navigationBarTitleText": "账号与安全" } },
-    { "path": "pages/pay/subscribe", "style": { "navigationBarTitleText": "订单支付" } },
-    { "path": "pages/products/products", "style": { "navigationBarTitleText": "商品管理" } },
-    { "path": "pages/products/import", "style": { "navigationBarTitleText": "导入商品" } },
-    { "path": "pages/marketing/generate", "style": { "navigationBarTitleText": "营销文案生成" } },
-    { "path": "pages/product/optimize", "style": { "navigationBarTitleText": "商品优化" } },
-    { "path": "pages/competitor/analyze", "style": { "navigationBarTitleText": "竞品分析" } }
+    {
+      "path": "pages/splash/splash",
+      "style": {
+        "navigationBarTitleText": "",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/login/choose-login",
+      "style": {
+        "navigationBarTitleText": "登录"
+      }
+    },
+    {
+      "path": "pages/login/agent-login",
+      "style": {
+        "navigationBarTitleText": "客服登录"
+      }
+    },
+    {
+      "path": "pages/login/login",
+      "style": {
+        "navigationBarTitleText": "手机号登录"
+      }
+    },
+    {
+      "path": "pages/login/wechat-login",
+      "style": {
+        "navigationBarTitleText": "微信登录"
+      }
+    },
+    {
+      "path": "pages/login/bind-phone",
+      "style": {
+        "navigationBarTitleText": "绑定手机"
+      }
+    },
+    {
+      "path": "pages/dashboard/dashboard",
+      "style": {
+        "navigationBarTitleText": "仪表盘",
+        "navigationBarBackgroundColor": "#F8FAFC"
+      }
+    },
+    {
+      "path": "pages/merchant/sessions",
+      "style": {
+        "navigationBarTitleText": "收件箱",
+        "navigationBarBackgroundColor": "#F8FAFC"
+      }
+    },
+    {
+      "path": "pages/merchant/shops",
+      "style": {
+        "navigationBarTitleText": "店铺绑定",
+        "navigationBarBackgroundColor": "#F8FAFC"
+      }
+    },
+    {
+      "path": "pages/merchant/session-detail",
+      "style": {
+        "navigationBarTitleText": "会话详情",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/merchant/ai-settings",
+      "style": {
+        "navigationBarTitleText": "AI 设置",
+        "navigationBarBackgroundColor": "#F8FAFC"
+      }
+    },
+    {
+      "path": "pages/merchant/billing",
+      "style": {
+        "navigationBarTitleText": "套餐计费",
+        "navigationBarBackgroundColor": "#F8FAFC"
+      }
+    },
+    {
+      "path": "pages/merchant/team",
+      "style": {
+        "navigationBarTitleText": "团队管理"
+      }
+    },
+    {
+      "path": "pages/support/workbench",
+      "style": {
+        "navigationBarTitleText": "客服工作台"
+      }
+    },
+    {
+      "path": "pages/support/supervisor",
+      "style": {
+        "navigationBarTitleText": "主管监控"
+      }
+    },
+    {
+      "path": "pages/profile/index",
+      "style": {
+        "navigationBarTitleText": "我的",
+        "navigationBarBackgroundColor": "#F8FAFC"
+      }
+    },
+    {
+      "path": "pages/profile/profile-info",
+      "style": {
+        "navigationBarTitleText": "个人信息"
+      }
+    },
+    {
+      "path": "pages/profile/profile",
+      "style": {
+        "navigationBarTitleText": "个人资料"
+      }
+    },
+    {
+      "path": "pages/profile/shop-setting",
+      "style": {
+        "navigationBarTitleText": "店铺信息"
+      }
+    },
+    {
+      "path": "pages/profile/ai-preference",
+      "style": {
+        "navigationBarTitleText": "AI 偏好（旧版）"
+      }
+    },
+    {
+      "path": "pages/profile/account-security",
+      "style": {
+        "navigationBarTitleText": "账号与安全"
+      }
+    },
+    {
+      "path": "pages/pay/subscribe",
+      "style": {
+        "navigationBarTitleText": "支付"
+      }
+    },
+    {
+      "path": "pages/products/products",
+      "style": {
+        "navigationBarTitleText": "商品管理"
+      }
+    },
+    {
+      "path": "pages/products/import",
+      "style": {
+        "navigationBarTitleText": "导入商品"
+      }
+    },
+    {
+      "path": "pages/marketing/generate",
+      "style": {
+        "navigationBarTitleText": "营销文案"
+      }
+    },
+    {
+      "path": "pages/product/optimize",
+      "style": {
+        "navigationBarTitleText": "商品优化"
+      }
+    },
+    {
+      "path": "pages/competitor/analyze",
+      "style": {
+        "navigationBarTitleText": "竞品分析"
+      }
+    }
   ],
+  "globalStyle": {
+    "navigationBarTextStyle": "black",
+    "navigationBarTitleText": "Synerixis",
+    "navigationBarBackgroundColor": "#FFFFFF",
+    "backgroundColor": "#F8FAFC"
+  },
   "tabBar": {
+    "color": "#64748B",
+    "selectedColor": "#2563EB",
+    "backgroundColor": "#FFFFFF",
+    "borderStyle": "black",
     "list": [
-      { "pagePath": "pages/merchant/sessions", "text": "会话", "icon": "message" },
-      { "pagePath": "pages/products/products", "text": "商品", "icon": "shop" },
-      { "pagePath": "pages/dashboard/dashboard", "text": "仪表盘", "icon": "dashboard" },
-      { "pagePath": "pages/support/workbench", "text": "工作台", "icon": "work" },
-      { "pagePath": "pages/profile/index", "text": "我的", "icon": "user" }
+      {
+        "pagePath": "pages/dashboard/dashboard",
+        "text": "仪表盘",
+        "iconPath": "static/tab/dashboard.png",
+        "selectedIconPath": "static/tab/dashboard-active.png"
+      },
+      {
+        "pagePath": "pages/merchant/sessions",
+        "text": "收件箱",
+        "iconPath": "static/tab/inbox.png",
+        "selectedIconPath": "static/tab/inbox-active.png"
+      },
+      {
+        "pagePath": "pages/merchant/shops",
+        "text": "店铺",
+        "iconPath": "static/tab/shop.png",
+        "selectedIconPath": "static/tab/shop-active.png"
+      },
+      {
+        "pagePath": "pages/support/workbench",
+        "text": "工作台",
+        "iconPath": "static/tab/work.png",
+        "selectedIconPath": "static/tab/work-active.png"
+      },
+      {
+        "pagePath": "pages/profile/index",
+        "text": "我的",
+        "iconPath": "static/tab/user.png",
+        "selectedIconPath": "static/tab/user-active.png"
+      }
     ]
   }
 }

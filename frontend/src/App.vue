@@ -1,71 +1,64 @@
 <script setup lang="ts">
-import { onLaunch, onShow, onHide } from '@dcloudio/uni-app';
+import { onLaunch, onShow } from '@dcloudio/uni-app';
 import { getLanguage } from '@/utils/i18n.js';
-import Footer from '@/components/Footer.vue';
 
 onLaunch(() => {
   console.log('App Launch');
-  // 初始化语言
   getLanguage();
 });
 
 onShow(() => {
   console.log('App Show');
-  // 动态 TabBar：根据 userType 显示不同菜单
   updateTabBar();
 });
 
+/**
+ * Tab 索引（pages.json）：
+ * 0 仪表盘 · 1 收件箱 · 2 店铺 · 3 工作台 · 4 我的
+ */
 function updateTabBar() {
   const userType = uni.getStorageSync('userType') || '';
-  const totalTabs = 5; // 定义了5个Tab
+  const totalTabs = 5;
 
-  // 先隐藏所有 Tab
   for (let i = 0; i < totalTabs; i++) {
     try {
       uni.hideTabBarItem({ index: i });
     } catch (e) {
-      // ignore errors (e.g., item already hidden or not ready)
+      /* ignore */
     }
   }
 
-  if (!userType) {
-    // 未登录，全部隐藏
-    return;
-  }
+  if (!userType) return;
 
   let indexesToShow: number[] = [];
   if (userType === 'Seller') {
-    indexesToShow = [0, 1, 2, 4]; // 会话、商品、仪表盘、我的
+    indexesToShow = [0, 1, 2, 4];
   } else if (userType === 'Agent') {
-    indexesToShow = [3, 4]; // 工作台、我的
+    indexesToShow = [3, 4];
   } else if (userType === 'Supervisor') {
-    indexesToShow = [2, 3, 4]; // 仪表盘、工作台、我的
+    indexesToShow = [0, 3, 4];
   }
 
-  // 显示对应 Tab
-  indexesToShow.forEach(idx => {
+  indexesToShow.forEach((idx) => {
     try {
       uni.showTabBarItem({ index: idx });
     } catch (e) {
-      // ignore
+      /* ignore */
     }
   });
 }
 </script>
 
 <template>
-  <view class="app-container">
-    <!-- 页面内容 -->
+  <view class="app-root">
     <slot />
-    <!-- 全局页脚 -->
-    <Footer />
   </view>
 </template>
 
-<style>
-.app-container {
+<style lang="scss">
+.app-root {
   min-height: 100vh;
-  padding-bottom: 120rpx; /* 为固定页脚留出空间 */
+  background: #F8FAFC;
   box-sizing: border-box;
 }
 </style>

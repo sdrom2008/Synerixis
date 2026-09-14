@@ -1,3 +1,6 @@
+/* Brand primary aligned with styles/tokens.scss (#2563EB) — do not @import tokens here (uni.scss is injected into every Vue SFC; relative imports break).
+ */
+
 /**
  * 这里是uni-app内置的常用样式变量
  *
@@ -15,10 +18,10 @@
 /* 颜色变量 */
 
 /* 行为相关颜色 */
-$uni-color-primary: #007aff;
-$uni-color-success: #4cd964;
-$uni-color-warning: #f0ad4e;
-$uni-color-error: #dd524d;
+$uni-color-primary: #2563EB;
+$uni-color-success: #16A34A;
+$uni-color-warning: #D97706;
+$uni-color-error: #DC2626;
 
 /* 文字基本颜色 */
 $uni-text-color: #333; // 基本色

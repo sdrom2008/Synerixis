@@ -1,0 +1,185 @@
+/* Shared merchant console layout — import in pages via @import */
+@import './tokens.scss';
+
+.sx-page {
+  min-height: 100vh;
+  background: $sx-bg;
+  color: $sx-ink;
+  box-sizing: border-box;
+  padding: $sx-space-4;
+  padding-bottom: calc(#{$sx-space-6} + env(safe-area-inset-bottom));
+}
+
+.sx-page-wide {
+  max-width: $sx-max-width;
+  margin: 0 auto;
+}
+
+.sx-page-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: $sx-space-3;
+  margin-bottom: $sx-space-4;
+}
+
+.sx-page-title {
+  font-size: $sx-font-xl;
+  font-weight: 700;
+  color: $sx-ink;
+  line-height: 1.3;
+}
+
+.sx-page-sub {
+  margin-top: $sx-space-1;
+  font-size: $sx-font-sm;
+  color: $sx-muted;
+}
+
+.sx-card {
+  background: $sx-surface;
+  border: 1rpx solid $sx-border;
+  border-radius: $sx-radius-lg;
+  box-shadow: $sx-shadow-sm;
+  padding: $sx-space-4;
+}
+
+.sx-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 72rpx;
+  padding: 0 $sx-space-4;
+  border-radius: $sx-radius-md;
+  font-size: $sx-font-base;
+  font-weight: 600;
+  border: none;
+  line-height: 1.2;
+}
+
+.sx-btn::after {
+  border: none;
+}
+
+.sx-btn-primary {
+  background: $sx-primary;
+  color: #fff;
+}
+
+.sx-btn-primary:active {
+  background: $sx-primary-hover;
+}
+
+.sx-btn-ghost {
+  background: $sx-primary-soft;
+  color: $sx-primary;
+}
+
+.sx-btn-outline {
+  background: $sx-surface;
+  color: $sx-ink;
+  border: 1rpx solid $sx-border;
+}
+
+.sx-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4rpx 14rpx;
+  border-radius: 999rpx;
+  font-size: $sx-font-xs;
+  font-weight: 600;
+}
+
+.sx-badge-success {
+  background: $sx-success-soft;
+  color: $sx-success;
+}
+
+.sx-badge-warning {
+  background: $sx-warning-soft;
+  color: $sx-warning;
+}
+
+.sx-badge-danger {
+  background: $sx-danger-soft;
+  color: $sx-danger;
+}
+
+.sx-badge-info {
+  background: $sx-primary-soft;
+  color: $sx-primary;
+}
+
+.sx-badge-muted {
+  background: #F1F5F9;
+  color: $sx-muted;
+}
+
+.sx-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: $sx-space-3;
+}
+
+@media (min-width: 768px) {
+  .sx-kpi-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+.sx-section {
+  margin-top: $sx-space-4;
+}
+
+.sx-section-title {
+  font-size: $sx-font-lg;
+  font-weight: 650;
+  color: $sx-ink;
+  margin-bottom: $sx-space-3;
+}
+
+.sx-divider {
+  height: 1rpx;
+  background: $sx-border;
+  margin: $sx-space-3 0;
+}
+
+.sx-desktop-nav {
+  display: none;
+}
+
+@media (min-width: 960px) {
+  .sx-desktop-nav {
+    display: flex;
+    align-items: center;
+    gap: $sx-space-2;
+    padding: $sx-space-3 $sx-space-4;
+    background: $sx-surface;
+    border-bottom: 1rpx solid $sx-border;
+    position: sticky;
+    top: 0;
+    z-index: 50;
+  }
+
+  .sx-desktop-nav .brand {
+    font-weight: 700;
+    color: $sx-ink;
+    margin-right: $sx-space-4;
+    font-size: $sx-font-md;
+  }
+
+  .sx-desktop-nav .nav-item {
+    padding: 12rpx 20rpx;
+    border-radius: $sx-radius-md;
+    font-size: $sx-font-sm;
+    color: $sx-muted;
+  }
+
+  .sx-desktop-nav .nav-item.active,
+  .sx-desktop-nav .nav-item:active {
+    background: $sx-primary-soft;
+    color: $sx-primary;
+    font-weight: 600;
+  }
+}

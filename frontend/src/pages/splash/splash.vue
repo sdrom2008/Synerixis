@@ -1,21 +1,27 @@
 <template>
   <view class="splash">
-    <image src="/static/logo.png" mode="widthFix" class="logo" />
+    <view class="mark">S</view>
     <text class="title">Synerixis</text>
-    <text class="slogan">AI 智能伙伴</text>
+    <text class="slogan">跨境电商 AI 客服</text>
   </view>
 </template>
 
 <script>
 export default {
   onLoad() {
+    const token = uni.getStorageSync('token');
+    const userType = uni.getStorageSync('userType');
     setTimeout(() => {
-      uni.reLaunch({
-        url: '/pages/login/choose-login'  // 跳转到选择页
-      });
-    }, 4000);  // 你的 4秒动画
+      if (token && userType === 'Seller') {
+        uni.reLaunch({ url: '/pages/dashboard/dashboard' });
+      } else if (token && (userType === 'Agent' || userType === 'Supervisor')) {
+        uni.reLaunch({ url: '/pages/support/workbench' });
+      } else {
+        uni.reLaunch({ url: '/pages/login/choose-login' });
+      }
+    }, 900);
   }
-}
+};
 </script>
 
 <style>
@@ -25,31 +31,32 @@ export default {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #0f172a, #1e293b);
+  background: #F8FAFC;
 }
 
-.logo {
-  width: 200rpx;
-  height: 200rpx;
-  animation: pulse 2s infinite;
+.mark {
+  width: 112rpx;
+  height: 112rpx;
+  border-radius: 28rpx;
+  background: #2563EB;
+  color: #fff;
+  font-size: 56rpx;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .title {
-  font-size: 64rpx;
-  font-weight: bold;
-  color: #60a5fa;
-  margin-top: 40rpx;
+  margin-top: 32rpx;
+  font-size: 44rpx;
+  font-weight: 700;
+  color: #0F172A;
 }
 
 .slogan {
-  font-size: 32rpx;
-  color: #94a3b8;
-  margin-top: 20rpx;
-}
-
-@keyframes pulse {
-  0% { transform: scale(1); }
-  50% { transform: scale(1.1); }
-  100% { transform: scale(1); }
+  margin-top: 12rpx;
+  font-size: 26rpx;
+  color: #64748B;
 }
 </style>

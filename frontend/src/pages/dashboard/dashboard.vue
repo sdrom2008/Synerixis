@@ -1,353 +1,254 @@
 <template>
-    <view class="dashboard-page">
-        <!-- 顶部欢迎栏 -->
-        <view class="welcome-bar">
-            <view class="greeting">
-                <text class="hello">你好，</text>
-                <text class="nickname">{{ profile.nickname || '商户' }}</text>
-            </view>
-            <view class="date">{{ currentDate }}</view>
+  <AppShell active="dashboard">
+    <view class="sx-page sx-page-wide">
+      <view class="sx-page-header">
+        <view>
+          <view class="sx-page-title">仪表盘</view>
+          <view class="sx-page-sub">{{ greeting }} · {{ currentDate }}</view>
         </view>
+        <button class="sx-btn sx-btn-ghost" @tap="goShops">店铺绑定</button>
+      </view>
 
-        <!-- 额度卡片 -->
-        <view class="quota-card">
-            <view class="card-header">
-                <text class="title">剩余免费额度</text>
-                <text class="icon">🔥</text>
-            </view>
-            <view class="quota-value">{{ profile.freeQuota || 0 }} <text class="unit">条</text></view>
-            <view class="progress-bar">
-                <view class="progress" :style="{ width: progress + '%' }"></view>
-            </view>
-            <view class="quota-tip">本月已用 {{ usedQuota }} 条，还剩 {{ profile.freeQuota || 0 }} 条</view>
-        </view>
+      <view class="sx-kpi-grid">
+        <KpiCard label="今日会话" :value="kpis.todaySessions" hint="接通日期筛选后显示" />
+        <KpiCard label="自动解决率" :value="autoRateDisplay" hint="需用量埋点后显示" />
+        <KpiCard label="待人工" :value="kpis.pendingHandoff" unit="条" />
+        <KpiCard label="店铺状态" :value="shopStatusLabel" :hint="shopHint" />
+      </view>
 
-        <!-- 订阅状态 -->
-        <view class="subscription-card">
-            <view class="card-header">
-                <text class="title">订阅状态</text>
-            </view>
-            <view class="status-row">
-                <text class="label">当前等级：</text>
-                <text class="value" :class="profile.subscriptionLevel === 'Pro' ? 'pro' : 'free'">
-                    {{ profile.subscriptionLevel || '免费版' }}
-                </text>
-            </view>
-            <view class="status-row">
-                <text class="label">到期时间：</text>
-                <text class="value">{{ profile.subscriptionEnd ? formatDate(profile.subscriptionEnd) : '未订阅' }}</text>
-            </view>
-            <button class="upgrade-btn" @tap="toSubscribe" v-if="!profile.subscriptionEnd || profile.subscriptionLevel === '免费版'">
-                立即升级订阅
-            </button>
+      <view class="sx-section sx-card chart-card">
+        <view class="chart-head">
+          <text class="sx-section-title" style="margin:0">会话趋势</text>
+          <text class="chart-tag">占位</text>
         </view>
+        <view class="chart-placeholder">
+          <view class="bars">
+            <view v-for="n in 7" :key="n" class="bar" :style="{ height: barHeight(n) }" />
+          </view>
+          <text class="chart-note">图表将对接报表 API；当前无真实数据，不展示伪造指标</text>
+        </view>
+      </view>
 
-        <!-- 快捷入口 -->
-        <view class="quick-actions">
-            <view class="action-item" @tap="toChat">
-                <view class="icon-wrapper chat-icon">💬</view>
-                <text class="label">智能客服</text>
-            </view>
-            <view class="action-item" @tap="toMarketingCopy">
-                <view class="icon-wrapper copy-icon">📝</view>
-                <text class="label">营销文案</text>
-            </view>
-            <view class="action-item" @tap="toProductOptimize">
-                <view class="icon-wrapper optimize-icon">🔧</view>
-                <text class="label">商品优化</text>
-            </view>
-            <view class="action-item" @tap="toCompetitorAnalysis">
-                <view class="icon-wrapper competitor-icon">📊</view>
-                <text class="label">竞品分析</text>
-            </view>
-            <view class="action-item" @tap="toProducts">
-                <view class="icon-wrapper product-icon">🛒</view>
-                <text class="label">商品管理</text>
-            </view>
-            <view class="action-item" @tap="toProfile">
-                <view class="icon-wrapper profile-icon">👤</view>
-                <text class="label">我的设置</text>
-            </view>
+      <view class="sx-section">
+        <view class="sx-section-title">快捷入口</view>
+        <view class="quick-grid">
+          <view class="quick-item" @tap="goInbox">
+            <text class="q-title">收件箱</text>
+            <text class="q-desc">会话列表与转人工</text>
+          </view>
+          <view class="quick-item" @tap="goShops">
+            <text class="q-title">绑定 Shopee</text>
+            <text class="q-desc">OAuth 授权与连接状态</text>
+          </view>
+          <view class="quick-item" @tap="goAi">
+            <text class="q-title">AI 设置</text>
+            <text class="q-desc">语气、自动回复、营业时段</text>
+          </view>
+          <view class="quick-item" @tap="goBilling">
+            <text class="q-title">套餐计费</text>
+            <text class="q-desc">Trial / Starter / Pro</text>
+          </view>
         </view>
+      </view>
 
-        <!-- 底部提示 -->
-        <view class="tip">
-            额度不足？升级订阅享无限使用 + 更多高级功能
-        </view>
+      <EmptyState
+        v-if="showEmptyShop"
+        class="sx-section"
+        title="尚未绑定店铺"
+        description="绑定 Shopee 店铺后，Webhook 消息才会进入收件箱并由 AI 自动回复。"
+        cta-text="去绑定 Shopee"
+        icon="店"
+        @cta="goShops"
+      />
     </view>
+  </AppShell>
 </template>
 
 <script>
-    import { request } from '@/utils/request.js';
+import AppShell from '@/components/merchant/AppShell.vue';
+import KpiCard from '@/components/merchant/KpiCard.vue';
+import EmptyState from '@/components/merchant/EmptyState.vue';
+import { getDashboardKpis, getConnections, getSellerProfile } from '@/api/merchant.js';
 
-    export default {
-        data() {
-            return {
-                profile: {
-                    nickname: '加载中...',
-                    freeQuota: 0,
-                    subscriptionLevel: '免费版',
-                    subscriptionEnd: null,
-                    avatarUrl: ''
-                },
-                usedQuota: 0,
-                progress: 0,
-                currentDate: ''
-            };
-        },
-
-        onShow() {
-            this.updateDate();
-            this.loadProfile();
-        },
-
-        methods: {
-            updateDate() {
-                const now = new Date();
-                this.currentDate = now.toLocaleDateString('zh-CN', { weekday: 'long', month: 'long', day: 'numeric' });
-            },
-
-            async loadProfile() {
-                try {
-                    const data = await request({ url: '/api/seller/profile' });
-                    this.profile = data;
-                    // 假设总额度是100，计算已用
-                    const totalQuota = 100; // 或者从API获取
-                    this.usedQuota = totalQuota - (this.profile.freeQuota || 0);
-                    this.progress = this.usedQuota > 0 ? Math.min(100, (this.usedQuota / totalQuota) * 100) : 0;
-                } catch (error) {
-                    // 错误已在request.js中统一处理
-                }
-            },
-
-            formatDate(dateStr) {
-                if (!dateStr) return '未订阅';
-                const date = new Date(dateStr);
-                return date.toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' });
-            },
-
-            toChat() {
-                uni.switchTab({ url: '/pages/conversations/conversations' });
-            },
-            toMarketingCopy() {
-                uni.navigateTo({ url: '/pages/marketing/generate' });
-            },
-            toProductOptimize() {
-                uni.navigateTo({ url: '/pages/product/optimize' });
-            },
-            toCompetitorAnalysis() {
-                uni.navigateTo({ url: '/pages/competitor/analyze' });
-            },
-            toProducts() {
-                uni.navigateTo({ url: '/pages/products/products' });
-            },
-            toProfile() {
-                uni.navigateTo({ url: '/pages/profile/profile' });
-            },
-            toSubscribe() {
-                uni.navigateTo({ url: '/pages/pay/subscribe' });
-            }
-        }
+export default {
+  components: { AppShell, KpiCard, EmptyState },
+  data() {
+    return {
+      nickname: '',
+      currentDate: '',
+      kpis: {
+        todaySessions: null,
+        autoResolveRate: null,
+        pendingHandoff: null,
+        sessionsTotal: null
+      },
+      connections: [],
+      loaded: false
     };
+  },
+  computed: {
+    greeting() {
+      return this.nickname ? `你好，${this.nickname}` : '商家控制台';
+    },
+    autoRateDisplay() {
+      if (this.kpis.autoResolveRate === null || this.kpis.autoResolveRate === undefined) return null;
+      return `${this.kpis.autoResolveRate}%`;
+    },
+    shopConnected() {
+      return (this.connections || []).some((c) => c.isActive || c.IsActive);
+    },
+    shopStatusLabel() {
+      if (!this.loaded) return null;
+      return this.shopConnected ? '已连接' : '未绑定';
+    },
+    shopHint() {
+      if (!this.loaded) return '';
+      return this.shopConnected ? 'Shopee 连接正常' : '请完成 OAuth 授权';
+    },
+    showEmptyShop() {
+      return this.loaded && !this.shopConnected;
+    }
+  },
+  onShow() {
+    this.updateDate();
+    this.load();
+  },
+  methods: {
+    updateDate() {
+      const now = new Date();
+      this.currentDate = now.toLocaleDateString('zh-CN', {
+        weekday: 'long',
+        month: 'long',
+        day: 'numeric'
+      });
+    },
+    async load() {
+      try {
+        const profile = await getSellerProfile();
+        this.nickname = profile?.nickname || profile?.Nickname || '';
+      } catch (e) {
+        /* request.js handles toast */
+      }
+      try {
+        const conn = await getConnections();
+        this.connections = conn?.items || [];
+      } catch (e) {
+        this.connections = [];
+      }
+      const kpis = await getDashboardKpis();
+      this.kpis = {
+        todaySessions: kpis.todaySessions,
+        autoResolveRate: kpis.autoResolveRate,
+        pendingHandoff: kpis.pendingHandoff,
+        sessionsTotal: kpis.sessionsTotal
+      };
+      this.loaded = true;
+    },
+    barHeight(n) {
+      // Decorative placeholder only — heights are fixed UI chrome, not metrics
+      const heights = [36, 52, 44, 68, 40, 60, 48];
+      return heights[(n - 1) % heights.length] + 'rpx';
+    },
+    goInbox() {
+      uni.switchTab({ url: '/pages/merchant/sessions' });
+    },
+    goShops() {
+      uni.switchTab({ url: '/pages/merchant/shops' });
+    },
+    goAi() {
+      uni.navigateTo({ url: '/pages/merchant/ai-settings' });
+    },
+    goBilling() {
+      uni.navigateTo({ url: '/pages/merchant/billing' });
+    }
+  }
+};
 </script>
 
-<style>
-    .dashboard-page {
-        background: #f5f5f5;
-        min-height: 100vh;
-        padding: 30rpx;
-        padding-top: 120rpx;
-    }
+<style lang="scss">
+@import '../../styles/merchant.scss';
 
-    .welcome-bar {
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        height: 120rpx;
-        background: linear-gradient(135deg, #667eea, #764ba2);
-        color: white;
-        padding: 0 30rpx;
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-        z-index: 99;
-    }
+.chart-card {
+  margin-top: 32rpx;
+}
 
-    .hello {
-        font-size: 32rpx;
-    }
+.chart-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24rpx;
+}
 
-    .nickname {
-        font-size: 40rpx;
-        font-weight: bold;
-    }
+.chart-tag {
+  font-size: 22rpx;
+  color: #64748B;
+  background: #F1F5F9;
+  padding: 4rpx 14rpx;
+  border-radius: 999rpx;
+}
 
-    .date {
-        font-size: 28rpx;
-        opacity: 0.9;
-        margin-top: 8rpx;
-    }
+.chart-placeholder {
+  background: #F8FAFC;
+  border-radius: 16rpx;
+  padding: 40rpx 24rpx 28rpx;
+  border: 1rpx solid #E2E8F0;
+}
 
-    .quota-card {
-        background: white;
-        border-radius: 24rpx;
-        padding: 40rpx;
-        margin-bottom: 30rpx;
-        box-shadow: 0 8rpx 32rpx rgba(0,0,0,0.08);
-    }
+.bars {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  height: 120rpx;
+  gap: 12rpx;
+  margin-bottom: 20rpx;
+}
 
-    .card-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 30rpx;
-    }
+.bar {
+  flex: 1;
+  background: #BFDBFE;
+  border-radius: 8rpx 8rpx 4rpx 4rpx;
+  min-height: 24rpx;
+}
 
-    .title {
-        font-size: 36rpx;
-        font-weight: bold;
-    }
+.chart-note {
+  display: block;
+  text-align: center;
+  font-size: 22rpx;
+  color: #94A3B8;
+  line-height: 1.5;
+}
 
-    .icon {
-        font-size: 40rpx;
-    }
+.quick-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 24rpx;
+}
 
-    .quota-value {
-        font-size: 80rpx;
-        font-weight: bold;
-        text-align: center;
-        margin: 20rpx 0;
-    }
+@media (min-width: 768px) {
+  .quick-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
 
-    .unit {
-        font-size: 40rpx;
-        color: #666;
-    }
+.quick-item {
+  background: #fff;
+  border: 1rpx solid #E2E8F0;
+  border-radius: 16rpx;
+  padding: 28rpx 24rpx;
+  box-shadow: 0 2rpx 8rpx rgba(15, 23, 42, 0.04);
+}
 
-    .progress-bar {
-        height: 16rpx;
-        background: #eee;
-        border-radius: 8rpx;
-        overflow: hidden;
-        margin: 20rpx 0;
-    }
+.q-title {
+  display: block;
+  font-size: 30rpx;
+  font-weight: 650;
+  color: #0F172A;
+  margin-bottom: 8rpx;
+}
 
-    .progress {
-        height: 100%;
-        background: linear-gradient(to right, #667eea, #764ba2);
-        transition: width 0.5s;
-    }
-
-    .quota-tip {
-        text-align: center;
-        font-size: 28rpx;
-        color: #666;
-    }
-
-    .subscription-card {
-        background: white;
-        border-radius: 24rpx;
-        padding: 40rpx;
-        margin-bottom: 30rpx;
-        box-shadow: 0 8rpx 32rpx rgba(0,0,0,0.08);
-    }
-
-    .status-row {
-        display: flex;
-        justify-content: space-between;
-        margin: 20rpx 0;
-        font-size: 32rpx;
-    }
-
-    .label {
-        color: #666;
-    }
-
-    .value {
-        font-weight: bold;
-    }
-
-    .pro {
-        color: #007aff;
-    }
-
-    .free {
-        color: #999;
-    }
-
-    .upgrade-btn {
-        background: #007aff;
-        color: white;
-        border-radius: 50rpx;
-        margin-top: 40rpx;
-        height: 96rpx;
-        line-height: 96rpx;
-        text-align: center;
-        font-size: 32rpx;
-    }
-
-    .quick-actions {
-        display: flex;
-        flex-wrap: wrap;
-        justify-content: space-between;
-        margin-bottom: 40rpx;
-    }
-
-    .action-item {
-        width: 45%;
-        background: white;
-        border-radius: 16rpx;
-        padding: 40rpx 20rpx;
-        text-align: center;
-        margin-bottom: 30rpx;
-        box-shadow: 0 4rpx 16rpx rgba(0,0,0,0.06);
-    }
-
-    .icon-wrapper {
-        width: 120rpx;
-        height: 120rpx;
-        background: #f0f4ff;
-        border-radius: 50%;
-        margin: 0 auto 20rpx;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 60rpx;
-    }
-
-    .chat-icon {
-        background: #e6f7ff;
-    }
-
-    .copy-icon {
-        background: #f6ffed;
-    }
-
-    .optimize-icon {
-        background: #fff7e6;
-    }
-
-    .competitor-icon {
-        background: #f9f0ff;
-    }
-
-    .product-icon {
-        background: #e6f7ff;
-    }
-
-    .profile-icon {
-        background: #f0f5ff;
-    }
-
-    .label {
-        font-size: 30rpx;
-        color: #333;
-    }
-
-    .tip {
-        text-align: center;
-        font-size: 28rpx;
-        color: #999;
-    }
+.q-desc {
+  font-size: 24rpx;
+  color: #64748B;
+  line-height: 1.4;
+}
 </style>
