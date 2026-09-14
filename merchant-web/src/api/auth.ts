@@ -6,11 +6,20 @@ export interface PhoneLoginPayload {
   countryCode?: string
 }
 
+export interface AgentLoginPayload {
+  email: string
+  password: string
+}
+
 export interface LoginResult {
   token: string
   userId?: string
+  agentId?: string
   userType?: string
   nickname?: string
+  name?: string
+  role?: string
+  shopId?: string
   freeQuota?: number
   subscriptionLevel?: string
   isNewRegistration?: boolean
@@ -25,6 +34,18 @@ export function phoneLogin(payload: PhoneLoginPayload) {
       Phone: payload.phone,
       Code: payload.code,
       CountryCode: payload.countryCode || '86',
+    },
+  })
+}
+
+/** POST /api/auth/agent-login — 坐席邮箱+密码 */
+export function agentLogin(payload: AgentLoginPayload) {
+  return request<LoginResult>({
+    url: '/api/auth/agent-login',
+    method: 'POST',
+    data: {
+      Email: payload.email,
+      Password: payload.password,
     },
   })
 }

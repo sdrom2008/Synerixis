@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Configuration;
 using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
@@ -23,9 +23,12 @@ namespace Synerixis.Infrastructure.Services
             var claims = new List<Claim>
             {
                 new Claim(ClaimTypes.NameIdentifier, userId.ToString()),
-                new Claim("userType", userType),                    // 前端用
-                new Claim("role", userType),                       // 后端用（简单字符串）
-                new Claim("uid", userId.ToString())
+                new Claim("userId", userId.ToString()),
+                new Claim("uid", userId.ToString()),
+                new Claim("userType", userType),
+                // ASP.NET [Authorize(Roles=...)] 默认读 ClaimTypes.Role
+                new Claim(ClaimTypes.Role, userType),
+                new Claim("role", userType),
             };
 
             // Seller: ChatSession.ShopId == Seller.Id; always emit shopId for merchant APIs

@@ -122,7 +122,7 @@ namespace Synerixis.Api.Controllers
         {
             try
             {
-                var shopId = GetCurrentSellerShopId();
+                var shopId = GetMerchantShopId();
 
                 var query = _db.ChatSessions
                     .Include(s => s.AssignedAgent)
@@ -238,7 +238,7 @@ namespace Synerixis.Api.Controllers
         {
             try
             {
-                var shopId = GetCurrentSellerShopId();
+                var shopId = GetMerchantShopId();
 
                 var session = await _db.ChatSessions
                     .FirstOrDefaultAsync(s => s.Id == id && s.ShopId == shopId);
@@ -307,7 +307,7 @@ namespace Synerixis.Api.Controllers
         {
             try
             {
-                var shopId = GetCurrentSellerShopId();
+                var shopId = GetMerchantShopId();
 
                 var session = await _db.ChatSessions
                     .FirstOrDefaultAsync(s => s.Id == id && s.ShopId == shopId);
@@ -353,9 +353,9 @@ namespace Synerixis.Api.Controllers
         {
             try
             {
-                var sellerId = GetCurrentSellerId();
-                // ChatSession.ShopId == Seller.Id
-                var shopId = sellerId;
+                var shopId = GetMerchantShopId();
+                // ChatSession.ShopId == Seller.Id；店铺连接也按 SellerId=shopId
+                var sellerId = shopId;
                 var now = DateTime.UtcNow;
                 var todayStart = DateTime.SpecifyKind(now.Date, DateTimeKind.Utc);
                 var monthStart = new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc);
@@ -423,8 +423,7 @@ namespace Synerixis.Api.Controllers
         {
             try
             {
-                var sellerId = GetCurrentSellerId();
-                var shopId = sellerId;
+                var shopId = GetMerchantShopId();
                 var now = DateTime.UtcNow;
                 var monthStart = new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc);
 
@@ -462,7 +461,7 @@ namespace Synerixis.Api.Controllers
         {
             try
             {
-                var shopId = GetCurrentSellerShopId();
+                var shopId = GetMerchantShopId();
                 var config = await _db.SellerConfigs
                     .AsNoTracking()
                     .FirstOrDefaultAsync(c => c.SellerId == shopId);
@@ -553,7 +552,7 @@ namespace Synerixis.Api.Controllers
         {
             try
             {
-                var shopId = GetCurrentSellerShopId();
+                var shopId = GetMerchantShopId();
                 var now = DateTime.UtcNow;
                 var rows = await (
                     from d in _db.DraftMessages
@@ -596,7 +595,7 @@ namespace Synerixis.Api.Controllers
         {
             try
             {
-                var shopId = GetCurrentSellerShopId();
+                var shopId = GetMerchantShopId();
                 var session = await _db.ChatSessions.FirstOrDefaultAsync(s => s.Id == id && s.ShopId == shopId);
                 if (session == null)
                     return NotFound(new { message = "会话不存在" });
@@ -668,7 +667,7 @@ namespace Synerixis.Api.Controllers
                 if (body == null || string.IsNullOrWhiteSpace(body.Content))
                     return BadRequest(new { message = "内容不能为空" });
 
-                var shopId = GetCurrentSellerShopId();
+                var shopId = GetMerchantShopId();
                 var session = await _db.ChatSessions.FirstOrDefaultAsync(s => s.Id == id && s.ShopId == shopId);
                 if (session == null)
                     return NotFound(new { message = "会话不存在" });
@@ -701,7 +700,7 @@ namespace Synerixis.Api.Controllers
         {
             try
             {
-                var shopId = GetCurrentSellerShopId();
+                var shopId = GetMerchantShopId();
                 var session = await _db.ChatSessions.FirstOrDefaultAsync(s => s.Id == id && s.ShopId == shopId);
                 if (session == null)
                     return NotFound(new { message = "会话不存在" });
@@ -731,7 +730,7 @@ namespace Synerixis.Api.Controllers
         {
             try
             {
-                var shopId = GetCurrentSellerShopId();
+                var shopId = GetMerchantShopId();
                 var session = await _db.ChatSessions
                     .FirstOrDefaultAsync(s => s.Id == sessionId && s.ShopId == shopId);
                 if (session == null)

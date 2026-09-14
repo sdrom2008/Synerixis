@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
 using Synerixis.Api.Helpers;
 using Synerixis.Domain.Entities;
@@ -18,8 +18,13 @@ namespace Synerixis.Api.Controllers
         /// </summary>
         protected CurrentUser GetCurrentUser()
         {
-            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier) ?? User.FindFirst("sub");
-            var userTypeClaim = User.FindFirst("userType") ?? User.FindFirst("role");
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)
+                ?? User.FindFirst("sub")
+                ?? User.FindFirst("uid")
+                ?? User.FindFirst("userId");
+            var userTypeClaim = User.FindFirst("userType")
+                ?? User.FindFirst(ClaimTypes.Role)
+                ?? User.FindFirst("role");
             var shopIdClaim = User.FindFirst("shopId");
 
             if (userIdClaim == null || userTypeClaim == null)
@@ -29,25 +34,43 @@ namespace Synerixis.Api.Controllers
             {
                 UserId = Guid.Parse(userIdClaim.Value),
                 UserType = userTypeClaim.Value,
-                ShopId = shopIdClaim != null ? Guid.Parse(shopIdClaim.Value) : null
+                ShopId = shopIdClaim != null && Guid.TryParse(shopIdClaim.Value, out var sid)
+                    ? sid
+                    : null
             };
         }
 
         /// <summary>
-        /// 确保当前用户是 Seller，并返回其 ShopId
+        /// 商家端收件箱等：Seller 与同店坐席均可，统一解析本店 ShopId。
+        /// Seller: shopId claim 或 UserId；Agent/Supervisor/Admin: 必须有 shopId claim。
+        /// </summary>
+        protected Guid GetMerchantShopId()
+        {
+            var current = GetCurrentUser();
+            if (current.IsSeller)
+                return current.ShopId ?? current.UserId;
+
+            if (current.IsStaff)
+            {
+                if (!current.ShopId.HasValue)
+                    throw new UnauthorizedAccessException("坐席 Token 缺少 shopId");
+                return current.ShopId.Value;
+            }
+
+            throw new UnauthorizedAccessException("无权访问商家工作台");
+        }
+
+        /// <summary>
+        /// 仅 Seller（兼容旧调用）；收件箱请用 GetMerchantShopId。
         /// </summary>
         protected Guid GetCurrentSellerShopId()
         {
             var current = GetCurrentUser();
             if (!current.IsSeller)
                 throw new UnauthorizedAccessException("仅商户可访问");
-            // Seller JWT historically omits shopId; ChatSession.ShopId == Seller.Id
             return current.ShopId ?? current.UserId;
         }
 
-        /// <summary>
-        /// 获取当前 Seller 的 ID
-        /// </summary>
         protected Guid GetCurrentSellerId()
         {
             var current = GetCurrentUser();
@@ -57,12 +80,29 @@ namespace Synerixis.Api.Controllers
         }
 
         /// <summary>
-        /// 获取当前 Agent（客服或主管）
+        /// 团队管理：Seller 本人，或同店 Supervisor/Admin。
+        /// 返回被管理店铺的 Seller.Id（= Agents.ShopId）。
         /// </summary>
+        protected Guid GetTeamManagedShopId()
+        {
+            var current = GetCurrentUser();
+            if (current.IsSeller)
+                return current.ShopId ?? current.UserId;
+
+            if (current.IsSupervisor || current.IsAdmin)
+            {
+                if (!current.ShopId.HasValue)
+                    throw new UnauthorizedAccessException("坐席 Token 缺少 shopId");
+                return current.ShopId.Value;
+            }
+
+            throw new UnauthorizedAccessException("仅商家或主管可管理团队");
+        }
+
         protected Agent GetCurrentAgent(AppDbContext db)
         {
             var current = GetCurrentUser();
-            if (!current.IsAgent && !current.IsSupervisor)
+            if (!current.IsStaff)
                 throw new UnauthorizedAccessException("仅客服或主管可访问");
 
             var agent = db.Agents.FirstOrDefault(a => a.Id == current.UserId);

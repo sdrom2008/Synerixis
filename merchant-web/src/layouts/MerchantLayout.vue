@@ -5,7 +5,7 @@
         <span class="logo">S</span>
         <div v-if="!collapsed" class="brand-text">
           <strong>Synerixis</strong>
-          <span>商家工作台</span>
+          <span>桌面工作台</span>
         </div>
       </div>
       <el-menu
@@ -17,7 +17,7 @@
         active-text-color="#ffffff"
         class="menu"
       >
-        <el-menu-item index="/overview">
+        <el-menu-item v-if="showOverview" index="/overview">
           <el-icon><Odometer /></el-icon>
           <span>概览</span>
         </el-menu-item>
@@ -25,22 +25,24 @@
           <el-icon><ChatDotRound /></el-icon>
           <span>收件箱</span>
         </el-menu-item>
-        <el-menu-item index="/shops">
-          <el-icon><Shop /></el-icon>
-          <span>店铺绑定</span>
-        </el-menu-item>
-        <el-menu-item index="/ai-settings">
-          <el-icon><Cpu /></el-icon>
-          <span>AI 设置</span>
-        </el-menu-item>
-        <el-menu-item index="/billing">
-          <el-icon><Coin /></el-icon>
-          <span>计费</span>
-        </el-menu-item>
-        <el-menu-item index="/team">
-          <el-icon><UserFilled /></el-icon>
-          <span>团队</span>
-        </el-menu-item>
+        <template v-if="perms.fullMenu">
+          <el-menu-item index="/shops">
+            <el-icon><Shop /></el-icon>
+            <span>店铺绑定</span>
+          </el-menu-item>
+          <el-menu-item index="/ai-settings">
+            <el-icon><Cpu /></el-icon>
+            <span>AI 设置</span>
+          </el-menu-item>
+          <el-menu-item index="/billing">
+            <el-icon><Coin /></el-icon>
+            <span>计费</span>
+          </el-menu-item>
+          <el-menu-item index="/team">
+            <el-icon><UserFilled /></el-icon>
+            <span>团队</span>
+          </el-menu-item>
+        </template>
       </el-menu>
     </el-aside>
 
@@ -51,11 +53,12 @@
             <el-icon><Fold v-if="!collapsed" /><Expand v-else /></el-icon>
           </el-button>
           <span class="header-title">{{ title }}</span>
-          <el-tag size="small" effect="plain" type="info">桌面端 · draft-first</el-tag>
+          <el-tag size="small" effect="plain" type="info">桌面工作台 · draft-first</el-tag>
         </div>
         <div class="right">
-          <span class="user-name">{{ displayName }}</span>
-          <el-button text type="danger" @click="logout">退出</el-button>
+          <el-tag size="small" type="primary" effect="light">{{ auth.identityLabel }}</el-tag>
+          <span class="user-name">{{ auth.displayName }}</span>
+          <el-button text type="danger" @click="logout">退出登录</el-button>
         </div>
       </el-header>
       <el-main :class="['main', { flush: !!route.meta.flush }]">
@@ -76,8 +79,9 @@ const auth = useAuthStore()
 const collapsed = ref(false)
 
 const active = computed(() => route.path)
-const title = computed(() => (route.meta.title as string) || '商家工作台')
-const displayName = computed(() => auth.profile?.nickname || '商家账号')
+const title = computed(() => (route.meta.title as string) || '桌面工作台')
+const perms = computed(() => auth.permissions)
+const showOverview = computed(() => perms.value.canViewOverview)
 
 function logout() {
   auth.clear()

@@ -25,6 +25,24 @@ Phase 1 只打透 **Shopee + TikTok Shop**。淘宝 / 抖店 **不再作为 Phas
 
 密钥与店铺 Token 走配置（`Shopee:*` / `TikTok:*`），**不要**提交进仓库。
 
+## 商家主入口：merchant-web（桌面工作台）
+
+**网页端优先于移动端。** PC 浏览器打开 `merchant-web/`（`npm run dev`，默认 Vite 代理 `/api`）。
+
+| 登录方式 | 说明 |
+|----------|------|
+| 商家手机登录 | `POST /api/auth/phone-login`；开发环境验证码 **123456** |
+| 坐席邮箱登录 | `POST /api/auth/agent-login`；密码为商家在「团队」页设置的初始密码（存 SHA256+salt） |
+| 粘贴 Token | 调试用，粘贴已有 JWT |
+
+- 登录后默认进入 **收件箱**（draft-first + SLA badge + 转人工）。
+- **Seller / Supervisor / Admin**：概览、收件箱、店铺、AI 设置、计费、团队。
+- **Agent（普通坐席）**：仅收件箱 + 只读概览 KPI；无团队/店铺/计费/AI 设置权限。
+- 开发测号：`POST /api/auth/init-agent`（仅 Development）可创建 `admin@test.com` / `Agent123!`。
+
+更多见 [`docs/MERCHANT_WEB.md`](docs/MERCHANT_WEB.md)。
+
+
 ## Phase 1 平台
 
 | 平台 | 地区侧重 | 状态 |

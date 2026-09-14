@@ -8,6 +8,7 @@ using Synerixis.Application.Interfaces;
 using Synerixis.Application.Services;
 using Synerixis.Domain.Entities;
 using Synerixis.Infrastructure.Data;
+using Synerixis.Infrastructure.Services;
 using System.Linq;
 using System.Security.Claims;
 using System.Text.Json;
@@ -350,106 +351,154 @@ namespace Synerixis.Api.Controllers
         }
 
         // ============================================
-        // 客服团队管理
+        // 客服团队管理（Seller 本人 + 同店 Supervisor/Admin）
         // ============================================
         [HttpGet("team")]
         public async Task<IActionResult> GetTeam()
         {
-            var sellerIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (!Guid.TryParse(sellerIdStr, out var sellerId))
-                return Unauthorized();
+            try
+            {
+                var shopId = GetTeamManagedShopId();
+                var agents = await _db.Agents
+                    .Where(a => a.ShopId == shopId)
+                    .OrderBy(a => a.Role)
+                    .ThenBy(a => a.CreatedAt)
+                    .Select(a => new
+                    {
+                        id = a.Id,
+                        name = a.Name,
+                        email = a.Email,
+                        role = a.Role.ToString(),
+                        isActive = a.IsActive,
+                        isOnline = a.IsOnline,
+                        maxConcurrentSessions = a.MaxConcurrentSessions,
+                        currentSessionCount = a.CurrentSessionCount,
+                        lastLoginAt = a.LastLoginAt,
+                        createdAt = a.CreatedAt
+                    })
+                    .ToListAsync();
 
-            var agents = await _db.Agents
-                .Where(a => a.ShopId == sellerId)
-                .OrderBy(a => a.Role)
-                .ThenBy(a => a.CreatedAt)
-                .Select(a => new
-                {
-                    a.Id,
-                    a.Name,
-                    a.Email,
-                    a.Role,
-                    a.IsActive,
-                    a.IsOnline,
-                    a.MaxConcurrentSessions,
-                    a.CurrentSessionCount,
-                    a.LastLoginAt,
-                    a.CreatedAt
-                })
-                .ToListAsync();
-
-            return Ok(agents);
+                return Ok(new { items = agents, total = agents.Count, shopId });
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return Unauthorized(new { message = ex.Message });
+            }
         }
 
         [HttpPost("team")]
         public async Task<IActionResult> AddTeamMember([FromBody] AddAgentDto dto)
         {
-            var sellerIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (!Guid.TryParse(sellerIdStr, out var sellerId))
-                return Unauthorized();
-
-            var existing = await _db.Agents.FirstOrDefaultAsync(a => a.Email == dto.Email);
-            if (existing != null)
-                return BadRequest("该邮箱已被使用");
-
-            var agent = Agent.Create(
-                shopId: sellerId,
-                email: dto.Email,
-                name: dto.Name,
-                passwordHash: dto.Password,
-                role: dto.Role ?? AgentRole.Agent
-            );
-
-            _db.Agents.Add(agent);
-            await _db.SaveChangesAsync();
-
-            return Ok(new
+            try
             {
-                message = "客服添加成功",
-                agentId = agent.Id
-            });
+                var shopId = GetTeamManagedShopId();
+
+                if (string.IsNullOrWhiteSpace(dto.Email) || string.IsNullOrWhiteSpace(dto.Password) || string.IsNullOrWhiteSpace(dto.Name))
+                    return BadRequest(new { message = "邮箱、姓名、初始密码不能为空" });
+
+                var role = ParseAgentRole(dto.Role, dto.RoleName) ?? AgentRole.Agent;
+                if (role == AgentRole.Admin)
+                {
+                    var current = GetCurrentUser();
+                    if (!current.IsSeller && !current.IsAdmin)
+                        return Forbid();
+                }
+
+                var existing = await _db.Agents.FirstOrDefaultAsync(a => a.Email == dto.Email);
+                if (existing != null)
+                    return BadRequest(new { message = "该邮箱已被使用" });
+
+                var agent = Agent.Create(
+                    shopId: shopId,
+                    email: dto.Email.Trim(),
+                    name: dto.Name.Trim(),
+                    passwordHash: AgentPasswordHasher.Hash(dto.Password),
+                    role: role
+                );
+
+                _db.Agents.Add(agent);
+                await _db.SaveChangesAsync();
+
+                return Ok(new
+                {
+                    message = "客服添加成功",
+                    agentId = agent.Id,
+                    role = agent.Role.ToString()
+                });
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return Unauthorized(new { message = ex.Message });
+            }
         }
 
         [HttpPut("team/{agentId}")]
+        [HttpPatch("team/{agentId}")]
         public async Task<IActionResult> UpdateTeamMember(
             Guid agentId,
             [FromBody] UpdateAgentDto dto)
         {
-            var sellerIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (!Guid.TryParse(sellerIdStr, out var sellerId))
-                return Unauthorized();
+            try
+            {
+                var shopId = GetTeamManagedShopId();
+                var agent = await _db.Agents.FirstOrDefaultAsync(a => a.Id == agentId && a.ShopId == shopId);
+                if (agent == null)
+                    return NotFound(new { message = "客服不存在或无权限" });
 
-            var agent = await _db.Agents.FirstOrDefaultAsync(a => a.Id == agentId && a.ShopId == sellerId);
-            if (agent == null)
-                return NotFound("客服不存在或无权限");
+                if (!string.IsNullOrEmpty(dto.Name))
+                    agent.UpdateProfile(dto.Name, null);
+                if (dto.MaxConcurrentSessions.HasValue)
+                    agent.SetMaxConcurrentSessions(dto.MaxConcurrentSessions.Value);
+                if (dto.IsActive.HasValue)
+                    agent.SetActive(dto.IsActive.Value);
 
-            if (!string.IsNullOrEmpty(dto.Name))
-                agent.UpdateProfile(dto.Name, null);
-            if (dto.MaxConcurrentSessions.HasValue)
-                agent.SetMaxConcurrentSessions(dto.MaxConcurrentSessions.Value);
-            if (dto.IsActive.HasValue)
-                agent.SetActive(dto.IsActive.Value);
+                var newRole = ParseAgentRole(dto.Role, dto.RoleName);
+                if (newRole.HasValue)
+                {
+                    if (newRole.Value == AgentRole.Admin)
+                    {
+                        var current = GetCurrentUser();
+                        if (!current.IsSeller && !current.IsAdmin)
+                            return Forbid();
+                    }
+                    agent.UpdateRole(newRole.Value);
+                }
 
-            await _db.SaveChangesAsync();
+                await _db.SaveChangesAsync();
 
-            return Ok(new { message = "客服信息更新成功" });
+                return Ok(new
+                {
+                    message = "客服信息更新成功",
+                    agentId = agent.Id,
+                    role = agent.Role.ToString(),
+                    isActive = agent.IsActive
+                });
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return Unauthorized(new { message = ex.Message });
+            }
         }
 
         [HttpDelete("team/{agentId}")]
         public async Task<IActionResult> RemoveTeamMember(Guid agentId)
         {
-            var sellerIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (!Guid.TryParse(sellerIdStr, out var sellerId))
-                return Unauthorized();
+            try
+            {
+                var shopId = GetTeamManagedShopId();
+                var agent = await _db.Agents.FirstOrDefaultAsync(a => a.Id == agentId && a.ShopId == shopId);
+                if (agent == null)
+                    return NotFound(new { message = "客服不存在或无权限" });
 
-            var agent = await _db.Agents.FirstOrDefaultAsync(a => a.Id == agentId && a.ShopId == sellerId);
-            if (agent == null)
-                return NotFound("客服不存在或无权限");
+                agent.SetActive(false);
+                await _db.SaveChangesAsync();
 
-            agent.SetActive(false);
-            await _db.SaveChangesAsync();
-
-            return Ok(new { message = "客服已移除" });
+                return Ok(new { message = "客服已禁用" });
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return Unauthorized(new { message = ex.Message });
+            }
         }
 
         [HttpPost("team/{agentId}/reset-password")]
@@ -457,18 +506,32 @@ namespace Synerixis.Api.Controllers
             Guid agentId,
             [FromBody] ResetPasswordDto dto)
         {
-            var sellerIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (!Guid.TryParse(sellerIdStr, out var sellerId))
-                return Unauthorized();
+            try
+            {
+                var shopId = GetTeamManagedShopId();
+                if (string.IsNullOrWhiteSpace(dto.NewPassword))
+                    return BadRequest(new { message = "新密码不能为空" });
 
-            var agent = await _db.Agents.FirstOrDefaultAsync(a => a.Id == agentId && a.ShopId == sellerId);
-            if (agent == null)
-                return NotFound("客服不存在或无权限");
+                var agent = await _db.Agents.FirstOrDefaultAsync(a => a.Id == agentId && a.ShopId == shopId);
+                if (agent == null)
+                    return NotFound(new { message = "客服不存在或无权限" });
 
-            agent.UpdatePassword(dto.NewPassword);
-            await _db.SaveChangesAsync();
+                agent.UpdatePassword(AgentPasswordHasher.Hash(dto.NewPassword));
+                await _db.SaveChangesAsync();
 
-            return Ok(new { message = "密码重置成功" });
+                return Ok(new { message = "密码重置成功" });
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return Unauthorized(new { message = ex.Message });
+            }
+        }
+
+        private static AgentRole? ParseAgentRole(AgentRole? role, string? roleName)
+        {
+            if (role.HasValue) return role;
+            if (string.IsNullOrWhiteSpace(roleName)) return null;
+            return Enum.TryParse<AgentRole>(roleName.Trim(), true, out var parsed) ? parsed : null;
         }
     }
 
@@ -477,13 +540,16 @@ namespace Synerixis.Api.Controllers
         public string Email { get; set; } = null!;
         public string Password { get; set; } = null!;
         public string Name { get; set; } = null!;
-        public AgentRole? Role { get; set; } = AgentRole.Agent;
+        public AgentRole? Role { get; set; }
+        /// <summary>前端可传 "Agent" | "Supervisor"</summary>
+        public string? RoleName { get; set; }
     }
 
     public class UpdateAgentDto
     {
         public string? Name { get; set; }
         public AgentRole? Role { get; set; }
+        public string? RoleName { get; set; }
         public int? MaxConcurrentSessions { get; set; }
         public bool? IsActive { get; set; }
     }

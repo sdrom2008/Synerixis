@@ -160,15 +160,16 @@ namespace Synerixis.Api.Controllers
                 agent.RecordLogin();
                 await _db.SaveChangesAsync();
 
-                var userType = agent.Role == AgentRole.Supervisor ? "Supervisor" : "Agent";
+                var userType = agent.Role.ToString(); // Agent | Supervisor | Admin
                 var token = _authService.GenerateJwt(agent.Id, userType, agent.ShopId);
                 return Ok(new
                 {
                     token,
                     userId = agent.Id,
-                    userType = userType,
+                    userType,
                     name = agent.Name,
-                    role = (int)agent.Role,
+                    nickname = agent.Name,
+                    role = agent.Role.ToString(),
                     shopId = agent.ShopId
                 });
             }
@@ -380,6 +381,7 @@ namespace Synerixis.Api.Controllers
         // 新增：客服/主管登录
         // ============================================
         [HttpPost("agent-login")]
+        [AllowAnonymous]
         public async Task<IActionResult> AgentLogin([FromBody] AgentLoginDto dto)
         {
             if (string.IsNullOrEmpty(dto.Email) || string.IsNullOrEmpty(dto.Password))
@@ -389,26 +391,34 @@ namespace Synerixis.Api.Controllers
             if (agent == null)
                 return Unauthorized("账号或密码错误");
 
-            // TODO: 使用密码哈希验证
-            if (agent.PasswordHash != dto.Password)
-            {
+            if (!AgentPasswordHasher.Verify(dto.Password, agent.PasswordHash))
                 return Unauthorized("账号或密码错误");
-            }
 
             if (!agent.IsActive)
-                return Forbid("账号已被禁用");
+                return Unauthorized("账号已被禁用");
+
+            // 明文存量自动升级为哈希（开发可用）
+            if (!agent.PasswordHash.StartsWith("sha256:", StringComparison.Ordinal))
+            {
+                agent.UpdatePassword(AgentPasswordHasher.Hash(dto.Password));
+            }
 
             agent.RecordLogin();
             await _db.SaveChangesAsync();
 
-            var token = _authService.GenerateJwt(agent.Id, agent.Role.ToString(), agent.ShopId);
+            var userType = agent.Role.ToString();
+            var token = _authService.GenerateJwt(agent.Id, userType, agent.ShopId);
 
             return Ok(new
             {
                 token,
+                userId = agent.Id,
                 agentId = agent.Id,
+                userType,
                 name = agent.Name,
-                role = agent.Role.ToString()
+                nickname = agent.Name,
+                role = userType,
+                shopId = agent.ShopId
             });
         }
 
@@ -437,19 +447,27 @@ namespace Synerixis.Api.Controllers
             _db.Sellers.Add(seller);
             await _db.SaveChangesAsync();
 
-            // 创建测试 Agent
+            // 创建测试 Agent（密码 Agent123!，存 SHA256+salt）
             var agent = Agent.Create(
                 shopId: seller.Id,
                 email: "admin@test.com",
                 name: "Admin Agent",
-                passwordHash: "fake-hash-123",  // 仅用于开发测试
+                passwordHash: AgentPasswordHasher.Hash("Agent123!"),
                 role: AgentRole.Admin
             );
             _db.Agents.Add(agent);
             await _db.SaveChangesAsync();
 
             var token = _authService.GenerateJwt(agent.Id, agent.Role.ToString(), agent.ShopId);
-            return Ok(new { token, agentId = agent.Id, name = agent.Name });
+            return Ok(new
+            {
+                token,
+                agentId = agent.Id,
+                name = agent.Name,
+                email = agent.Email,
+                password = "Agent123!",
+                message = "Dev agent created. Login via POST /api/auth/agent-login"
+            });
         }
     }
 
