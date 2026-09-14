@@ -30,9 +30,10 @@ namespace Synerixis.Infrastructure.Clients
         }
 
         /// <summary>
-        /// 发送回复给 Shopee 买家
+        /// 发送回复给 Shopee 买家。
+        /// 成功时尽量解析 response.message_id；无则返回 null（调用方用 outbound:{guid} 兜底）。
         /// </summary>
-        public async Task SendReplyAsync(PlatformMessage context, string content, CancellationToken cancellationToken = default)
+        public async Task<string?> SendReplyAsync(PlatformMessage context, string content, CancellationToken cancellationToken = default)
         {
             var partnerId = _config["Shopee:AppKey"];
             var appSecret = _config["Shopee:AppSecret"];
@@ -44,13 +45,13 @@ namespace Synerixis.Infrastructure.Clients
             if (string.IsNullOrEmpty(partnerId) || string.IsNullOrEmpty(appSecret) || string.IsNullOrEmpty(accessToken) || string.IsNullOrEmpty(shopIdStr))
             {
                 _logger.LogWarning("[Shopee] Missing credentials (AppKey/AppSecret/AccessToken/ShopId). Skipping send reply. Source={Source}", tokenSource);
-                return;
+                return null;
             }
 
             if (!long.TryParse(shopIdStr, out long shopId))
             {
                 _logger.LogWarning("[Shopee] Invalid ShopId value: {ShopId}", shopIdStr);
-                return;
+                return null;
             }
 
             _logger.LogDebug("[Shopee] SendReply using credentials from {Source}, shop={ShopId}", tokenSource, shopId);
@@ -82,20 +83,52 @@ namespace Synerixis.Infrastructure.Clients
             {
                 using var http = new HttpClient(); // 生产环境建议注入 IHttpClientFactory
                 var response = await http.PostAsync(url, httpContent, cancellationToken);
+                var respBody = await response.Content.ReadAsStringAsync(cancellationToken);
                 if (response.IsSuccessStatusCode)
                 {
-                    _logger.LogInformation("[Shopee] SendReply success: Session={SessionId}, Content={Content}", context.ConversationId, content);
+                    var platformMsgId = TryExtractPlatformMessageId(respBody);
+                    _logger.LogInformation(
+                        "[Shopee] SendReply success: Session={SessionId}, PlatformMsgId={PlatformMsgId}",
+                        context.ConversationId, platformMsgId ?? "(none)");
+                    return platformMsgId;
                 }
-                else
-                {
-                    var respBody = await response.Content.ReadAsStringAsync();
-                    _logger.LogWarning("[Shopee] SendReply failed: {StatusCode}, {Body}", response.StatusCode, respBody);
-                }
+
+                _logger.LogWarning("[Shopee] SendReply failed: {StatusCode}, {Body}", response.StatusCode, respBody);
+                return null;
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "[Shopee] Exception during SendReply");
+                return null;
             }
+        }
+
+        /// <summary>
+        /// 从 Shopee send_message JSON 中提取 message_id（response.message_id / message_id）。
+        /// 文档未保证字段时返回 null，由调用方写 outbound:{localId}。
+        /// </summary>
+        private static string? TryExtractPlatformMessageId(string? json)
+        {
+            if (string.IsNullOrWhiteSpace(json)) return null;
+            try
+            {
+                using var doc = JsonDocument.Parse(json);
+                var root = doc.RootElement;
+                if (root.TryGetProperty("response", out var resp))
+                {
+                    if (resp.ValueKind == JsonValueKind.Object)
+                    {
+                        if (resp.TryGetProperty("message_id", out var mid) && mid.ValueKind == JsonValueKind.String)
+                            return mid.GetString();
+                        if (resp.TryGetProperty("message_id", out var midNum) && midNum.ValueKind == JsonValueKind.Number)
+                            return midNum.ToString();
+                    }
+                }
+                if (root.TryGetProperty("message_id", out var top) && top.ValueKind == JsonValueKind.String)
+                    return top.GetString();
+            }
+            catch { /* ignore parse errors */ }
+            return null;
         }
 
         /// <summary>

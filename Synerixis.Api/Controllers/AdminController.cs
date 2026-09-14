@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Synerixis.Application.Interfaces;
 using Synerixis.Domain.Entities;
 using Synerixis.Infrastructure.Data;
 
@@ -15,10 +16,12 @@ namespace Synerixis.Api.Controllers
     public class AdminController : BaseApiController
     {
         private readonly AppDbContext _db;
+        private readonly IAuditLogger _audit;
 
-        public AdminController(AppDbContext db)
+        public AdminController(AppDbContext db, IAuditLogger audit)
         {
             _db = db;
+            _audit = audit ?? throw new ArgumentNullException(nameof(audit));
         }
 
         /// <summary>Dashboard KPI：商家数、连接店铺、今日会话、待手审草稿、SLA overdue 粗计数</summary>
@@ -405,6 +408,73 @@ namespace Synerixis.Api.Controllers
             return Ok(new { items, total = items.Count, take });
         }
 
+
+        /// <summary>禁用/启用商家（运营写操作，记审计）</summary>
+        [HttpPatch("merchants/{id:guid}/active")]
+        public async Task<IActionResult> SetMerchantActive(Guid id, [FromBody] AdminMerchantActiveDto dto)
+        {
+            var seller = await _db.Sellers.FirstOrDefaultAsync(s => s.Id == id);
+            if (seller == null) return NotFound(new { message = "商家不存在" });
+
+            var wasActive = seller.IsActive;
+            seller.SetActive(dto.IsActive);
+            await _db.SaveChangesAsync();
+
+            var actorId = TryGetActorId();
+            await _audit.LogAsync(
+                actorId,
+                "Admin",
+                dto.IsActive ? AuditActions.AdminMerchantEnable : AuditActions.AdminMerchantDisable,
+                "Seller",
+                seller.Id.ToString(),
+                new { wasActive, isActive = dto.IsActive, phone = seller.Phone },
+                seller.Id);
+
+            return Ok(new { id = seller.Id, isActive = seller.IsActive, message = dto.IsActive ? "已启用" : "已禁用" });
+        }
+
+        /// <summary>修改商家订阅等级（运营写操作，记审计）</summary>
+        [HttpPatch("merchants/{id:guid}/subscription")]
+        public async Task<IActionResult> SetMerchantSubscription(Guid id, [FromBody] AdminMerchantSubscriptionDto dto)
+        {
+            if (string.IsNullOrWhiteSpace(dto.Level))
+                return BadRequest(new { message = "level 必填（Free/Basic/Pro）" });
+
+            var seller = await _db.Sellers.FirstOrDefaultAsync(s => s.Id == id);
+            if (seller == null) return NotFound(new { message = "商家不存在" });
+
+            var prev = seller.SubscriptionLevel;
+            try
+            {
+                seller.UpgradeSubscription(dto.Level.Trim());
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+            await _db.SaveChangesAsync();
+
+            var actorId = TryGetActorId();
+            await _audit.LogAsync(
+                actorId,
+                "Admin",
+                AuditActions.AdminSubscriptionUpdate,
+                "Seller",
+                seller.Id.ToString(),
+                new { previous = prev, level = seller.SubscriptionLevel },
+                seller.Id);
+
+            return Ok(new { id = seller.Id, subscriptionLevel = seller.SubscriptionLevel, message = "订阅已更新" });
+        }
+
+        private Guid? TryGetActorId()
+        {
+            var claim = User?.FindFirst("sub")?.Value
+                ?? User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+                ?? User?.FindFirst("userId")?.Value;
+            return Guid.TryParse(claim, out var id) ? id : null;
+        }
+
         [HttpGet("settings")]
         public IActionResult GetSettings([FromServices] IConfiguration config, [FromServices] IWebHostEnvironment env)
         {
@@ -440,5 +510,15 @@ namespace Synerixis.Api.Controllers
                 }
             });
         }
+    }
+
+    public class AdminMerchantActiveDto
+    {
+        public bool IsActive { get; set; }
+    }
+
+    public class AdminMerchantSubscriptionDto
+    {
+        public string Level { get; set; } = "Free";
     }
 }

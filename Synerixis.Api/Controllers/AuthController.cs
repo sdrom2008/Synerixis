@@ -32,6 +32,7 @@ namespace Synerixis.Api.Controllers
         private readonly AliyunSmsService _smsService;
         private readonly IMemoryCache _cache;
         private readonly IWebHostEnvironment _env;
+        private readonly IAuditLogger _audit;
 
         public AuthController(
             AppDbContext db,
@@ -41,7 +42,8 @@ namespace Synerixis.Api.Controllers
             AliyunSmsService smsService,
             IMemoryCache cache,
             IWebHostEnvironment env,
-            IPlatformClientRouter platformClientRouter)
+            IPlatformClientRouter platformClientRouter,
+            IAuditLogger audit)
         {
             _db = db;
             _authService = authService ?? throw new ArgumentNullException(nameof(authService));
@@ -51,6 +53,7 @@ namespace Synerixis.Api.Controllers
             _cache = cache;
             _env = env;
             _router = platformClientRouter ?? throw new ArgumentNullException(nameof(platformClientRouter));
+            _audit = audit ?? throw new ArgumentNullException(nameof(audit));
         }
 
         private readonly IPlatformClientRouter _router;
@@ -408,6 +411,19 @@ namespace Synerixis.Api.Controllers
 
             var userType = agent.Role.ToString();
             var token = _authService.GenerateJwt(agent.Id, userType, agent.ShopId);
+
+            // Admin 登录写审计（运营控制台入口）
+            if (string.Equals(userType, "Admin", StringComparison.OrdinalIgnoreCase))
+            {
+                await _audit.LogAsync(
+                    agent.Id,
+                    "Admin",
+                    AuditActions.AdminLogin,
+                    "Agent",
+                    agent.Id.ToString(),
+                    new { email = agent.Email, role = userType },
+                    agent.ShopId);
+            }
 
             return Ok(new
             {

@@ -71,7 +71,13 @@
             class="token-badge"
           >
             <el-button size="small" :type="tokenBadge.hasExpired ? 'danger' : 'warning'" plain @click="router.push('/shops')">
-              Token {{ tokenBadge.hasExpired ? '已过期' : '即将过期' }}
+              {{
+                tokenBadge.needsRebind
+                  ? '需重新授权'
+                  : tokenBadge.hasExpired
+                    ? 'Token 已过期'
+                    : 'Token 即将过期'
+              }}
             </el-button>
           </el-badge>
           <el-tag size="small" type="primary" effect="light">{{ auth.identityLabel }}</el-tag>
@@ -102,12 +108,16 @@ const title = computed(() => (route.meta.title as string) || '桌面工作台')
 const perms = computed(() => auth.permissions)
 const showOverview = computed(() => perms.value.canViewOverview)
 
-const tokenBadge = ref<{ count: number; hasExpired: boolean }>({ count: 0, hasExpired: false })
+const tokenBadge = ref<{ count: number; hasExpired: boolean; needsRebind: boolean }>({
+  count: 0,
+  hasExpired: false,
+  needsRebind: false,
+})
 let badgeTimer: ReturnType<typeof setInterval> | null = null
 
 async function refreshTokenBadge() {
   if (!perms.value.canManageShops) {
-    tokenBadge.value = { count: 0, hasExpired: false }
+    tokenBadge.value = { count: 0, hasExpired: false, needsRebind: false }
     return
   }
   try {
@@ -116,14 +126,17 @@ async function refreshTokenBadge() {
     const items = Array.isArray(raw) ? raw : raw.items || []
     let expired = 0
     let expiring = 0
+    let needsRebind = false
     for (const c of items) {
       const st = String(c.status || c.tokenStatus || '')
       if (st === 'expired') expired++
       else if (st === 'expiring') expiring++
+      if (c.needsRebind === true || (st === 'expired' && c.lastRefreshError)) needsRebind = true
     }
     tokenBadge.value = {
       count: expired + expiring,
       hasExpired: expired > 0,
+      needsRebind,
     }
   } catch {
     /* ignore badge errors */

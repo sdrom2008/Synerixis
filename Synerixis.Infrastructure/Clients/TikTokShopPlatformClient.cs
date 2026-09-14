@@ -131,12 +131,15 @@ namespace Synerixis.Infrastructure.Clients
         /// 发送消息回复给 TikTok Shop 买家
         /// 使用新版 Chat API: POST /v1/im/message/send
         /// </summary>
-        public async Task SendReplyAsync(PlatformMessage context, string content, CancellationToken cancellationToken = default)
+        /// <summary>
+        /// 发送回复。有则返回平台 message_id；无则 null（调用方 outbound:{guid} 兜底）。
+        /// </summary>
+        public async Task<string?> SendReplyAsync(PlatformMessage context, string content, CancellationToken cancellationToken = default)
         {
             if (string.IsNullOrEmpty(context.ConversationId))
             {
                 _logger.LogWarning("[TikTok] SendReply skipped: ConversationId is empty for msg {MsgId}", context.MsgId);
-                return;
+                return null;
             }
 
             var accessToken = await GetValidAccessTokenAsync(cancellationToken);
@@ -164,19 +167,19 @@ namespace Synerixis.Infrastructure.Clients
                 try
                 {
                     var response = await http.PostAsync(url, httpContent, cancellationToken);
+                    var respBody = await response.Content.ReadAsStringAsync(cancellationToken);
                     if (response.IsSuccessStatusCode)
                     {
-                        var respBody = await response.Content.ReadAsStringAsync(cancellationToken);
+                        var platformMsgId = TryExtractPlatformMessageId(respBody);
                         _logger.LogInformation(
-                            "[TikTok] SendReply success: ConversationId={ConvId}, Elapsed={Elapsed}ms, Response={Response}",
-                            context.ConversationId, stopwatch.ElapsedMilliseconds, respBody);
-                        return;
+                            "[TikTok] SendReply success: ConversationId={ConvId}, Elapsed={Elapsed}ms, PlatformMsgId={PlatformMsgId}",
+                            context.ConversationId, stopwatch.ElapsedMilliseconds, platformMsgId ?? "(none)");
+                        return platformMsgId;
                     }
 
-                    var errorBody = await response.Content.ReadAsStringAsync(cancellationToken);
                     _logger.LogWarning(
                         "[TikTok] SendReply attempt {Retry}/{Max}: Status={Status}, Body={Body}",
-                        retry + 1, ReplyRetryCount, response.StatusCode, errorBody);
+                        retry + 1, ReplyRetryCount, response.StatusCode, respBody);
 
                     if (response.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
                     {
@@ -202,6 +205,33 @@ namespace Synerixis.Infrastructure.Clients
                     break;
                 }
             }
+
+            return null;
+        }
+
+        /// <summary>
+        /// 从 TikTok IM send JSON 提取 message_id（data.message_id / message_id）。
+        /// 字段不稳定时返回 null，由调用方写 outbound:{localId}。
+        /// </summary>
+        private static string? TryExtractPlatformMessageId(string? json)
+        {
+            if (string.IsNullOrWhiteSpace(json)) return null;
+            try
+            {
+                using var doc = JsonDocument.Parse(json);
+                var root = doc.RootElement;
+                if (root.TryGetProperty("data", out var data) && data.ValueKind == JsonValueKind.Object)
+                {
+                    if (data.TryGetProperty("message_id", out var mid) && mid.ValueKind == JsonValueKind.String)
+                        return mid.GetString();
+                    if (data.TryGetProperty("msg_id", out var msgId) && msgId.ValueKind == JsonValueKind.String)
+                        return msgId.GetString();
+                }
+                if (root.TryGetProperty("message_id", out var top) && top.ValueKind == JsonValueKind.String)
+                    return top.GetString();
+            }
+            catch { /* ignore */ }
+            return null;
         }
 
         /// <summary>

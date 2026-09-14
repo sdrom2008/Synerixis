@@ -114,6 +114,12 @@ namespace Synerixis.Domain.Entities
             UpdatedAt = DateTime.UtcNow;
         }
 
+        public void SetActive(bool isActive)
+        {
+            IsActive = isActive;
+            UpdatedAt = DateTime.UtcNow;
+        }
+
         public void UpgradeSubscription(string newLevel)
         {
             if (!new[] { "Free", "Basic", "Pro" }.Contains(newLevel))

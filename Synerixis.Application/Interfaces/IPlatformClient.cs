@@ -13,11 +13,13 @@ namespace Synerixis.Application.Interfaces
     public interface IPlatformClient
     {
         /// <summary>
-        /// 发送消息回复给买家
+        /// 发送消息回复给买家。
+        /// 若平台响应含真实 message_id 则返回之；否则返回 null（调用方可用 outbound:{localId} 兜底）。
         /// </summary>
         /// <param name="context">包含会话和平台信息的上下文数据</param>
         /// <param name="content">要发送的消息内容</param>
-        Task SendReplyAsync(PlatformMessage context, string content, CancellationToken cancellationToken = default);
+        /// <returns>平台侧 message_id，或 null</returns>
+        Task<string?> SendReplyAsync(PlatformMessage context, string content, CancellationToken cancellationToken = default);
 
         /// <summary>
         /// 解析 Webhook 请求，转换为平台消息对象

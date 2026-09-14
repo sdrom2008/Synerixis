@@ -1,30 +1,36 @@
-# 本轮摘要：Token 告警 UI · 审计日志 · Webhook 小加固
+# 本轮摘要：刷新失败重绑 · Admin 审计 · 出站平台 message_id
 
 日期：2026-09-14（Asia/Shanghai）
 
-## 已完成
+## 已完成（本轮增量，基于 `3ff2763`）
 
-### 1. Token 过期告警 UI
-- `GET /api/merchant/connections` 对齐字段：`expiresAt`、`expiresInHours`、`status=ok|expiring|expired|unknown`（**24h** 内过期=expiring）；保留 `tokenStatus`/`tokenExpiresAt` 兼容。
-- `merchant-web` `/shops`：状态标签颜色；过期/即将过期醒目警告条 +「立即刷新」。
-- Layout 顶栏徽章 + Overview 提示条 → 跳转 `/shops`。
-- `GET /api/merchant/alerts` 增加 `type=connection_token` 条目。
+### 1. 刷新失败 → 重绑引导
+- `POST /api/merchant/connections/{id}/refresh` 失败返回 `errorCode=TOKEN_REFRESH_FAILED`、`code=REBIND_REQUIRED`、`rebindRequired=true` 与 `message`。
+- `PlatformConnection` 新增 `LastRefreshError` / `LastRefreshAt`（SchemaPatcher + `Migrations/AddPlatformConnectionRefreshError_20260914.sql`）。
+- `GET /api/merchant/connections` 暴露 `lastRefreshError` / `lastRefreshAt` / `needsRebind`；过期且刷新失败时 `tokenHint=需重新授权`。
+- `merchant-web` `/shops`：刷新失败 `ElMessageBox` 引导「重新绑定」并调 `startBind`；列表展示 `lastRefreshError`。
+- 顶栏 Token 徽章：`expired` 且刷新失败时文案「需重新授权」。
 
-### 2. 审计日志（轻量）
-- 实体 `AuditLog` + SchemaPatcher + `Migrations/AddAuditLogs_20260914.sql`。
-- `IAuditLogger` 记录：绑店/解绑/刷新 token、团队增改禁/重置密码、草稿 approve/reject、转人工、AI 设置变更。
-- `GET /api/merchant/audit-logs?take=50`；`GET /api/admin/audit-logs`。
-- 前端：merchant-web `/audit`；admin-console `/audit`。
+### 2. Admin 写操作审计
+- `IAuditLogger` 注入 `AdminController` / `AuthController`。
+- Admin 登录成功记 `admin.login`。
+- 写接口：`PATCH /api/admin/merchants/{id}/active`、`PATCH /api/admin/merchants/{id}/subscription`（记 `admin.merchant.*` / `admin.subscription.update`）。
+- admin-console 商家页接上禁用/改订阅。
 
-### 3. Webhook 小加固
-- **未**把生产 Webhook 合并进 `ConversationService`（后者旁路 draft-first/handoff，已加注释说明生产路径）。
-- 出站 `SendReply` 成功后写 `PlatformMsgId=outbound:{msgId}`（Merchant 人审发送 + Webhook AutoSend）。
+### 3. 出站真实 platform message_id
+- `IPlatformClient.SendReplyAsync` 改为返回 `Task<string?>`。
+- Shopee / TikTok 解析响应中的 `message_id`（若有）；写入 `ChatMessage.PlatformMsgId`。
+- 无平台 id 时仍写 `outbound:{guid}`，并在客户端注释说明。
 
-## 明确不做（本轮 / 下一轮仍不碰）
-- 支付生产、APNs/FCM、多站点 partner、RegimeTrader、假承运商轨迹。
+### 4. 小抛光
+- merchant-web Audit 页支持按 `action` 筛选；API `GET /api/merchant/audit-logs?action=`。
+- 本文档更新；PRODUCTIZATION 补一行。
+
+## 明确不做
+- 支付生产、APNs/FCM、完整 WebPush 服务、多站点 partner、RegimeTrader、假承运商轨迹。
 
 ## 下一轮缺口（建议）
-- 出站 SendReply 若平台返回真实 message_id，写入 PlatformMsgId 替代本地 `outbound:` 前缀。
-- Admin 写操作（若后续增加）补 `admin.sensitive` 审计。
-- Token 刷新失败自动引导重新 OAuth 绑店。
-- WebPush / 桌面声音（alerts 仍 pushStub）。
+- WebPush / 桌面声音（alerts 仍 `pushStub`）。
+- Shopee/TikTok 沙箱实机验证出站 `message_id` 字段路径。
+- Admin 设置页若增加可写配置，补 `admin.sensitive` 审计。
+- Partner 多站点 / 支付生产仍不在本阶段。

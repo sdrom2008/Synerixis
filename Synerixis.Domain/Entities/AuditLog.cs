@@ -49,5 +49,9 @@ namespace Synerixis.Domain.Entities
         public const string SessionHandoff = "session.handoff";
         public const string AiSettingsUpdate = "ai_settings.update";
         public const string AdminSensitive = "admin.sensitive";
+        public const string AdminLogin = "admin.login";
+        public const string AdminMerchantDisable = "admin.merchant.disable";
+        public const string AdminMerchantEnable = "admin.merchant.enable";
+        public const string AdminSubscriptionUpdate = "admin.subscription.update";
     }
 }

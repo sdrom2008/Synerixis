@@ -227,6 +227,32 @@ CREATE TABLE IF NOT EXISTS `audit_logs` (
             await db.Database.ExecuteSqlRawAsync(auditSql);
             logger?.LogInformation("[SchemaPatcher] audit_logs table ensured (MySQL)");
 
+            const string refreshErrSql = @"
+SET @db := DATABASE();
+SET @col := (
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = @db AND TABLE_NAME = 'platform_connections' AND COLUMN_NAME = 'LastRefreshError'
+);
+SET @ddl := IF(@col = 0,
+  'ALTER TABLE `platform_connections` ADD COLUMN `LastRefreshError` varchar(512) NULL',
+  'SELECT 1');
+PREPARE stmt FROM @ddl;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @col2 := (
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = @db AND TABLE_NAME = 'platform_connections' AND COLUMN_NAME = 'LastRefreshAt'
+);
+SET @ddl2 := IF(@col2 = 0,
+  'ALTER TABLE `platform_connections` ADD COLUMN `LastRefreshAt` DATETIME(6) NULL',
+  'SELECT 1');
+PREPARE stmt2 FROM @ddl2;
+EXECUTE stmt2;
+DEALLOCATE PREPARE stmt2;
+";
+            await db.Database.ExecuteSqlRawAsync(refreshErrSql);
+            logger?.LogInformation("[SchemaPatcher] platform_connections.LastRefreshError/At ensured (MySQL)");
+
         }
 
         private static async Task TrySqliteAsync(AppDbContext db, ILogger? logger)
@@ -250,6 +276,8 @@ CREATE TABLE IF NOT EXISTS `audit_logs` (
                 "ALTER TABLE chat_sessions ADD COLUMN PendingHumanHandoff INTEGER NOT NULL DEFAULT 0",
                 "ALTER TABLE chat_sessions ADD COLUMN HandoffAt TEXT NULL",
                 "ALTER TABLE platform_connections ADD COLUMN TokenExpiresAt TEXT NULL",
+                "ALTER TABLE platform_connections ADD COLUMN LastRefreshError TEXT NULL",
+                "ALTER TABLE platform_connections ADD COLUMN LastRefreshAt TEXT NULL",
                 @"CREATE TABLE IF NOT EXISTS draft_messages (
                     Id BLOB NOT NULL PRIMARY KEY,
                     ChatSessionId BLOB NOT NULL,

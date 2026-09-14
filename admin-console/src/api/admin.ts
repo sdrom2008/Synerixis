@@ -58,10 +58,27 @@ export function getSettings() {
   return request<Record<string, unknown>>({ url: '/api/admin/settings' })
 }
 
-export function getAuditLogs(take = 50, shopId?: string) {
+export function getAuditLogs(take = 50, shopId?: string, action?: string) {
   const params = new URLSearchParams({ take: String(take) })
   if (shopId) params.set('shopId', shopId)
+  if (action) params.set('action', action)
   return request<{ items: Record<string, unknown>[]; total: number; take: number }>({
     url: `/api/admin/audit-logs?${params}`,
+  })
+}
+
+export function setMerchantActive(id: string, isActive: boolean) {
+  return request<{ id: string; isActive: boolean; message?: string }>({
+    url: `/api/admin/merchants/${encodeURIComponent(id)}/active`,
+    method: 'PATCH',
+    data: { isActive, IsActive: isActive },
+  })
+}
+
+export function setMerchantSubscription(id: string, level: string) {
+  return request<{ id: string; subscriptionLevel: string; message?: string }>({
+    url: `/api/admin/merchants/${encodeURIComponent(id)}/subscription`,
+    method: 'PATCH',
+    data: { level, Level: level },
   })
 }

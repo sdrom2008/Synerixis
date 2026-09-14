@@ -27,17 +27,35 @@
           <div class="banner-row">
             <span>
               {{ w.nickname || w.Nickname || w.platform || w.Platform }}：
-              {{ w.tokenHint || (connStatus(w) === 'expired' ? 'Token 已过期' : 'Token 将在 24 小时内过期') }}
+              {{
+                needsRebind(w)
+                  ? '需重新授权'
+                  : w.tokenHint || (connStatus(w) === 'expired' ? 'Token 已过期' : 'Token 将在 24 小时内过期')
+              }}
               <template v-if="expiresInLabel(w)">（{{ expiresInLabel(w) }}）</template>
+              <template v-if="w.lastRefreshError">
+                · 刷新失败：{{ w.lastRefreshError }}
+              </template>
             </span>
-            <el-button
-              type="primary"
-              size="small"
-              :loading="refreshingId === String(w.id || w.Id)"
-              @click="onRefresh(w)"
-            >
-              立即刷新
-            </el-button>
+            <div class="banner-actions">
+              <el-button
+                v-if="needsRebind(w)"
+                type="danger"
+                size="small"
+                :loading="binding"
+                @click="startBind(String(w.platform || w.Platform || 'shopee').toLowerCase())"
+              >
+                重新绑定
+              </el-button>
+              <el-button
+                type="primary"
+                size="small"
+                :loading="refreshingId === String(w.id || w.Id)"
+                @click="onRefresh(w)"
+              >
+                立即刷新
+              </el-button>
+            </div>
           </div>
         </template>
       </el-alert>
@@ -70,13 +88,19 @@
           <el-table-column label="Token 状态" width="130">
             <template #default="{ row }">
               <el-tag :type="tokenTagType(row)" size="small" effect="dark">
-                {{ row.tokenHint || tokenLabel(row) }}
+                {{ needsRebind(row) ? '需重新授权' : row.tokenHint || tokenLabel(row) }}
               </el-tag>
             </template>
           </el-table-column>
           <el-table-column label="过期时间" min-width="160">
             <template #default="{ row }">
               {{ formatExpires(row) }}
+            </template>
+          </el-table-column>
+          <el-table-column label="刷新错误" min-width="180">
+            <template #default="{ row }">
+              <span v-if="row.lastRefreshError" class="err-text">{{ row.lastRefreshError }}</span>
+              <span v-else class="muted">—</span>
             </template>
           </el-table-column>
           <el-table-column prop="isActive" label="连接" width="100">
@@ -86,7 +110,7 @@
               </el-tag>
             </template>
           </el-table-column>
-          <el-table-column label="操作" width="180">
+          <el-table-column label="操作" width="220">
             <template #default="{ row }">
               <el-button
                 text
@@ -96,6 +120,16 @@
                 @click="onRefresh(row)"
               >
                 刷新 Token
+              </el-button>
+              <el-button
+                v-if="needsRebind(row) || connStatus(row) === 'expired'"
+                text
+                type="danger"
+                size="small"
+                :loading="binding"
+                @click="startBind(String(row.platform || row.Platform || 'shopee').toLowerCase())"
+              >
+                重新绑定
               </el-button>
               <el-button
                 text
@@ -142,8 +176,15 @@ function connStatus(row: Record<string, unknown>) {
   return String(row.status || row.tokenStatus || '')
 }
 
+function needsRebind(row: Record<string, unknown>) {
+  if (row.needsRebind === true) return true
+  const st = connStatus(row)
+  return st === 'expired' && !!row.lastRefreshError
+}
+
 function tokenLabel(row: Record<string, unknown>) {
   const st = connStatus(row)
+  if (needsRebind(row)) return '需重新授权'
   if (st === 'expired') return '已过期'
   if (st === 'expiring') return '即将过期'
   if (st === 'inactive' || st === 'unknown') return st === 'inactive' ? '停用' : '未知'
@@ -152,6 +193,7 @@ function tokenLabel(row: Record<string, unknown>) {
 }
 
 function tokenTagType(row: Record<string, unknown>) {
+  if (needsRebind(row)) return 'danger'
   const st = connStatus(row)
   if (st === 'expired') return 'danger'
   if (st === 'expiring') return 'warning'
@@ -162,7 +204,7 @@ function tokenTagType(row: Record<string, unknown>) {
 const tokenWarnings = computed(() =>
   connections.value.filter((c) => {
     const st = connStatus(c)
-    return st === 'expired' || st === 'expiring'
+    return st === 'expired' || st === 'expiring' || needsRebind(c)
   }),
 )
 
@@ -229,6 +271,24 @@ async function startBind(platform: string) {
   }
 }
 
+async function promptRebind(row: Record<string, unknown>, detail?: string) {
+  const platform = String(row.platform || row.Platform || 'shopee').toLowerCase()
+  try {
+    await ElMessageBox.confirm(
+      `${detail || 'Token 刷新失败'}。是否立即重新授权绑定？`,
+      '需重新授权',
+      {
+        type: 'warning',
+        confirmButtonText: '重新绑定',
+        cancelButtonText: '稍后',
+      },
+    )
+    await startBind(platform)
+  } catch {
+    /* cancel */
+  }
+}
+
 async function onRefresh(row: Record<string, unknown>) {
   const id = String(row.id || row.Id || '')
   if (!id) return
@@ -237,8 +297,16 @@ async function onRefresh(row: Record<string, unknown>) {
     await refreshConnection(id)
     ElMessage.success('Token 已刷新')
     await load()
-  } catch {
-    ElMessage.error('刷新失败')
+  } catch (e: unknown) {
+    const data = (e as { response?: { data?: Record<string, unknown> } })?.response?.data
+    const msg = String(data?.message || data?.lastRefreshError || '刷新失败')
+    const code = String(data?.errorCode || data?.code || '')
+    const rebind = data?.rebindRequired === true || code === 'TOKEN_REFRESH_FAILED' || code === 'REBIND_REQUIRED'
+    ElMessage.error(msg)
+    await load()
+    if (rebind || needsRebind(row) || connStatus(row) === 'expired') {
+      await promptRebind(row, msg)
+    }
   } finally {
     refreshingId.value = null
   }
@@ -313,5 +381,17 @@ onUnmounted(() => {
   gap: 12px;
   flex-wrap: wrap;
   width: 100%;
+}
+.banner-actions {
+  display: flex;
+  gap: 8px;
+}
+.err-text {
+  color: var(--el-color-danger);
+  font-size: 12px;
+  word-break: break-all;
+}
+.muted {
+  color: var(--sx-muted);
 }
 </style>

@@ -75,6 +75,8 @@
 
 **MVP 状态（网页端可演示）**：登录 → 绑店（Seller/Supervisor）→ 收件箱审发/转人工/SLA → 订单侧栏 → 多店筛选 → Token 后台刷新。详见验收清单。
 
+**本轮增量（2026-09-14）**：Token 刷新失败 → 重绑引导（`LastRefreshError` + Shops UI）；Admin 登录/禁用商家/改订阅审计；出站优先写平台 `message_id`。
+
 **不**替换移动端 `frontend/`。**AI token 记账**（`AiUsageLog`）已落地；Admin P1b 与 Webhook 幂等已落地。
 
 ### P1d — Handoff 硬闸 + SLA 超时唤醒（2026-09-14）

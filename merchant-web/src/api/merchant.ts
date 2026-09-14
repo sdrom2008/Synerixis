@@ -271,7 +271,13 @@ export function unbindPlatform(platform: string) {
 }
 
 export function refreshConnection(connectionId: string) {
-  return request<{ message?: string; tokenExpiresAt?: string }>({
+  return request<{
+    message?: string
+    tokenExpiresAt?: string
+    errorCode?: string
+    rebindRequired?: boolean
+    lastRefreshError?: string
+  }>({
     url: `/api/merchant/connections/${encodeURIComponent(connectionId)}/refresh`,
     method: 'POST',
   })
@@ -338,8 +344,10 @@ export function deleteQuickReply(id: string) {
   })
 }
 
-export function getAuditLogs(take = 50) {
+export function getAuditLogs(take = 50, action?: string) {
+  const params = new URLSearchParams({ take: String(take) })
+  if (action) params.set('action', action)
   return request<{ items: Record<string, unknown>[]; total: number; take: number }>({
-    url: `/api/merchant/audit-logs?take=${take}`,
+    url: `/api/merchant/audit-logs?${params}`,
   })
 }

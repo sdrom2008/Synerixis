@@ -450,6 +450,13 @@ namespace Synerixis.Infrastructure.Data
                 entity.Property(e => e.TokenExpiresAt)
                       .HasColumnType("datetime2");
 
+                entity.Property(e => e.LastRefreshAt)
+                      .HasColumnType("datetime2");
+
+                entity.Property(e => e.LastRefreshError)
+                      .HasColumnType("varchar(512)")
+                      .HasMaxLength(512);
+
                 entity.HasOne(e => e.Seller)
                       .WithMany(s => s.PlatformConnections)
                       .HasForeignKey(e => e.SellerId)

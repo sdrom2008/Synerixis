@@ -171,7 +171,12 @@ namespace Synerixis.Infrastructure.Services
         public async Task<bool> RefreshTokenAsync(string platform, PlatformConnection connection)
         {
             if (string.IsNullOrEmpty(connection.RefreshToken))
+            {
+                connection.RecordRefreshFailure("缺少 RefreshToken，需重新授权绑定");
+                await _connectionRepository.UpdateAsync(connection);
+                await _db.SaveChangesAsync();
                 return false;
+            }
 
             try
             {
@@ -188,6 +193,16 @@ namespace Synerixis.Infrastructure.Services
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Token 刷新失败: {Platform}", platform);
+                try
+                {
+                    connection.RecordRefreshFailure(ex.Message);
+                    await _connectionRepository.UpdateAsync(connection);
+                    await _db.SaveChangesAsync();
+                }
+                catch (Exception persistEx)
+                {
+                    _logger.LogWarning(persistEx, "无法落库 LastRefreshError: {Platform}", platform);
+                }
                 return false;
             }
         }

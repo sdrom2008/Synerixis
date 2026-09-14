@@ -247,6 +247,7 @@ namespace Synerixis.Api.Controllers
                         _ => status
                     };
 
+                    var needsRebind = status == "expired" && !string.IsNullOrEmpty(c.LastRefreshError);
                     return new
                     {
                         c.Id,
@@ -260,7 +261,12 @@ namespace Synerixis.Api.Controllers
                         status,
                         tokenExpiresAt = c.TokenExpiresAt,
                         tokenStatus,
-                        tokenHint = status switch
+                        lastRefreshError = c.LastRefreshError,
+                        lastRefreshAt = c.LastRefreshAt,
+                        needsRebind,
+                        tokenHint = needsRebind
+                            ? "需重新授权"
+                            : status switch
                         {
                             "expired" => "Token 已过期，请立即刷新或重新绑定",
                             "expiring" => "Token 将在 24 小时内过期",
@@ -296,12 +302,33 @@ namespace Synerixis.Api.Controllers
 
                 var ok = await _platformService.RefreshTokenAsync(connection.Platform, connection);
                 if (!ok)
-                    return BadRequest(new { message = "刷新失败（可能缺少 RefreshToken 或平台拒绝）" });
+                {
+                    // 重新加载以拿到 LastRefreshError（RefreshTokenAsync 已落库）
+                    connection = await _connectionRepo.GetByIdAsync(id) ?? connection;
+                    var errMsg = connection.LastRefreshError
+                        ?? "刷新失败（可能缺少 RefreshToken 或平台拒绝），请重新授权绑定";
+                    var actorFail = GetCurrentUser();
+                    await _audit.LogAsync(actorFail.UserId, actorFail.UserType, AuditActions.ConnectionRefresh,
+                        "PlatformConnection", connection.Id.ToString(),
+                        new { platform = connection.Platform, shopId = connection.ShopId, success = false, error = errMsg },
+                        sellerId);
+                    return BadRequest(new
+                    {
+                        errorCode = "TOKEN_REFRESH_FAILED",
+                        rebindRequired = true,
+                        message = errMsg,
+                        connectionId = connection.Id,
+                        lastRefreshError = connection.LastRefreshError,
+                        lastRefreshAt = connection.LastRefreshAt,
+                        // 兼容别名
+                        code = "REBIND_REQUIRED"
+                    });
+                }
 
                 var actor = GetCurrentUser();
                 await _audit.LogAsync(actor.UserId, actor.UserType, AuditActions.ConnectionRefresh,
                     "PlatformConnection", connection.Id.ToString(),
-                    new { platform = connection.Platform, shopId = connection.ShopId, tokenExpiresAt = connection.TokenExpiresAt },
+                    new { platform = connection.Platform, shopId = connection.ShopId, tokenExpiresAt = connection.TokenExpiresAt, success = true },
                     sellerId);
 
                 return Ok(new
@@ -310,6 +337,7 @@ namespace Synerixis.Api.Controllers
                     connectionId = connection.Id,
                     expiresAt = connection.TokenExpiresAt,
                     tokenExpiresAt = connection.TokenExpiresAt,
+                    lastRefreshAt = connection.LastRefreshAt,
                     updatedAt = connection.UpdatedAt
                 });
             }
@@ -1180,7 +1208,7 @@ namespace Synerixis.Api.Controllers
                 var conns = await _db.PlatformConnections
                     .AsNoTracking()
                     .Where(c => c.SellerId == shopId && c.IsActive)
-                    .Select(c => new { c.Id, c.Platform, c.Nickname, c.ShopId, c.TokenExpiresAt })
+                    .Select(c => new { c.Id, c.Platform, c.Nickname, c.ShopId, c.TokenExpiresAt, c.LastRefreshError })
                     .ToListAsync();
                 var tokenAlerts = conns
                     .Select(c =>
@@ -1208,7 +1236,9 @@ namespace Synerixis.Api.Controllers
                             channel = "in-app",
                             connectionId = (Guid?)c.Id,
                             tokenStatus = (string?)tokenStatus,
-                            message = (string?)(tokenStatus == "expired"
+                            message = (string?)(tokenStatus == "expired" && !string.IsNullOrEmpty(c.LastRefreshError)
+                                ? $"店铺 {c.Nickname ?? c.ShopId ?? c.Platform} 需重新授权"
+                                : tokenStatus == "expired"
                                 ? $"店铺 {c.Nickname ?? c.ShopId ?? c.Platform} Token 已过期"
                                 : $"店铺 {c.Nickname ?? c.ShopId ?? c.Platform} Token 将在 {hrs:0.#} 小时内过期")
                         };
@@ -1471,11 +1501,13 @@ namespace Synerixis.Api.Controllers
                     Content = draft.Content
                 };
 
-                await client.SendReplyAsync(platformMsg, draft.Content);
+                var platformOutboundId = await client.SendReplyAsync(platformMsg, draft.Content);
 
                 var aiMsg = ChatMessage.FromAI(draft.Content, chatSessionId: session.Id);
-                // 出站成功后写 PlatformMsgId，避免平台回声/重放被当成新进线重复处理
-                aiMsg.PlatformMsgId = $"outbound:{aiMsg.Id:N}";
+                // 优先写平台真实 message_id；无则 outbound:{localId} 兜底（见平台客户端注释）
+                aiMsg.PlatformMsgId = !string.IsNullOrWhiteSpace(platformOutboundId)
+                    ? platformOutboundId
+                    : $"outbound:{aiMsg.Id:N}";
                 _db.ChatMessages.Add(aiMsg);
                 session.AddAiMessage();
 
@@ -1516,7 +1548,7 @@ namespace Synerixis.Api.Controllers
         /// 本店操作审计日志（Seller / Supervisor；Admin 亦可按 shopId）。
         /// </summary>
         [HttpGet("audit-logs")]
-        public async Task<IActionResult> GetAuditLogs([FromQuery] int take = 50)
+        public async Task<IActionResult> GetAuditLogs([FromQuery] int take = 50, [FromQuery] string? action = null)
         {
             try
             {
@@ -1524,9 +1556,12 @@ namespace Synerixis.Api.Controllers
                     return Forbid();
                 var shopId = GetShopOwnerSellerId();
                 take = Math.Clamp(take, 1, 200);
-                var items = await _db.AuditLogs
+                var q = _db.AuditLogs
                     .AsNoTracking()
-                    .Where(a => a.ShopId == shopId)
+                    .Where(a => a.ShopId == shopId);
+                if (!string.IsNullOrWhiteSpace(action))
+                    q = q.Where(a => a.Action == action.Trim());
+                var items = await q
                     .OrderByDescending(a => a.CreatedAt)
                     .Take(take)
                     .Select(a => new

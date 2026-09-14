@@ -9,7 +9,21 @@
       <template #header>
         <div class="head">
           <span>最近 {{ items.length }} 条</span>
-          <el-button size="small" :loading="loading" @click="load">刷新</el-button>
+          <div class="filters">
+            <el-select
+              v-model="actionFilter"
+              clearable
+              filterable
+              allow-create
+              default-first-option
+              placeholder="筛选 action"
+              style="width: 220px"
+              @change="load"
+            >
+              <el-option v-for="a in actionOptions" :key="a" :label="a" :value="a" />
+            </el-select>
+            <el-button size="small" :loading="loading" @click="load">刷新</el-button>
+          </div>
         </div>
       </template>
 
@@ -50,6 +64,21 @@ import { getAuditLogs } from '@/api/merchant'
 
 const loading = ref(false)
 const items = ref<Record<string, unknown>[]>([])
+const actionFilter = ref<string | undefined>()
+
+const actionOptions = [
+  'connection.bind',
+  'connection.unbind',
+  'connection.refresh',
+  'team.create',
+  'team.update',
+  'team.disable',
+  'team.reset_password',
+  'draft.approve',
+  'draft.reject',
+  'session.handoff',
+  'ai_settings.update',
+]
 
 function formatTime(v: unknown) {
   if (!v) return '—'
@@ -68,7 +97,7 @@ function shortId(v: unknown) {
 async function load() {
   loading.value = true
   try {
-    const res = await getAuditLogs(50)
+    const res = await getAuditLogs(50, actionFilter.value || undefined)
     items.value = (res.items || []) as Record<string, unknown>[]
   } catch {
     items.value = []
@@ -86,6 +115,13 @@ onMounted(load)
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.filters {
+  display: flex;
+  gap: 8px;
+  align-items: center;
 }
 .muted {
   color: var(--sx-muted);
