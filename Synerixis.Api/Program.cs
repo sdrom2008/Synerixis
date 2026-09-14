@@ -22,6 +22,8 @@ using Synerixis.Infrastructure.Repositories;
 using Synerixis.Infrastructure.Services;
 using Synerixis.Api;  // for HttpContextFactory
 using System.Text;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -249,9 +251,13 @@ builder.Services.AddHostedService<Synerixis.Api.Services.PlatformTokenRefreshHos
 // HttpClient 工厂（如果 Agent 里需要调用外部 API）
 builder.Services.AddHttpClient();
 
-// Health Checks（可选）
+// Health Checks：/health=liveness；/health/ready 含 DB
 builder.Services.AddHealthChecks()
-    .AddDbContextCheck<AppDbContext>("Database");
+    .AddCheck("self", () => HealthCheckResult.Healthy(), tags: new[] { "live" })
+    .AddDbContextCheck<AppDbContext>("database", tags: new[] { "ready" });
+
+builder.Services.AddScoped<IAiUsageRecorder, AiUsageRecorder>();
+builder.Services.AddScoped<IQuickReplyContextProvider, QuickReplyContextProvider>();
 
 // 7. AiChatService（最后注册，依赖 Router）
 builder.Services.AddScoped<IAiChatService, AiChatService>();
@@ -290,5 +296,14 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+
+app.MapHealthChecks("/health", new HealthCheckOptions
+{
+    Predicate = r => r.Tags.Contains("live")
+});
+app.MapHealthChecks("/health/ready", new HealthCheckOptions
+{
+    Predicate = r => r.Tags.Contains("ready")
+});
 
 app.Run();

@@ -869,6 +869,35 @@ namespace Synerixis.Api.Controllers
                 var seller = await _db.Sellers.AsNoTracking()
                     .FirstOrDefaultAsync(s => s.Id == shopId);
 
+                var aiToday = await _db.AiUsageLogs.AsNoTracking()
+                    .Where(a => a.SellerId == shopId && a.CreatedAt >= dayStart)
+                    .GroupBy(_ => 1)
+                    .Select(g => new
+                    {
+                        promptTokens = g.Sum(x => x.PromptTokens),
+                        completionTokens = g.Sum(x => x.CompletionTokens),
+                        estimatedCostUsd = g.Sum(x => x.EstimatedCostUsd),
+                        calls = g.Count()
+                    })
+                    .FirstOrDefaultAsync();
+
+                var aiMonth = await _db.AiUsageLogs.AsNoTracking()
+                    .Where(a => a.SellerId == shopId && a.CreatedAt >= monthStart)
+                    .GroupBy(_ => 1)
+                    .Select(g => new
+                    {
+                        promptTokens = g.Sum(x => x.PromptTokens),
+                        completionTokens = g.Sum(x => x.CompletionTokens),
+                        estimatedCostUsd = g.Sum(x => x.EstimatedCostUsd),
+                        calls = g.Count()
+                    })
+                    .FirstOrDefaultAsync();
+
+                var promptTokensToday = aiToday?.promptTokens ?? 0;
+                var completionTokensToday = aiToday?.completionTokens ?? 0;
+                var promptTokensThisMonth = aiMonth?.promptTokens ?? 0;
+                var completionTokensThisMonth = aiMonth?.completionTokens ?? 0;
+
                 return Ok(new
                 {
                     periodStart = monthStart,
@@ -882,7 +911,18 @@ namespace Synerixis.Api.Controllers
                     freeQuota = seller?.FreeQuota,
                     subscription = seller?.SubscriptionLevel,
                     subscriptionLevel = seller?.SubscriptionLevel,
-                    subscriptionEnd = seller?.SubscriptionEnd
+                    subscriptionEnd = seller?.SubscriptionEnd,
+                    // AI token 记账（无数据为 0，不伪造）
+                    promptTokensToday,
+                    completionTokensToday,
+                    totalTokensToday = promptTokensToday + completionTokensToday,
+                    estimatedCostUsdToday = aiToday?.estimatedCostUsd ?? 0m,
+                    aiCallsToday = aiToday?.calls ?? 0,
+                    promptTokensThisMonth,
+                    completionTokensThisMonth,
+                    totalTokensThisMonth = promptTokensThisMonth + completionTokensThisMonth,
+                    estimatedCostUsdThisMonth = aiMonth?.estimatedCostUsd ?? 0m,
+                    aiCallsThisMonth = aiMonth?.calls ?? 0
                 });
             }
             catch (Exception ex)
@@ -1232,6 +1272,165 @@ namespace Synerixis.Api.Controllers
         }
 
 
+
+        /// <summary>快捷回复列表（本店 + 全局）。Seller/Supervisor/Admin。</summary>
+        [HttpGet("quick-replies")]
+        public async Task<IActionResult> ListQuickReplies([FromQuery] Guid? shopId = null)
+        {
+            try
+            {
+                // 坐席可读（插入草稿）；写操作仍限 Seller/Supervisor
+                var sellerId = GetMerchantShopId();
+                var sid = shopId ?? sellerId;
+                if (sid != sellerId)
+                    return Forbid();
+
+                var items = await _db.QuickReplies.AsNoTracking()
+                    .Where(q =>
+                        (q.Scope == QuickReplyScope.Shop && q.ShopId == sellerId)
+                        || q.Scope == QuickReplyScope.Global)
+                    .OrderBy(q => q.SortOrder)
+                    .ThenByDescending(q => q.CreatedAt)
+                    .Select(q => new
+                    {
+                        id = q.Id,
+                        title = q.Title,
+                        content = q.Content,
+                        category = q.Category.ToString(),
+                        categoryValue = (int)q.Category,
+                        keywords = q.Keywords,
+                        scope = q.Scope.ToString(),
+                        shopId = q.ShopId,
+                        isActive = q.IsActive,
+                        sortOrder = q.SortOrder,
+                        createdAt = q.CreatedAt,
+                        updatedAt = q.UpdatedAt
+                    })
+                    .ToListAsync();
+
+                return Ok(new { items, total = items.Count });
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return StatusCode(403, new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                return HandleError(ex);
+            }
+        }
+
+        /// <summary>创建店铺级快捷回复。Seller/Supervisor/Admin。</summary>
+        [HttpPost("quick-replies")]
+        public async Task<IActionResult> CreateQuickReply([FromBody] QuickReplyUpsertRequest body)
+        {
+            try
+            {
+                var sellerId = GetShopOwnerSellerId();
+                if (body == null || string.IsNullOrWhiteSpace(body.Title) || string.IsNullOrWhiteSpace(body.Content))
+                    return BadRequest(new { message = "title 与 content 必填" });
+
+                var category = ParseQuickReplyCategory(body.Category);
+                var entity = QuickReply.CreateForShop(sellerId, body.Title.Trim(), body.Content.Trim(), category);
+                if (!string.IsNullOrWhiteSpace(body.Keywords))
+                    entity.Update(entity.Title, entity.Content, body.Keywords.Trim());
+                if (body.SortOrder.HasValue)
+                    entity.SetSortOrder(body.SortOrder.Value);
+                if (body.IsActive.HasValue)
+                    entity.SetActive(body.IsActive.Value);
+
+                _db.QuickReplies.Add(entity);
+                await _db.SaveChangesAsync();
+                return Ok(new { id = entity.Id, message = "已创建" });
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return StatusCode(403, new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                return HandleError(ex);
+            }
+        }
+
+        /// <summary>更新快捷回复。Seller/Supervisor/Admin。</summary>
+        [HttpPut("quick-replies/{id:guid}")]
+        public async Task<IActionResult> UpdateQuickReply(Guid id, [FromBody] QuickReplyUpsertRequest body)
+        {
+            try
+            {
+                var sellerId = GetShopOwnerSellerId();
+                var entity = await _db.QuickReplies.FirstOrDefaultAsync(q => q.Id == id);
+                if (entity == null)
+                    return NotFound(new { message = "快捷回复不存在" });
+                if (entity.Scope == QuickReplyScope.Shop && entity.ShopId != sellerId)
+                    return StatusCode(403, new { message = "无权修改其他店铺的快捷回复" });
+                if (entity.Scope == QuickReplyScope.Global && !GetCurrentUser().IsAdmin)
+                    return StatusCode(403, new { message = "全局快捷回复仅 Admin 可改；请创建店铺级副本" });
+
+                if (body == null || string.IsNullOrWhiteSpace(body.Title) || string.IsNullOrWhiteSpace(body.Content))
+                    return BadRequest(new { message = "title 与 content 必填" });
+
+                var category = ParseQuickReplyCategory(body.Category);
+                entity.Update(body.Title.Trim(), body.Content.Trim(), body.Keywords?.Trim(), category);
+                if (body.SortOrder.HasValue)
+                    entity.SetSortOrder(body.SortOrder.Value);
+                if (body.IsActive.HasValue)
+                    entity.SetActive(body.IsActive.Value);
+
+                await _db.SaveChangesAsync();
+                return Ok(new { id = entity.Id, message = "已更新" });
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return StatusCode(403, new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                return HandleError(ex);
+            }
+        }
+
+        /// <summary>删除快捷回复。Seller/Supervisor/Admin。</summary>
+        [HttpDelete("quick-replies/{id:guid}")]
+        public async Task<IActionResult> DeleteQuickReply(Guid id)
+        {
+            try
+            {
+                var sellerId = GetShopOwnerSellerId();
+                var entity = await _db.QuickReplies.FirstOrDefaultAsync(q => q.Id == id);
+                if (entity == null)
+                    return NotFound(new { message = "快捷回复不存在" });
+                if (entity.Scope == QuickReplyScope.Shop && entity.ShopId != sellerId)
+                    return StatusCode(403, new { message = "无权删除其他店铺的快捷回复" });
+                if (entity.Scope == QuickReplyScope.Global && !GetCurrentUser().IsAdmin)
+                    return StatusCode(403, new { message = "全局快捷回复仅 Admin 可删" });
+
+                _db.QuickReplies.Remove(entity);
+                await _db.SaveChangesAsync();
+                return Ok(new { message = "已删除" });
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return StatusCode(403, new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                return HandleError(ex);
+            }
+        }
+
+        private static QuickReplyCategory ParseQuickReplyCategory(string? raw)
+        {
+            if (string.IsNullOrWhiteSpace(raw)) return QuickReplyCategory.General;
+            if (int.TryParse(raw, out var n) && Enum.IsDefined(typeof(QuickReplyCategory), n))
+                return (QuickReplyCategory)n;
+            if (Enum.TryParse<QuickReplyCategory>(raw, true, out var c))
+                return c;
+            return QuickReplyCategory.General;
+        }
+
+
                 private string GenerateState()
         {
             var buffer = new byte[16];
@@ -1250,5 +1449,15 @@ namespace Synerixis.Api.Controllers
     public class DraftEditRequest
     {
         public string Content { get; set; } = string.Empty;
+    }
+
+    public class QuickReplyUpsertRequest
+    {
+        public string Title { get; set; } = string.Empty;
+        public string Content { get; set; } = string.Empty;
+        public string? Category { get; set; }
+        public string? Keywords { get; set; }
+        public int? SortOrder { get; set; }
+        public bool? IsActive { get; set; }
     }
 }

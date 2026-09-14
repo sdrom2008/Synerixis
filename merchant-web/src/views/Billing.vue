@@ -140,6 +140,10 @@ onMounted(async () => {
     const shops = pick(usage, 'connectedShops', 'ConnectedShops')
     connectedShops.value = shops != null ? Number(shops) : null
 
+    const numOrZero = (v: unknown) => {
+      if (v === undefined || v === null || v === '') return '0'
+      return String(v)
+    }
     usageRows.value = [
       { label: '今日草稿', value: fmt(pick(usage, 'draftsToday', 'DraftsToday')) },
       { label: '今日会话', value: fmt(pick(usage, 'sessionsToday', 'SessionsToday')) },
@@ -150,6 +154,19 @@ onMounted(async () => {
       {
         label: '本月会话',
         value: fmt(pick(usage, 'sessionsThisMonth', 'SessionsThisMonth', 'sessionCount')),
+      },
+      { label: '今日 AI Token', value: numOrZero(pick(usage, 'totalTokensToday', 'TotalTokensToday')) },
+      {
+        label: '今日估算费用(USD)',
+        value: numOrZero(pick(usage, 'estimatedCostUsdToday', 'EstimatedCostUsdToday')),
+      },
+      {
+        label: '本月 AI Token',
+        value: numOrZero(pick(usage, 'totalTokensThisMonth', 'TotalTokensThisMonth')),
+      },
+      {
+        label: '本月估算费用(USD)',
+        value: numOrZero(pick(usage, 'estimatedCostUsdThisMonth', 'EstimatedCostUsdThisMonth')),
       },
       { label: '已连接店铺', value: fmt(pick(usage, 'connectedShops', 'ConnectedShops')) },
       { label: '统计截止', value: fmt(pick(usage, 'periodEnd', 'PeriodEnd')) },

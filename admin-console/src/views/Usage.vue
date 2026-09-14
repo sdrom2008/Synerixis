@@ -1,7 +1,7 @@
 <template>
   <div>
     <h2 class="page-title">用量计费</h2>
-    <p class="page-desc">全站诚实聚合 · <code>GET /api/admin/usage</code>（不含模型费用记账）</p>
+    <p class="page-desc">全站诚实聚合 · <code>GET /api/admin/usage</code>（含 AI token / 粗估费用，无数据为 0）</p>
 
     <el-row :gutter="16" v-loading="loading">
       <el-col :xs="24" :sm="12" :lg="6" v-for="item in cards" :key="item.label">
@@ -45,11 +45,16 @@ onMounted(async () => {
   loading.value = true
   try {
     const u = await getUsage()
+    const z = (v: unknown) => (v === null || v === undefined || v === '' ? '0' : String(v))
     cards.value = [
       { label: '本月消息', value: fmt(u.messagesThisMonth) },
       { label: '今日消息', value: fmt(u.messagesToday) },
       { label: '本月会话', value: fmt(u.sessionsThisMonth) },
       { label: '今日草稿', value: fmt(u.draftsToday) },
+      { label: '今日 AI Token', value: z(u.totalTokensToday) },
+      { label: '今日估算费用(USD)', value: z(u.estimatedCostUsdToday) },
+      { label: '本月 AI Token', value: z(u.totalTokensThisMonth) },
+      { label: '本月估算费用(USD)', value: z(u.estimatedCostUsdThisMonth) },
       { label: '商家数', value: fmt(u.merchants) },
       { label: '连接店铺', value: fmt(u.connectedShops) },
     ]

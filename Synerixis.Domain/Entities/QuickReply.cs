@@ -76,11 +76,12 @@ namespace Synerixis.Domain.Entities
         /// <summary>
         /// 更新内容
         /// </summary>
-        public void Update(string title, string content, string? keywords = null)
+        public void Update(string title, string content, string? keywords = null, QuickReplyCategory? category = null)
         {
             Title = title;
             Content = content;
             if (keywords != null) Keywords = keywords;
+            if (category.HasValue) Category = category.Value;
             UpdatedAt = DateTime.UtcNow;
         }
 

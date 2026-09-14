@@ -30,7 +30,8 @@
 | GET | `/api/admin/merchants?page=&pageSize=&q=` | 商家分页 |
 | GET | `/api/admin/shops` 或 `/connections` | 店铺连接列表 |
 | GET | `/api/admin/sessions?take=` | 最近会话只读 |
-| GET | `/api/admin/usage` | 全站用量汇总 |
-| GET | `/api/admin/settings` | 只读配置说明 |
+| GET | `/api/admin/usage` | 全站用量汇总（含 AI token / 粗估费用） |
+| GET | `/api/admin/settings` | 只读配置说明 + health 端点提示 |
+| GET | `/health` / `/health/ready` | 存活 / 就绪（ready 含 EF DB） |
 
 无数据时返回空列表 / 0，前端不编造指标。

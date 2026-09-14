@@ -26,6 +26,7 @@ namespace Synerixis.Infrastructure.Data
         public DbSet<PlatformConnection> PlatformConnections { get; set; }
         public DbSet<DraftMessage> DraftMessages { get; set; }
         public DbSet<ProcessedWebhookEvent> ProcessedWebhookEvents { get; set; }
+        public DbSet<AiUsageLog> AiUsageLogs { get; set; }
 
 
 
@@ -374,6 +375,29 @@ namespace Synerixis.Infrastructure.Data
                       .HasDatabaseName("IX_processed_webhook_events_Platform_EventKey");
             });
 
+
+
+            modelBuilder.Entity<AiUsageLog>(entity =>
+            {
+                entity.ToTable("ai_usage_logs");
+                entity.HasKey(e => e.Id);
+
+                entity.Property(e => e.Model)
+                      .HasColumnType("varchar(64)")
+                      .HasMaxLength(64)
+                      .IsRequired();
+
+                entity.Property(e => e.Purpose)
+                      .HasColumnType("varchar(32)")
+                      .HasMaxLength(32)
+                      .IsRequired();
+
+                entity.Property(e => e.EstimatedCostUsd)
+                      .HasColumnType("decimal(18,6)");
+
+                entity.HasIndex(e => new { e.SellerId, e.CreatedAt });
+                entity.HasIndex(e => e.CreatedAt);
+            });
 
             modelBuilder.Entity<PlatformConnection>(entity =>
             {

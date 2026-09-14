@@ -170,6 +170,26 @@ CREATE TABLE IF NOT EXISTS `processed_webhook_events` (
             await db.Database.ExecuteSqlRawAsync(webhookEventSql);
             logger?.LogInformation("[SchemaPatcher] processed_webhook_events table ensured (MySQL)");
 
+            const string aiUsageSql = @"
+CREATE TABLE IF NOT EXISTS `ai_usage_logs` (
+  `Id` binary(16) NOT NULL,
+  `SellerId` binary(16) NOT NULL,
+  `SessionId` binary(16) NULL,
+  `Model` varchar(64) NOT NULL,
+  `PromptTokens` int NOT NULL DEFAULT 0,
+  `CompletionTokens` int NOT NULL DEFAULT 0,
+  `EstimatedCostUsd` decimal(18,6) NOT NULL DEFAULT 0,
+  `CreatedAt` datetime(6) NOT NULL,
+  `Purpose` varchar(32) NOT NULL,
+  PRIMARY KEY (`Id`),
+  KEY `IX_ai_usage_logs_SellerId_CreatedAt` (`SellerId`, `CreatedAt`),
+  KEY `IX_ai_usage_logs_CreatedAt` (`CreatedAt`)
+) CHARACTER SET utf8mb4;
+";
+            await db.Database.ExecuteSqlRawAsync(aiUsageSql);
+            logger?.LogInformation("[SchemaPatcher] ai_usage_logs table ensured (MySQL)");
+
+
         }
 
         private static async Task TrySqliteAsync(AppDbContext db, ILogger? logger)
@@ -210,6 +230,18 @@ CREATE TABLE IF NOT EXISTS `processed_webhook_events` (
                     ProcessedAt TEXT NOT NULL,
                     IsWeakKey INTEGER NOT NULL DEFAULT 0
                 )",
+                @"CREATE TABLE IF NOT EXISTS ai_usage_logs (
+                    Id BLOB NOT NULL PRIMARY KEY,
+                    SellerId BLOB NOT NULL,
+                    SessionId BLOB NULL,
+                    Model TEXT NOT NULL,
+                    PromptTokens INTEGER NOT NULL DEFAULT 0,
+                    CompletionTokens INTEGER NOT NULL DEFAULT 0,
+                    EstimatedCostUsd TEXT NOT NULL DEFAULT '0',
+                    CreatedAt TEXT NOT NULL,
+                    Purpose TEXT NOT NULL
+                )",
+                @"CREATE INDEX IF NOT EXISTS IX_ai_usage_logs_SellerId_CreatedAt ON ai_usage_logs (SellerId, CreatedAt)",
                 @"CREATE UNIQUE INDEX IF NOT EXISTS IX_processed_webhook_events_Platform_EventKey ON processed_webhook_events (Platform, EventKey)"
             })
             {

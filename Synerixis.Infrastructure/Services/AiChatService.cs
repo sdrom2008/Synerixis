@@ -75,11 +75,18 @@ namespace Synerixis.Infrastructure.Services
                 MessageType = m.MessageType == 1 ? "text" : "other",
                 Timestamp = m.CreatedAt
             }).ToList();
-            var intent = await _intentClassifier.ClassifyAsync(message, historyDtos);
+            var intent = await _intentClassifier.ClassifyWithConfidenceAsync(
+                message, historyDtos, sellerId, session.Id);
 
             string replyContent;
-            var chatContext = new ChatContext { Messages = historyDtos };
-            var agent = _agentRouter.GetAgent(intent);
+            var chatContext = new ChatContext
+            {
+                Messages = historyDtos,
+                ShopId = sellerId,
+                SellerId = sellerId.ToString(),
+                ConversationId = session.Id.ToString()
+            };
+            var agent = _agentRouter.GetAgent(intent.Intent);
 
             if (agent != null)
             {

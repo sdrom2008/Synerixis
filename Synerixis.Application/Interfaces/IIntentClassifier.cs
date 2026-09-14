@@ -1,5 +1,6 @@
 using Synerixis.Application.DTOs;
 using Synerixis.Domain.Enums;
+using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 
@@ -15,6 +16,8 @@ namespace Synerixis.Application.Interfaces
         /// <summary>分类并返回粗置信度（自动 handoff 用）</summary>
         Task<IntentClassificationResult> ClassifyWithConfidenceAsync(
             string userInput,
-            IReadOnlyList<ChatMessageDto> recentHistory);
+            IReadOnlyList<ChatMessageDto> recentHistory,
+            Guid? sellerId = null,
+            Guid? sessionId = null);
     }
 }

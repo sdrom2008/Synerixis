@@ -253,3 +253,64 @@ export function refreshConnection(connectionId: string) {
     method: 'POST',
   })
 }
+
+export interface QuickReplyItem {
+  id: string
+  title: string
+  content: string
+  category?: string
+  categoryValue?: number
+  keywords?: string | null
+  scope?: string
+  shopId?: string | null
+  isActive?: boolean
+  sortOrder?: number
+  createdAt?: string
+  updatedAt?: string | null
+}
+
+export function listQuickReplies() {
+  return request<{ items: QuickReplyItem[]; total: number }>({
+    url: '/api/merchant/quick-replies',
+  })
+}
+
+export function createQuickReply(data: {
+  title: string
+  content: string
+  category?: string
+  keywords?: string
+  sortOrder?: number
+  isActive?: boolean
+}) {
+  return request<{ id: string; message?: string }>({
+    url: '/api/merchant/quick-replies',
+    method: 'POST',
+    data,
+  })
+}
+
+export function updateQuickReply(
+  id: string,
+  data: {
+    title: string
+    content: string
+    category?: string
+    keywords?: string
+    sortOrder?: number
+    isActive?: boolean
+  },
+) {
+  return request<{ id: string; message?: string }>({
+    url: `/api/merchant/quick-replies/${encodeURIComponent(id)}`,
+    method: 'PUT',
+    data,
+  })
+}
+
+export function deleteQuickReply(id: string) {
+  return request<{ message?: string }>({
+    url: `/api/merchant/quick-replies/${encodeURIComponent(id)}`,
+    method: 'DELETE',
+  })
+}

@@ -34,6 +34,10 @@
             <el-icon><Cpu /></el-icon>
             <span>AI 设置</span>
           </el-menu-item>
+          <el-menu-item index="/quick-replies">
+            <el-icon><ChatLineSquare /></el-icon>
+            <span>快捷回复</span>
+          </el-menu-item>
           <el-menu-item index="/billing">
             <el-icon><Coin /></el-icon>
             <span>计费</span>

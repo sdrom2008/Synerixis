@@ -179,6 +179,18 @@
           <p class="draft-hint">
             确认无误后再发送。自动生成的草稿不计入平台「真人坐席响应率」；请勿宣称无人值守自动回信。
           </p>
+          <div v-if="quickReplies.length" class="qr-bar">
+            <span class="qr-label">快捷回复</span>
+            <el-button
+              v-for="qr in quickReplies"
+              :key="qr.id"
+              size="small"
+              :disabled="!draft"
+              @click="insertQuickReply(qr.content)"
+            >
+              {{ qr.title }}
+            </el-button>
+          </div>
           <el-input
             v-model="draftContent"
             type="textarea"
@@ -298,6 +310,8 @@ import {
   getShopOptions,
   transferSession,
   updateDraft,
+  listQuickReplies,
+  type QuickReplyItem,
   type MessageItem,
   type SessionItem,
   type SessionOrderItem,
@@ -334,6 +348,7 @@ const selectedId = ref<string | null>(null)
 const messages = ref<MessageItem[]>([])
 const draft = ref<DraftInfo | null>(null)
 const draftContent = ref('')
+const quickReplies = ref<QuickReplyItem[]>([])
 const timelineEl = ref<HTMLElement | null>(null)
 const messagesMeta = ref<{
   sessionStatus?: string
@@ -482,6 +497,7 @@ function onFilterChange() {
 }
 
 async function refreshAll() {
+  void loadQuickReplies()
   await Promise.all([loadSessions(), loadAlerts()])
   if (selectedId.value) await selectSession(selectedId.value)
 }
@@ -681,6 +697,27 @@ async function onTransfer() {
     ElMessage.error('转接失败')
   } finally {
     transferring.value = false
+  }
+}
+
+function insertQuickReply(content: string) {
+  if (!draft.value) {
+    ElMessage.warning('请先选中有草稿的会话')
+    return
+  }
+  const piece = (content || '').trim()
+  if (!piece) return
+  draftContent.value = draftContent.value
+    ? `${draftContent.value.trimEnd()}\n${piece}`
+    : piece
+}
+
+async function loadQuickReplies() {
+  try {
+    const res = await listQuickReplies()
+    quickReplies.value = (res.items || []).filter((q) => q.isActive !== false).slice(0, 20)
+  } catch {
+    quickReplies.value = []
   }
 }
 
@@ -1088,5 +1125,17 @@ onUnmounted(() => {
   .side-col {
     display: none;
   }
+}
+.qr-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.qr-label {
+  font-size: 12px;
+  color: #64748b;
+  margin-right: 4px;
 }
 </style>

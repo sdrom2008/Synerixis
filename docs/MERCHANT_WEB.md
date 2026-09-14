@@ -55,6 +55,7 @@ POST /api/auth/init-agent
 | /shops | ✓ | ✓ | ✓ | ✗（友好提示） |
 | /ai-settings | ✓ | ✓ | ✓ | ✗ |
 | /billing | ✓ | ✓ | ✓ | ✗（计费 API 仍可仅 Seller） |
+| /quick-replies | ✓ | ✓ | ✓ | ✗（列表 GET 坐席可读，供 Inbox 插入） |
 | /team | ✓ | ✓ | ✓ | ✗ |
 
 **店铺绑定 API**：`GetConnections` / `BindCallback` / `Unbind` / `refresh` 使用 `GetShopOwnerSellerId()`（Seller→UserId；Supervisor/Admin→JWT `shopId`）；Agent → 403。页面 `/shops` 对 Supervisor ✓ 且 API 真通。
@@ -68,7 +69,9 @@ POST /api/auth/init-agent
 - `GET /api/merchant/sessions`（query：`status`、`platform`、`connectionId`、`platformShopId`）、`/drafts`、`/alerts` — Seller 与同店坐席 JWT 均可（按 `shopId`）
 - `GET /api/merchant/shop-options` — 收件箱多店下拉（全角色）
 - `GET /api/merchant/sessions/{id}/orders` — 会话关联订单（本地优先；空则平台回源，失败 `items=[]` + `warning`，带来源 `source`）
-- `GET /api/merchant/usage` — 计费用量：`draftsToday` / `sessionsToday` / `connectedShops` / `quota` / `subscription*`
+- `GET /api/merchant/usage` — 计费用量：`draftsToday` / `sessionsToday` / `connectedShops` / `quota` / `subscription*` + **AI token**（`totalTokensToday|ThisMonth` / `estimatedCostUsd*`，无数据为 0）
+- `GET|POST|PUT|DELETE /api/merchant/quick-replies` — 快捷回复 CRUD（写：Seller/Supervisor；读：同店坐席）
+- 健康检查：`GET /health`、`GET /health/ready`（ready 含 DB）
 - `GET /api/merchant/connections`、`POST .../bind/callback`、**匿名 GET** `.../bind/callback`（及 `/api/oauth/{platform}/callback`）→ redirect `/shops?bound=1`
 - `POST .../unbind/{platform}`、`POST .../connections/{id}/refresh`
 - 后台：`PlatformTokenRefreshHostedService` 约每 45 分钟扫描即将过期连接并刷新

@@ -19,7 +19,7 @@
 
 - [x] .NET 分层 API、EF、Shopee OAuth / Webhook / Agent 路由
 - [x] Box / 本机开发文档与本地 MySQL 示例配置
-- [ ] 迁移脚本在目标库一键应用；健康检查 `/health` 含 DB
+- [x] 健康检查 `/health`（live）与 `/health/ready`（含 EF DbContext）；迁移脚本仍需目标库按需执行
 - [ ] 关键 Partner 沙箱联调清单（见 `docs/SHOPEE_CLOSED_LOOP.md`）
 
 **产出**：商家可绑店、消息可进线；沙箱可草稿/按策略出站（默认人审路径优先）。
@@ -38,7 +38,7 @@
 | 收件箱 / 会话 | 待发送草稿角标、草稿编辑/发送/丢弃、超时排序字段 | [x] |
 | AI 设置 | 语气、草稿生成、`OutboundMode`、营业时段、自动 handoff / 敏感词 | [x] |
 | 计费 Billing | 套餐卡片对齐 `PRICING_DRAFT.md`；本月消息数接 `/api/merchant/usage` | [x] |
-| 知识片段（简版） | AI 设置内知识库片段编辑 | [ ] |
+| 知识片段（简版） | merchant-web「快捷回复」CRUD + Inbox 插入；AI 起草注入前 N 条 | [x] |
 | 真实 KPI / 图表数据 | `GET /api/merchant/dashboard` 已接真实聚合；趋势图/ECharts 仍占位 | [~] |
 
 **产出**：H5/桌面宽屏可用的商家端主路径，中文文案统一。（2026-09-14 前端壳与主路径已落地）
@@ -75,14 +75,14 @@
 
 **MVP 状态（网页端可演示）**：登录 → 绑店（Seller/Supervisor）→ 收件箱审发/转人工/SLA → 订单侧栏 → 多店筛选 → Token 后台刷新。详见验收清单。
 
-**不**替换移动端 `frontend/`。计费深化（模型费用记账）仍为遗留；Admin P1b 与 Webhook 幂等已落地。
+**不**替换移动端 `frontend/`。**AI token 记账**（`AiUsageLog`）已落地；Admin P1b 与 Webhook 幂等已落地。
 
 ### P1d — Handoff 硬闸 + SLA 超时唤醒（2026-09-14）
 
 - [x] `ChatSession.PendingHumanHandoff`：转人工后停新 AI 草稿与 AutoSend（不破坏新建会话 draft-first）
 - [x] 转人工可将旧 Pending 草稿标为 `Superseded`，人审仍可发送
 - [x] `SellerConfig.ResponseSlaHours` / `AlertThresholdHours`；会话列表 `slaUrgency`
-- [x] `GET /api/merchant/alerts` 应用内告警列表（Push/声音 TODO stub）
+- [x] `GET /api/merchant/alerts` 应用内告警列表
 - [x] 商家端：转人工按钮生效闸；收件箱「即将超时 / 已超时」徽章；AI 设置可改 SLA 小时
 
 ### P1e — 自动 handoff + 营业时间外策略（2026-09-14）
@@ -111,6 +111,14 @@
 
 技术：Vue3 + Element Plus + Pinia + Vue Router + ECharts；支持 **深色 / 浅色** 专业风。
 
+### P1f — 健康检查 / AI 用量 / 快捷回复（2026-09-14）
+
+- [x] `/health`（liveness）+ `/health/ready`（含 DbContext）
+- [x] `AiUsageLog` + SchemaPatcher；IntentClassifier / GeneralChatAgent 成功调用后记账
+- [x] `GET /api/merchant/usage`、`GET /api/admin/usage` 增加今日/本月 token 与估算费用
+- [x] Merchant CRUD `/api/merchant/quick-replies`；merchant-web 管理页 + Inbox 插入；AI 起草注入上下文
+- [x] Admin Settings 可拉取 health 摘要
+
 ### P2 — 可靠性与人工协同
 
 - Token 刷新（Shopee refresh）与过期告警
@@ -119,8 +127,8 @@
 - [x] 营业时间外不 AutoSend；`HandoffOutsideBusinessHours` 默认转人工
 - 幂等表（Webhook / 出站消息去重）
 - 基础审计日志
-- [x] SLA 超时唤醒 UI + alerts API；merchant-web 收件箱 **声音提醒**已落地
-- [ ] Push 推送仍 TODO
+- [x] SLA 超时唤醒 UI + alerts API；merchant-web 收件箱 **声音提醒**已落地；**浏览器 Notification** 已有
+- [ ] ~~Push 推送~~ **真实 APNs/FCM Push 仍无**（本阶段不做）
 
 ### P3 — 增长面
 

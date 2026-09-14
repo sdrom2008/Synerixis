@@ -3,17 +3,21 @@ using Microsoft.SemanticKernel.ChatCompletion;
 using Microsoft.SemanticKernel.Connectors.OpenAI;
 using Synerixis.Application.DTOs;
 using Synerixis.Application.Interfaces;
+using Synerixis.Domain.Entities;
 using Synerixis.Domain.Enums;
 
 namespace Synerixis.Application.Services;
 
 public class IntentClassifier : IIntentClassifier
 {
+    private const string DefaultModel = "qwen-max";
     private readonly IChatCompletionService _chatService;
+    private readonly IAiUsageRecorder? _usageRecorder;
 
-    public IntentClassifier(IChatCompletionService chatService)
+    public IntentClassifier(IChatCompletionService chatService, IAiUsageRecorder? usageRecorder = null)
     {
         _chatService = chatService ?? throw new ArgumentNullException(nameof(chatService));
+        _usageRecorder = usageRecorder;
     }
 
     public async Task<ChatIntent> ClassifyAsync(string userInput, IReadOnlyList<ChatMessageDto> recentHistory)
@@ -24,7 +28,9 @@ public class IntentClassifier : IIntentClassifier
 
     public async Task<IntentClassificationResult> ClassifyWithConfidenceAsync(
         string userInput,
-        IReadOnlyList<ChatMessageDto> recentHistory)
+        IReadOnlyList<ChatMessageDto> recentHistory,
+        Guid? sellerId = null,
+        Guid? sessionId = null)
     {
         var historyText = string.Join("\n", recentHistory
             .TakeLast(6)
@@ -70,6 +76,12 @@ MarketingFollowup    - 复购引导、商品推荐、催评价、感谢、促销
                 chatHistory,
                 executionSettings: executionSettings
             );
+
+            if (_usageRecorder != null && sellerId.HasValue && sellerId.Value != Guid.Empty)
+            {
+                await _usageRecorder.RecordFromChatResultAsync(
+                    sellerId.Value, sessionId, AiUsagePurposes.Classify, DefaultModel, result);
+            }
 
             var raw = result.Content?.Trim() ?? "";
             var category = raw.ToLowerInvariant();

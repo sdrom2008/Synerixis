@@ -45,6 +45,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '计费', roles: ['Seller', 'Supervisor', 'Admin'] },
       },
       {
+        path: 'quick-replies',
+        name: 'quick-replies',
+        component: () => import('@/views/QuickReplies.vue'),
+        meta: { title: '快捷回复', roles: ['Seller', 'Supervisor', 'Admin'] },
+      },
+      {
         path: 'team',
         name: 'team',
         component: () => import('@/views/Team.vue'),

@@ -645,7 +645,7 @@ namespace Synerixis.Api.Controllers
                 try
                 {
                     var classifier = sp.GetRequiredService<IIntentClassifier>();
-                    var classified = await classifier.ClassifyWithConfidenceAsync(userContent, historyDtos);
+                    var classified = await classifier.ClassifyWithConfidenceAsync(userContent, historyDtos, session.ShopId, session.Id);
                     intent = classified.Intent;
                     confidence = classified.Confidence;
                     logger.LogInformation(

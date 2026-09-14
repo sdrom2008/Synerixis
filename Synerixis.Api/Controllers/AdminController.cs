@@ -217,6 +217,35 @@ namespace Synerixis.Api.Controllers
                 .OrderBy(x => x.date)
                 .ToListAsync();
 
+            var aiToday = await _db.AiUsageLogs.AsNoTracking()
+                .Where(a => a.CreatedAt >= dayStart)
+                .GroupBy(_ => 1)
+                .Select(g => new
+                {
+                    promptTokens = g.Sum(x => x.PromptTokens),
+                    completionTokens = g.Sum(x => x.CompletionTokens),
+                    estimatedCostUsd = g.Sum(x => x.EstimatedCostUsd),
+                    calls = g.Count()
+                })
+                .FirstOrDefaultAsync();
+
+            var aiMonth = await _db.AiUsageLogs.AsNoTracking()
+                .Where(a => a.CreatedAt >= monthStart)
+                .GroupBy(_ => 1)
+                .Select(g => new
+                {
+                    promptTokens = g.Sum(x => x.PromptTokens),
+                    completionTokens = g.Sum(x => x.CompletionTokens),
+                    estimatedCostUsd = g.Sum(x => x.EstimatedCostUsd),
+                    calls = g.Count()
+                })
+                .FirstOrDefaultAsync();
+
+            var promptTokensToday = aiToday?.promptTokens ?? 0;
+            var completionTokensToday = aiToday?.completionTokens ?? 0;
+            var promptTokensThisMonth = aiMonth?.promptTokens ?? 0;
+            var completionTokensThisMonth = aiMonth?.completionTokens ?? 0;
+
             return Ok(new
             {
                 periodStart = monthStart,
@@ -231,7 +260,17 @@ namespace Synerixis.Api.Controllers
                 connectedShops,
                 bySubscription,
                 dailySessions,
-                note = "Token/模型费用未单独记账；本接口为消息与会话诚实计数。"
+                promptTokensToday,
+                completionTokensToday,
+                totalTokensToday = promptTokensToday + completionTokensToday,
+                estimatedCostUsdToday = aiToday?.estimatedCostUsd ?? 0m,
+                aiCallsToday = aiToday?.calls ?? 0,
+                promptTokensThisMonth,
+                completionTokensThisMonth,
+                totalTokensThisMonth = promptTokensThisMonth + completionTokensThisMonth,
+                estimatedCostUsdThisMonth = aiMonth?.estimatedCostUsd ?? 0m,
+                aiCallsThisMonth = aiMonth?.calls ?? 0,
+                note = "含 AiUsageLog token 合计与粗估费用；无调用记录时为 0。"
             });
         }
 
@@ -257,7 +296,17 @@ namespace Synerixis.Api.Controllers
                     handoffOutsideBusinessHours = true,
                     webhookIdempotency = true,
                     slaAlerts = true,
-                    slaSoundInMerchantWeb = true
+                    slaSoundInMerchantWeb = true,
+                    aiUsageLogging = true,
+                    quickReplies = true,
+                    browserNotification = true,
+                    apnsFcmPush = false
+                },
+                health = new
+                {
+                    live = "/health",
+                    ready = "/health/ready",
+                    note = "ready 含 EF DbContext 连通检查"
                 }
             });
         }
