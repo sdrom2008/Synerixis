@@ -1,5 +1,12 @@
--- AiUsageLog.IsEstimated：无模型 Usage 时按 chars/4 估算并标记
--- SchemaPatcher 启动时也会幂等补列；本文件供手工执行。
--- MySQL 8：若列已存在会报错，可忽略。
-ALTER TABLE `ai_usage_logs`
-  ADD COLUMN `IsEstimated` TINYINT(1) NOT NULL DEFAULT 0;
+-- AiUsageLog.IsEstimated (MySQL 5.7+/8.0 idempotent)
+SET @db := DATABASE();
+SET @col := (
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = @db AND TABLE_NAME = 'ai_usage_logs' AND COLUMN_NAME = 'IsEstimated'
+);
+SET @ddl := IF(@col = 0,
+  'ALTER TABLE `ai_usage_logs` ADD COLUMN `IsEstimated` TINYINT(1) NOT NULL DEFAULT 0',
+  'SELECT 1');
+PREPARE stmt FROM @ddl;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
