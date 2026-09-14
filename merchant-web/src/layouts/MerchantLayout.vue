@@ -25,6 +25,10 @@
           <el-icon><ChatDotRound /></el-icon>
           <span>收件箱</span>
         </el-menu-item>
+        <el-menu-item index="/onboarding">
+          <el-icon><Guide /></el-icon>
+          <span>上手指南</span>
+        </el-menu-item>
         <template v-if="perms.fullMenu">
           <el-menu-item index="/shops">
             <el-icon><Shop /></el-icon>

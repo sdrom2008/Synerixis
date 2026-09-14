@@ -22,7 +22,7 @@
       <el-form label-width="160px" style="max-width: 560px">
         <el-form-item label="维护模式">
           <el-switch v-model="form.maintenanceMode" />
-          <span class="hint">开启后前端可提示维护（本阶段仅开关落库）</span>
+          <span class="hint">开启后商家 API 返回 503 MAINTENANCE；Admin / health / Webhook 仍可用（Webhook 跳过 AI）</span>
         </el-form-item>
         <el-form-item label="默认出站模式">
           <el-select v-model="form.defaultOutboundMode" style="width: 220px">

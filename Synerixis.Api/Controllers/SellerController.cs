@@ -24,13 +24,15 @@ namespace Synerixis.Api.Controllers
         private readonly IAuthService _authService;
         private readonly ProductService _productService;
         private readonly IAuditLogger _audit;
+        private readonly ISystemSettingsService _ops;
 
-        public SellerController(AppDbContext db, IAuthService authService, ProductService productService, IAuditLogger audit)
+        public SellerController(AppDbContext db, IAuthService authService, ProductService productService, IAuditLogger audit, ISystemSettingsService ops)
         {
             _db = db;
             _authService = authService;
             _productService = productService;
             _audit = audit;
+            _ops = ops;
         }
 
         [HttpGet("profile")]
@@ -54,7 +56,12 @@ namespace Synerixis.Api.Controllers
 
                 if (seller.Config == null)
                 {
-                    seller.Config = new SellerConfig { /* 默认值 */ };
+                    var ops = await _ops.GetOpsAsync();
+                    seller.Config = new SellerConfig
+                    {
+                        SellerId = seller.Id,
+                        OutboundMode = ops.DefaultOutboundMode
+                    };
                     _db.SellerConfigs.Add(seller.Config);
                     await _db.SaveChangesAsync();
                 }
@@ -235,7 +242,8 @@ namespace Synerixis.Api.Controllers
             var config = await _db.SellerConfigs.FirstOrDefaultAsync(c => c.SellerId == sellerId);
             if (config == null)
             {
-                config = new SellerConfig { SellerId = sellerId };
+                var ops = await _ops.GetOpsAsync();
+                config = new SellerConfig { SellerId = sellerId, OutboundMode = ops.DefaultOutboundMode };
                 _db.SellerConfigs.Add(config);
             }
             config.ShopLogo = url;

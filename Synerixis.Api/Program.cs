@@ -260,6 +260,9 @@ builder.Services.Configure<Synerixis.Application.Options.AiPricingOptions>(
     builder.Configuration.GetSection(Synerixis.Application.Options.AiPricingOptions.SectionName));
 builder.Services.AddScoped<IAiUsageRecorder, AiUsageRecorder>();
 builder.Services.AddScoped<IAuditLogger, AuditLogger>();
+builder.Services.AddScoped<ISystemSettingsService, SystemSettingsService>();
+builder.Services.Configure<Synerixis.Api.Middleware.WebhookRateLimitOptions>(
+    builder.Configuration.GetSection(Synerixis.Api.Middleware.WebhookRateLimitOptions.SectionName));
 builder.Services.AddScoped<IQuickReplyContextProvider, QuickReplyContextProvider>();
 
 // 7. AiChatService（最后注册，依赖 Router）
@@ -297,6 +300,10 @@ app.UseStaticFiles();
 app.UseHttpsRedirection();
 app.UseAuthentication();
 app.UseAuthorization();
+
+// Webhook 限流（429，不碰幂等）→ 维护闸（商家 API 503；Webhook/Admin/health 放行）
+app.UseMiddleware<Synerixis.Api.Middleware.WebhookRateLimitMiddleware>();
+app.UseMiddleware<Synerixis.Api.Middleware.MaintenanceModeMiddleware>();
 
 app.MapControllers();
 

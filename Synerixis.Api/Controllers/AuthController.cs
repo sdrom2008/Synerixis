@@ -33,6 +33,7 @@ namespace Synerixis.Api.Controllers
         private readonly IMemoryCache _cache;
         private readonly IWebHostEnvironment _env;
         private readonly IAuditLogger _audit;
+        private readonly ISystemSettingsService _ops;
 
         public AuthController(
             AppDbContext db,
@@ -43,7 +44,8 @@ namespace Synerixis.Api.Controllers
             IMemoryCache cache,
             IWebHostEnvironment env,
             IPlatformClientRouter platformClientRouter,
-            IAuditLogger audit)
+            IAuditLogger audit,
+            ISystemSettingsService ops)
         {
             _db = db;
             _authService = authService ?? throw new ArgumentNullException(nameof(authService));
@@ -54,6 +56,7 @@ namespace Synerixis.Api.Controllers
             _env = env;
             _router = platformClientRouter ?? throw new ArgumentNullException(nameof(platformClientRouter));
             _audit = audit ?? throw new ArgumentNullException(nameof(audit));
+            _ops = ops ?? throw new ArgumentNullException(nameof(ops));
         }
 
         private readonly IPlatformClientRouter _router;
@@ -76,6 +79,9 @@ namespace Synerixis.Api.Controllers
 
             if (seller == null)
             {
+                var blocked = await RejectNewRegistrationIfBlockedAsync();
+                if (blocked != null) return blocked;
+
                 seller = Seller.Create(openId);
                 _db.Sellers.Add(seller);
                 await _db.SaveChangesAsync();
@@ -178,8 +184,19 @@ namespace Synerixis.Api.Controllers
             }
 
             // 都找不到，自动注册为新商户 (Seller)
+            {
+                var blocked = await RejectNewRegistrationIfBlockedAsync();
+                if (blocked != null) return blocked;
+            }
             var newSeller = Seller.CreateWithPhone(fullPhone);
+            // 新商家 SellerConfig 使用系统 DefaultOutboundMode
+            var ops = await _ops.GetOpsAsync();
             _db.Sellers.Add(newSeller);
+            _db.SellerConfigs.Add(new SellerConfig
+            {
+                SellerId = newSeller.Id,
+                OutboundMode = ops.DefaultOutboundMode
+            });
             await _db.SaveChangesAsync();
 
             var newToken = _authService.GenerateJwt(newSeller.Id, "Seller", null);
@@ -283,9 +300,18 @@ namespace Synerixis.Api.Controllers
 
             if (seller == null)
             {
+                var blocked = await RejectNewRegistrationIfBlockedAsync();
+                if (blocked != null) return blocked;
+
                 seller = Seller.CreateWithPhone(fullPhone);
                 seller.BindWechat(dto.OpenId);
                 _db.Sellers.Add(seller);
+                var ops = await _ops.GetOpsAsync();
+                _db.SellerConfigs.Add(new SellerConfig
+                {
+                    SellerId = seller.Id,
+                    OutboundMode = ops.DefaultOutboundMode
+                });
             }
             else
             {
@@ -436,6 +462,21 @@ namespace Synerixis.Api.Controllers
                 role = userType,
                 shopId = agent.ShopId
             });
+        }
+
+
+        private async Task<IActionResult?> RejectNewRegistrationIfBlockedAsync()
+        {
+            var ops = await _ops.GetOpsAsync();
+            if (ops.MaintenanceMode)
+            {
+                return StatusCode(503, new { code = "MAINTENANCE", message = "系统维护中，暂停新商家注册" });
+            }
+            if (!ops.AllowNewRegistration)
+            {
+                return StatusCode(503, new { code = "REGISTRATION_CLOSED", message = "暂不开放新商家注册" });
+            }
+            return null;
         }
 
         // 开发用：创建初始 Agent 账号（仅 Development 环境）

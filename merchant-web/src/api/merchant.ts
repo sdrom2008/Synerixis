@@ -399,3 +399,25 @@ export function getAuditLogs(take = 50, action?: string) {
     url: `/api/merchant/audit-logs?${params}`,
   })
 }
+
+
+export interface OnboardingItem {
+  id: string
+  title: string
+  done: boolean
+  hint?: string
+  link?: string | null
+}
+
+export interface OnboardingResult {
+  shopId?: string
+  userType?: string
+  doneCount?: number
+  total?: number
+  complete?: boolean
+  items?: OnboardingItem[]
+}
+
+export function getOnboarding() {
+  return request<OnboardingResult>({ url: '/api/merchant/onboarding' })
+}

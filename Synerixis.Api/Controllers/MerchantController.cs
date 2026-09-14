@@ -1074,6 +1074,62 @@ namespace Synerixis.Api.Controllers
             }
         }
 
+
+        /// <summary>
+        /// 上手指南清单：根据真实 DB 状态勾选（登录/绑店/坐席/营业时间/SLA）。
+        /// </summary>
+        [HttpGet("onboarding")]
+        public async Task<IActionResult> GetOnboarding()
+        {
+            try
+            {
+                var shopId = GetMerchantShopId();
+                var current = GetCurrentUser();
+
+                var hasShopBound = await _db.PlatformConnections
+                    .AnyAsync(c => c.SellerId == shopId && c.IsActive);
+                var hasAgent = await _db.Agents
+                    .AnyAsync(a => a.ShopId == shopId && a.IsActive);
+                var config = await _db.SellerConfigs.AsNoTracking()
+                    .FirstOrDefaultAsync(c => c.SellerId == shopId);
+
+                var hasBusinessHours = config != null
+                    && !string.IsNullOrWhiteSpace(config.BusinessHoursStart)
+                    && !string.IsNullOrWhiteSpace(config.BusinessHoursEnd);
+                // 商家曾保存过配置（UpdatedAt 晚于 CreatedAt）视为「已设」；仅有默认行也算已有营业时间默认值
+                var businessHoursCustomized = config != null
+                    && config.UpdatedAt > config.CreatedAt.AddSeconds(2);
+
+                var hasSlaAlerts = config != null
+                    && config.ResponseSlaHours > 0
+                    && !string.IsNullOrWhiteSpace(config.AlertThresholdHours);
+
+                var items = new[]
+                {
+                    new { id = "loggedIn", title = "已登录", done = true, hint = "当前 JWT 有效", link = (string?)null },
+                    new { id = "shopBound", title = "已绑店", done = hasShopBound, hint = hasShopBound ? "至少 1 个活跃 PlatformConnection" : "前往店铺绑定完成 OAuth", link = "/shops" },
+                    new { id = "hasAgent", title = "已加坐席", done = hasAgent, hint = hasAgent ? "至少 1 名活跃坐席" : "在团队页添加 Agent/Supervisor", link = "/team" },
+                    new { id = "businessHours", title = "已设营业时间", done = hasBusinessHours, hint = businessHoursCustomized ? "营业时间已保存" : (hasBusinessHours ? "使用默认 09:00–22:00，可在 AI 设置调整" : "请在 AI 设置填写营业时段"), link = "/ai-settings" },
+                    new { id = "slaAlerts", title = "已开 SLA 提醒", done = hasSlaAlerts, hint = hasSlaAlerts ? $"SLA {config!.ResponseSlaHours}h / 阈值 {config.AlertThresholdHours}" : "请在 AI 设置开启 ResponseSlaHours 与告警阈值", link = "/ai-settings" },
+                };
+
+                var doneCount = items.Count(i => i.done);
+                return Ok(new
+                {
+                    shopId,
+                    userType = current.UserType,
+                    doneCount,
+                    total = items.Length,
+                    complete = doneCount == items.Length,
+                    items
+                });
+            }
+            catch (Exception ex)
+            {
+                return HandleError(ex);
+            }
+        }
+
         /// <summary>
         /// 用量摘要（计费页诚实计数）：今日草稿/会话、已连店铺、订阅档位与额度。
         /// </summary>

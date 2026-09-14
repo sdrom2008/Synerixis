@@ -32,18 +32,21 @@ namespace Synerixis.Api.Controllers
         private readonly ILogger<WebhookController> _logger;
         private readonly AppDbContext _db;
         private readonly IServiceScopeFactory _scopeFactory;
+        private readonly ISystemSettingsService _ops;
 
         public WebhookController(
             IPlatformClientRouter router,
             IConversationRepository conversationRepo,
             AppDbContext db,
             IServiceScopeFactory scopeFactory,
+            ISystemSettingsService ops,
             ILogger<WebhookController> logger)
         {
             _router = router;
             _conversationRepo = conversationRepo;
             _db = db;
             _scopeFactory = scopeFactory;
+            _ops = ops;
             _logger = logger;
         }
 
@@ -163,6 +166,16 @@ namespace Synerixis.Api.Controllers
             session.Messages.Add(userMsg);
             session.AddUserMessage();
             await _db.SaveChangesAsync();
+
+            // 维护期：已落库，跳过 AI 起草 / AutoSend
+            var ops = await _ops.GetOpsAsync();
+            if (ops.MaintenanceMode)
+            {
+                _logger.LogInformation(
+                    "[Webhook] MaintenanceMode: persisted inbound, skip AI draft/AutoSend Session={SessionId}",
+                    session.Id);
+                return Ok(new { code = 0, message = "success_maintenance_skip_ai" });
+            }
 
             // 意图分类 → Agent 路由 → 平台回信（独立 scope，不阻塞 webhook 200）
             var sessionId = session.Id;
@@ -536,6 +549,16 @@ namespace Synerixis.Api.Controllers
                 }
 
                 // EnableAutoReply=false：不生成草稿；默认仍生成 AI 草稿（DraftFirst）
+                var opsSvc = sp.GetRequiredService<ISystemSettingsService>();
+                var opsNow = await opsSvc.GetOpsAsync();
+                if (opsNow.MaintenanceMode)
+                {
+                    logger.LogInformation(
+                        "[Webhook] MaintenanceMode (async): skip AI draft/AutoSend Session={SessionId}",
+                        sessionId);
+                    return;
+                }
+
                 var sellerConfig = await db.SellerConfigs
                     .AsNoTracking()
                     .FirstOrDefaultAsync(c => c.SellerId == session.ShopId);

@@ -20,7 +20,7 @@ export interface MerchantProfile {
 const FULL_MENU_ROLES = new Set(['Seller', 'Supervisor', 'Admin'])
 
 /** 普通坐席可访问 */
-const AGENT_ROUTES = new Set(['inbox', 'overview'])
+const AGENT_ROUTES = new Set(['inbox', 'overview', 'onboarding'])
 
 export const useAuthStore = defineStore('auth', () => {
   const token = ref<string | null>(localStorage.getItem(TOKEN_KEY))

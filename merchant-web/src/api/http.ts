@@ -1,4 +1,5 @@
 import axios, { type AxiosInstance, type AxiosRequestConfig } from 'axios'
+import { ElMessage } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
 import router from '@/router'
 
@@ -30,7 +31,12 @@ http.interceptors.request.use((config) => {
 http.interceptors.response.use(
   (res) => res,
   (err) => {
-    if (err?.response?.status === 401) {
+    const status = err?.response?.status
+    const code = err?.response?.data?.code
+    if (status === 503 && (code === 'MAINTENANCE' || code === 'REGISTRATION_CLOSED')) {
+      ElMessage.warning(err?.response?.data?.message || '系统维护中')
+    }
+    if (status === 401) {
       const auth = useAuthStore()
       auth.clear()
       if (router.currentRoute.value.name !== 'login') {

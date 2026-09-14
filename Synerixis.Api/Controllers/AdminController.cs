@@ -17,11 +17,13 @@ namespace Synerixis.Api.Controllers
     {
         private readonly AppDbContext _db;
         private readonly IAuditLogger _audit;
+        private readonly ISystemSettingsService _ops;
 
-        public AdminController(AppDbContext db, IAuditLogger audit)
+        public AdminController(AppDbContext db, IAuditLogger audit, ISystemSettingsService ops)
         {
             _db = db;
             _audit = audit ?? throw new ArgumentNullException(nameof(audit));
+            _ops = ops ?? throw new ArgumentNullException(nameof(ops));
         }
 
         /// <summary>Dashboard KPI：商家数、连接店铺、今日会话、待手审草稿、SLA overdue 粗计数</summary>
@@ -550,6 +552,7 @@ namespace Synerixis.Api.Controllers
                 return BadRequest(new { message = "未提供可写字段（maintenanceMode / defaultOutboundMode / allowNewRegistration）" });
 
             await _db.SaveChangesAsync();
+            _ops.Invalidate();
 
             var actorId = TryGetActorId();
             await _audit.LogAsync(

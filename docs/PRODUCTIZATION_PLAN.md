@@ -139,6 +139,20 @@
 - [x] alerts：去掉误导性 `pushStub`，改为 `browserNotifySupported` / `pushEnabled=false`
 - [x] `docs/SHOPEE_SANDBOX_CHECKLIST.md` 可执行沙箱清单
 
+
+### P1i — Maintenance 闸流量 / Webhook 限流 / Onboarding（2026-09-14）
+
+- [x] `ISystemSettingsService`：读 `system_settings`（MaintenanceMode / DefaultOutboundMode / AllowNewRegistration），内存缓存 30s；Admin PUT 后 Invalidate
+- [x] `MaintenanceModeMiddleware`：维护开启时商家 `/api/merchant/*` `/api/seller/*` → 503 `MAINTENANCE`；放行 `/health*` `/api/admin/*` `/api/auth/agent-login`；Webhook 仍接收落库但跳过 AI/AutoSend
+- [x] 新商家 `phone-login` / wechat / bind-phone：维护中或 `AllowNewRegistration=false` → 503；新 SellerConfig 使用系统 `DefaultOutboundMode`
+- [x] `WebhookRateLimitMiddleware`：按 platform+IP 每分钟 N 次（`Webhook:RateLimitPerMinute` 默认 120）→ 429，不碰幂等表
+- [x] merchant-web：503 `MAINTENANCE` 全局 ElMessage「系统维护中」；`/onboarding` 上手清单 + 侧栏「上手指南」+ Overview 进度条
+- [x] Admin Settings 文案同步为「真正闸流量」
+
+**明确不做**：支付生产、APNs/FCM、多站点、RegimeTrader、假承运商轨迹。
+
+**下一轮缺口**：真实承运商轨迹；ConversationService 与 Webhook 统一；支付生产；Token 告警深化；多实例限流（Redis）。
+
 ### P2 — 可靠性与人工协同
 
 - Token 刷新（Shopee refresh）与过期告警
@@ -153,7 +167,7 @@
 ### P3 — 增长面
 
 - 营销站点 + 定价页（对齐 `docs/PRICING_DRAFT.md`）
-- 自助 Onboarding（注册 → 绑店 → 首条自动回复）
+- [x] 自助 Onboarding 清单页（注册 → 绑店 → 坐席 → 营业时间 → SLA）；首条自动回复仍依赖 Webhook 联调
 - 文档中心与状态页
 
 ## 3. UI 设计原则

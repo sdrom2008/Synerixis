@@ -62,6 +62,12 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/AuditLogs.vue'),
         meta: { title: '操作日志', roles: ['Seller', 'Supervisor', 'Admin'] },
       },
+      {
+        path: 'onboarding',
+        name: 'onboarding',
+        component: () => import('@/views/Onboarding.vue'),
+        meta: { title: '上手指南', roles: ['Seller', 'Supervisor', 'Admin', 'Agent'] },
+      },
     ],
   },
 ]

@@ -7,6 +7,17 @@
     </p>
 
     <el-alert
+      v-if="onboardingIncomplete"
+      type="info"
+      :closable="false"
+      show-icon
+      style="margin-bottom: 16px"
+      :title="`上手指南进度 ${onboardingDone}/${onboardingTotal}`"
+    >
+      <el-button type="primary" size="small" @click="$router.push('/onboarding')">继续完成</el-button>
+    </el-alert>
+
+    <el-alert
       v-if="tokenAlert"
       :type="tokenAlert.type"
       :closable="false"
@@ -58,10 +69,14 @@ import {
   getConnections,
   getMerchantDashboard,
   getMerchantUsageDaily,
+  getOnboarding,
   type DashboardKpis,
 } from '@/api/merchant'
 
 const loading = ref(false)
+const onboardingIncomplete = ref(false)
+const onboardingDone = ref(0)
+const onboardingTotal = ref(5)
 const tokenAlert = ref<{ type: 'error' | 'warning'; title: string } | null>(null)
 const chartLoading = ref(false)
 const chartReady = ref(false)
@@ -86,11 +101,17 @@ onMounted(async () => {
   loading.value = true
   chartLoading.value = true
   try {
-    const [dash, daily, conns] = await Promise.all([
+    const [dash, daily, conns, onb] = await Promise.all([
       getMerchantDashboard(),
       getMerchantUsageDaily(7).catch(() => null),
       getConnections().catch(() => null),
+      getOnboarding().catch(() => null),
     ])
+    if (onb) {
+      onboardingDone.value = onb.doneCount ?? 0
+      onboardingTotal.value = onb.total ?? 5
+      onboardingIncomplete.value = !onb.complete
+    }
     data.value = dash
     try {
       const raw = conns as { items?: Record<string, unknown>[] } | Record<string, unknown>[] | null
