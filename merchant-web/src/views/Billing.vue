@@ -156,6 +156,8 @@ onMounted(async () => {
         value: fmt(pick(usage, 'sessionsThisMonth', 'SessionsThisMonth', 'sessionCount')),
       },
       { label: '今日 AI Token', value: numOrZero(pick(usage, 'totalTokensToday', 'TotalTokensToday')) },
+      { label: '今日精确 Token', value: numOrZero(pick(usage, 'exactTokensToday', 'ExactTokensToday')) },
+      { label: '今日估算 Token', value: numOrZero(pick(usage, 'estimatedTokensToday', 'EstimatedTokensToday')) },
       {
         label: '今日估算费用(USD)',
         value: numOrZero(pick(usage, 'estimatedCostUsdToday', 'EstimatedCostUsdToday')),
@@ -164,6 +166,8 @@ onMounted(async () => {
         label: '本月 AI Token',
         value: numOrZero(pick(usage, 'totalTokensThisMonth', 'TotalTokensThisMonth')),
       },
+      { label: '本月精确 Token', value: numOrZero(pick(usage, 'exactTokensThisMonth', 'ExactTokensThisMonth')) },
+      { label: '本月估算 Token', value: numOrZero(pick(usage, 'estimatedTokensThisMonth', 'EstimatedTokensThisMonth')) },
       {
         label: '本月估算费用(USD)',
         value: numOrZero(pick(usage, 'estimatedCostUsdThisMonth', 'EstimatedCostUsdThisMonth')),

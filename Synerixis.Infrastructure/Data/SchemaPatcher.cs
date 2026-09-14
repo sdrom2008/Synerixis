@@ -181,14 +181,32 @@ CREATE TABLE IF NOT EXISTS `ai_usage_logs` (
   `EstimatedCostUsd` decimal(18,6) NOT NULL DEFAULT 0,
   `CreatedAt` datetime(6) NOT NULL,
   `Purpose` varchar(32) NOT NULL,
+  `IsEstimated` TINYINT(1) NOT NULL DEFAULT 0,
   PRIMARY KEY (`Id`),
   KEY `IX_ai_usage_logs_SellerId_CreatedAt` (`SellerId`, `CreatedAt`),
   KEY `IX_ai_usage_logs_CreatedAt` (`CreatedAt`)
 ) CHARACTER SET utf8mb4;
 ";
+
             await db.Database.ExecuteSqlRawAsync(aiUsageSql);
             logger?.LogInformation("[SchemaPatcher] ai_usage_logs table ensured (MySQL)");
 
+            // IsEstimated 列（幂等）
+            const string aiEstimatedSql = @"
+SET @db := DATABASE();
+SET @col := (
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = @db AND TABLE_NAME = 'ai_usage_logs' AND COLUMN_NAME = 'IsEstimated'
+);
+SET @ddl := IF(@col = 0,
+  'ALTER TABLE `ai_usage_logs` ADD COLUMN `IsEstimated` TINYINT(1) NOT NULL DEFAULT 0',
+  'SELECT 1');
+PREPARE stmt FROM @ddl;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+";
+            await db.Database.ExecuteSqlRawAsync(aiEstimatedSql);
+            logger?.LogInformation("[SchemaPatcher] ai_usage_logs.IsEstimated ensured (MySQL)");
 
         }
 
@@ -239,9 +257,11 @@ CREATE TABLE IF NOT EXISTS `ai_usage_logs` (
                     CompletionTokens INTEGER NOT NULL DEFAULT 0,
                     EstimatedCostUsd TEXT NOT NULL DEFAULT '0',
                     CreatedAt TEXT NOT NULL,
-                    Purpose TEXT NOT NULL
+                    Purpose TEXT NOT NULL,
+                    IsEstimated INTEGER NOT NULL DEFAULT 0
                 )",
                 @"CREATE INDEX IF NOT EXISTS IX_ai_usage_logs_SellerId_CreatedAt ON ai_usage_logs (SellerId, CreatedAt)",
+                "ALTER TABLE ai_usage_logs ADD COLUMN IsEstimated INTEGER NOT NULL DEFAULT 0",
                 @"CREATE UNIQUE INDEX IF NOT EXISTS IX_processed_webhook_events_Platform_EventKey ON processed_webhook_events (Platform, EventKey)"
             })
             {

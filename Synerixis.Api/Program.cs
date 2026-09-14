@@ -256,6 +256,8 @@ builder.Services.AddHealthChecks()
     .AddCheck("self", () => HealthCheckResult.Healthy(), tags: new[] { "live" })
     .AddDbContextCheck<AppDbContext>("database", tags: new[] { "ready" });
 
+builder.Services.Configure<Synerixis.Application.Options.AiPricingOptions>(
+    builder.Configuration.GetSection(Synerixis.Application.Options.AiPricingOptions.SectionName));
 builder.Services.AddScoped<IAiUsageRecorder, AiUsageRecorder>();
 builder.Services.AddScoped<IQuickReplyContextProvider, QuickReplyContextProvider>();
 

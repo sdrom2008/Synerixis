@@ -1,6 +1,8 @@
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Microsoft.SemanticKernel;
 using Synerixis.Application.Interfaces;
+using Synerixis.Application.Options;
 using Synerixis.Domain.Entities;
 using Synerixis.Infrastructure.Data;
 using System;
@@ -13,17 +15,18 @@ namespace Synerixis.Infrastructure.Services
 {
     public class AiUsageRecorder : IAiUsageRecorder
     {
-        // 粗费率（USD / 1M tokens），仅估算；无 token 时费用为 0
-        private const decimal PromptUsdPer1M = 0.40m;
-        private const decimal CompletionUsdPer1M = 1.20m;
-
         private readonly AppDbContext _db;
         private readonly ILogger<AiUsageRecorder> _logger;
+        private readonly AiPricingOptions _pricing;
 
-        public AiUsageRecorder(AppDbContext db, ILogger<AiUsageRecorder> logger)
+        public AiUsageRecorder(
+            AppDbContext db,
+            ILogger<AiUsageRecorder> logger,
+            IOptions<AiPricingOptions>? pricing = null)
         {
             _db = db;
             _logger = logger;
+            _pricing = pricing?.Value ?? new AiPricingOptions();
         }
 
         public async Task RecordAsync(
@@ -33,13 +36,14 @@ namespace Synerixis.Infrastructure.Services
             string model,
             int promptTokens,
             int completionTokens,
+            bool isEstimated = false,
             CancellationToken ct = default)
         {
             if (sellerId == Guid.Empty) return;
 
             var prompt = Math.Max(0, promptTokens);
             var completion = Math.Max(0, completionTokens);
-            var cost = EstimateCost(prompt, completion);
+            var cost = EstimateCost(prompt, completion, _pricing);
 
             try
             {
@@ -53,7 +57,8 @@ namespace Synerixis.Infrastructure.Services
                     CompletionTokens = completion,
                     EstimatedCostUsd = cost,
                     CreatedAt = DateTime.UtcNow,
-                    Purpose = string.IsNullOrWhiteSpace(purpose) ? AiUsagePurposes.Other : purpose.Trim().ToLowerInvariant()
+                    Purpose = string.IsNullOrWhiteSpace(purpose) ? AiUsagePurposes.Other : purpose.Trim().ToLowerInvariant(),
+                    IsEstimated = isEstimated
                 });
                 await _db.SaveChangesAsync(ct);
             }
@@ -70,18 +75,41 @@ namespace Synerixis.Infrastructure.Services
             string purpose,
             string model,
             ChatMessageContent? result,
+            string? promptText = null,
+            string? completionText = null,
             CancellationToken ct = default)
         {
             var (prompt, completion) = TryExtractTokens(result);
-            return RecordAsync(sellerId, sessionId, purpose, model, prompt, completion, ct);
+            var estimated = false;
+
+            if (prompt <= 0 && completion <= 0)
+            {
+                var promptSrc = promptText ?? "";
+                var completionSrc = completionText ?? result?.Content ?? "";
+                prompt = EstimateTokensFromText(promptSrc);
+                completion = EstimateTokensFromText(completionSrc);
+                estimated = prompt > 0 || completion > 0;
+            }
+
+            return RecordAsync(sellerId, sessionId, purpose, model, prompt, completion, estimated, ct);
         }
 
-        public static decimal EstimateCost(int promptTokens, int completionTokens)
+        /// <summary>粗估：约 4 字符 ≈ 1 token（中英混合够用）。</summary>
+        public static int EstimateTokensFromText(string? text)
         {
+            if (string.IsNullOrEmpty(text)) return 0;
+            return Math.Max(1, (int)Math.Ceiling(text.Length / 4.0));
+        }
+
+        public static decimal EstimateCost(int promptTokens, int completionTokens, AiPricingOptions? pricing = null)
+        {
+            pricing ??= new AiPricingOptions();
             if (promptTokens <= 0 && completionTokens <= 0) return 0m;
+            var inputRate = pricing.PricePer1kInput;
+            var outputRate = pricing.PricePer1kOutput;
             return Math.Round(
-                promptTokens / 1_000_000m * PromptUsdPer1M
-                + completionTokens / 1_000_000m * CompletionUsdPer1M,
+                promptTokens / 1000m * inputRate
+                + completionTokens / 1000m * outputRate,
                 6,
                 MidpointRounding.AwayFromZero);
         }
@@ -101,7 +129,6 @@ namespace Synerixis.Infrastructure.Services
                     return extracted;
             }
 
-            // 扁平字段兜底
             var p = TryReadInt(result.Metadata, "PromptTokens", "prompt_tokens", "InputTokens");
             var c = TryReadInt(result.Metadata, "CompletionTokens", "completion_tokens", "OutputTokens");
             return (p, c);
@@ -116,7 +143,6 @@ namespace Synerixis.Infrastructure.Services
                 int completion = ReadProp(t, raw, "CompletionTokens", "OutputTokenCount", "OutputTokens", "completion_tokens");
                 if (prompt == 0 && completion == 0)
                 {
-                    // 某些 SDK 只有 TotalTokens
                     var total = ReadProp(t, raw, "TotalTokens", "TotalTokenCount", "total_tokens");
                     if (total > 0) return (total, 0);
                 }

@@ -11,7 +11,8 @@ namespace Synerixis.Application.Interfaces.Ai
         /// Generates text based on a given prompt.
         /// </summary>
         /// <param name="prompt">The input prompt for the model.</param>
+        /// <param name="usage">可选：成功后写入 AiUsageLog 的商家/用途上下文。</param>
         /// <returns>The AI-generated text.</returns>
-        Task<string> GenerateTextAsync(string prompt);
+        Task<string> GenerateTextAsync(string prompt, LlmCallContext? usage = null);
     }
 }

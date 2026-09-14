@@ -69,7 +69,8 @@ POST /api/auth/init-agent
 - `GET /api/merchant/sessions`（query：`status`、`platform`、`connectionId`、`platformShopId`）、`/drafts`、`/alerts` — Seller 与同店坐席 JWT 均可（按 `shopId`）
 - `GET /api/merchant/shop-options` — 收件箱多店下拉（全角色）
 - `GET /api/merchant/sessions/{id}/orders` — 会话关联订单（本地优先；空则平台回源，失败 `items=[]` + `warning`，带来源 `source`）
-- `GET /api/merchant/usage` — 计费用量：`draftsToday` / `sessionsToday` / `connectedShops` / `quota` / `subscription*` + **AI token**（`totalTokensToday|ThisMonth` / `estimatedCostUsd*`，无数据为 0）
+- `GET /api/merchant/usage` — 计费用量：`draftsToday` / `sessionsToday` / `connectedShops` / `quota` / `subscription*` + **AI token**（`totalTokens*` / `exactTokens*` / `estimatedTokens*` / `estimatedCostUsd*`，`IsEstimated` 时 chars/4 粗估）
+- `GET /api/merchant/usage/daily?days=7` — 近 N 日会话/消息/AI 调用日序列（Overview ECharts 真数据；无流量空态）
 - `GET|POST|PUT|DELETE /api/merchant/quick-replies` — 快捷回复 CRUD（写：Seller/Supervisor；读：同店坐席）
 - 健康检查：`GET /health`、`GET /health/ready`（ready 含 DB）
 - `GET /api/merchant/connections`、`POST .../bind/callback`、**匿名 GET** `.../bind/callback`（及 `/api/oauth/{platform}/callback`）→ redirect `/shops?bound=1`

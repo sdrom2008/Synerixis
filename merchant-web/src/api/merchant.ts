@@ -226,6 +226,29 @@ export function getMerchantUsage() {
   return request<Record<string, unknown>>({ url: '/api/merchant/usage' })
 }
 
+export interface UsageDailyPoint {
+  date: string
+  count: number
+  sessions?: number
+  messages?: number
+  aiCalls?: number
+  tokens?: number
+}
+
+export interface UsageDailyResult {
+  days: number
+  items: UsageDailyPoint[]
+  hasData?: boolean
+  rangeStart?: string
+  rangeEnd?: string
+}
+
+export function getMerchantUsageDaily(days = 7) {
+  return request<UsageDailyResult>({
+    url: `/api/merchant/usage/daily?days=${days}`,
+  })
+}
+
 export function getPlatforms() {
   return request({ url: '/api/merchant/platforms' })
 }

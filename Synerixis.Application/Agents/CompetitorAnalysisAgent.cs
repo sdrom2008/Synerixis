@@ -1,8 +1,11 @@
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Synerixis.Application.Interfaces;
 using Synerixis.Application.Interfaces.Ai;
 using Synerixis.Application.DTOs;
+using Synerixis.Application.Helpers;
+using Synerixis.Domain.Entities;
 using Synerixis.Domain.Enums;
 
 namespace Synerixis.Application.Agents
@@ -24,7 +27,8 @@ namespace Synerixis.Application.Agents
         public async Task<AgentProcessResult> ProcessAsync(string userInput, ChatContext context)
         {
             var prompt = BuildAnalysisPrompt(userInput, context);
-            var response = await _llmClient.GenerateTextAsync(prompt);
+            var usage = LlmUsageHelper.FromChatContext(context, AiUsagePurposes.Competitor);
+            var response = await _llmClient.GenerateTextAsync(prompt, usage);
 
             var message = new ChatMessageDto
             {

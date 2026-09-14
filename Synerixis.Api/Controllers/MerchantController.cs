@@ -877,7 +877,12 @@ namespace Synerixis.Api.Controllers
                         promptTokens = g.Sum(x => x.PromptTokens),
                         completionTokens = g.Sum(x => x.CompletionTokens),
                         estimatedCostUsd = g.Sum(x => x.EstimatedCostUsd),
-                        calls = g.Count()
+                        calls = g.Count(),
+                        estimatedCalls = g.Count(x => x.IsEstimated),
+                        exactPrompt = g.Where(x => !x.IsEstimated).Sum(x => x.PromptTokens),
+                        exactCompletion = g.Where(x => !x.IsEstimated).Sum(x => x.CompletionTokens),
+                        estimatedPrompt = g.Where(x => x.IsEstimated).Sum(x => x.PromptTokens),
+                        estimatedCompletion = g.Where(x => x.IsEstimated).Sum(x => x.CompletionTokens)
                     })
                     .FirstOrDefaultAsync();
 
@@ -889,7 +894,12 @@ namespace Synerixis.Api.Controllers
                         promptTokens = g.Sum(x => x.PromptTokens),
                         completionTokens = g.Sum(x => x.CompletionTokens),
                         estimatedCostUsd = g.Sum(x => x.EstimatedCostUsd),
-                        calls = g.Count()
+                        calls = g.Count(),
+                        estimatedCalls = g.Count(x => x.IsEstimated),
+                        exactPrompt = g.Where(x => !x.IsEstimated).Sum(x => x.PromptTokens),
+                        exactCompletion = g.Where(x => !x.IsEstimated).Sum(x => x.CompletionTokens),
+                        estimatedPrompt = g.Where(x => x.IsEstimated).Sum(x => x.PromptTokens),
+                        estimatedCompletion = g.Where(x => x.IsEstimated).Sum(x => x.CompletionTokens)
                     })
                     .FirstOrDefaultAsync();
 
@@ -897,6 +907,10 @@ namespace Synerixis.Api.Controllers
                 var completionTokensToday = aiToday?.completionTokens ?? 0;
                 var promptTokensThisMonth = aiMonth?.promptTokens ?? 0;
                 var completionTokensThisMonth = aiMonth?.completionTokens ?? 0;
+                var exactTokensToday = (aiToday?.exactPrompt ?? 0) + (aiToday?.exactCompletion ?? 0);
+                var estimatedTokensToday = (aiToday?.estimatedPrompt ?? 0) + (aiToday?.estimatedCompletion ?? 0);
+                var exactTokensThisMonth = (aiMonth?.exactPrompt ?? 0) + (aiMonth?.exactCompletion ?? 0);
+                var estimatedTokensThisMonth = (aiMonth?.estimatedPrompt ?? 0) + (aiMonth?.estimatedCompletion ?? 0);
 
                 return Ok(new
                 {
@@ -916,13 +930,20 @@ namespace Synerixis.Api.Controllers
                     promptTokensToday,
                     completionTokensToday,
                     totalTokensToday = promptTokensToday + completionTokensToday,
+                    exactTokensToday,
+                    estimatedTokensToday,
+                    isEstimatedSummaryToday = (aiToday?.estimatedCalls ?? 0) > 0,
                     estimatedCostUsdToday = aiToday?.estimatedCostUsd ?? 0m,
                     aiCallsToday = aiToday?.calls ?? 0,
                     promptTokensThisMonth,
                     completionTokensThisMonth,
                     totalTokensThisMonth = promptTokensThisMonth + completionTokensThisMonth,
+                    exactTokensThisMonth,
+                    estimatedTokensThisMonth,
+                    isEstimatedSummaryThisMonth = (aiMonth?.estimatedCalls ?? 0) > 0,
                     estimatedCostUsdThisMonth = aiMonth?.estimatedCostUsd ?? 0m,
-                    aiCallsThisMonth = aiMonth?.calls ?? 0
+                    aiCallsThisMonth = aiMonth?.calls ?? 0,
+                    note = "exactTokens=模型 Usage；estimatedTokens=无 Usage 时 chars/4 粗估（IsEstimated）"
                 });
             }
             catch (Exception ex)
@@ -931,6 +952,87 @@ namespace Synerixis.Api.Controllers
             }
         }
 
+
+
+        /// <summary>
+        /// 近 N 日会话量（按日聚合 ChatSession，真实数据；无数据返回含 0 的日期序列）。
+        /// </summary>
+        [HttpGet("usage/daily")]
+        public async Task<IActionResult> GetUsageDaily([FromQuery] int days = 7)
+        {
+            try
+            {
+                if (days < 1) days = 1;
+                if (days > 90) days = 90;
+
+                var shopId = GetMerchantShopId();
+                var now = DateTime.UtcNow;
+                var dayStart = new DateTime(now.Year, now.Month, now.Day, 0, 0, 0, DateTimeKind.Utc);
+                var rangeStart = dayStart.AddDays(-(days - 1));
+
+                var raw = await _db.ChatSessions.AsNoTracking()
+                    .Where(s => s.ShopId == shopId && s.CreatedAt >= rangeStart)
+                    .GroupBy(s => s.CreatedAt.Date)
+                    .Select(g => new { date = g.Key, sessions = g.Count() })
+                    .ToListAsync();
+
+                var msgRaw = await (
+                    from m in _db.ChatMessages.AsNoTracking()
+                    join s in _db.ChatSessions.AsNoTracking() on m.ChatSessionId equals s.Id
+                    where s.ShopId == shopId && m.CreatedAt >= rangeStart
+                    group m by m.CreatedAt.Date into g
+                    select new { date = g.Key, messages = g.Count() }
+                ).ToListAsync();
+
+                var aiRaw = await _db.AiUsageLogs.AsNoTracking()
+                    .Where(a => a.SellerId == shopId && a.CreatedAt >= rangeStart)
+                    .GroupBy(a => a.CreatedAt.Date)
+                    .Select(g => new
+                    {
+                        date = g.Key,
+                        aiCalls = g.Count(),
+                        tokens = g.Sum(x => x.PromptTokens + x.CompletionTokens)
+                    })
+                    .ToListAsync();
+
+                var byDate = raw.ToDictionary(x => x.date.Date, x => x.sessions);
+                var msgByDate = msgRaw.ToDictionary(x => x.date.Date, x => x.messages);
+                var aiByDate = aiRaw.ToDictionary(x => x.date.Date, x => x);
+
+                var items = new List<object>();
+                var anyNonZero = false;
+                for (var i = 0; i < days; i++)
+                {
+                    var d = rangeStart.AddDays(i).Date;
+                    byDate.TryGetValue(d, out var sessions);
+                    msgByDate.TryGetValue(d, out var messages);
+                    aiByDate.TryGetValue(d, out var ai);
+                    if (sessions > 0 || messages > 0) anyNonZero = true;
+                    items.Add(new
+                    {
+                        date = d.ToString("yyyy-MM-dd"),
+                        count = sessions, // 兼容图表：会话数
+                        sessions,
+                        messages,
+                        aiCalls = ai?.aiCalls ?? 0,
+                        tokens = ai?.tokens ?? 0
+                    });
+                }
+
+                return Ok(new
+                {
+                    days,
+                    rangeStart,
+                    rangeEnd = now,
+                    items,
+                    hasData = anyNonZero
+                });
+            }
+            catch (Exception ex)
+            {
+                return HandleError(ex);
+            }
+        }
 
         /// <summary>
         /// SLA 超时唤醒告警列表。阈值默认读 SellerConfig.AlertThresholdHours（如 1,3,12）。

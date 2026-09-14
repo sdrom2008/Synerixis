@@ -1,8 +1,11 @@
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Synerixis.Application.Interfaces;
 using Synerixis.Application.Interfaces.Ai;
 using Synerixis.Application.DTOs;
+using Synerixis.Application.Helpers;
+using Synerixis.Domain.Entities;
 using Synerixis.Domain.Enums;
 
 namespace Synerixis.Application.Agents
@@ -23,11 +26,10 @@ namespace Synerixis.Application.Agents
 
         public async Task<AgentProcessResult> ProcessAsync(string userInput, ChatContext context)
         {
-            // Build a structured prompt for product optimization
             var prompt = BuildOptimizationPrompt(userInput, context);
-            var response = await _llmClient.GenerateTextAsync(prompt);
+            var usage = LlmUsageHelper.FromChatContext(context, AiUsagePurposes.Product);
+            var response = await _llmClient.GenerateTextAsync(prompt, usage);
 
-            // Return the AI's response as a chat message
             var message = new ChatMessageDto
             {
                 IsFromUser = false,
@@ -44,7 +46,6 @@ namespace Synerixis.Application.Agents
 
         private string BuildOptimizationPrompt(string userInput, ChatContext context)
         {
-            // Extract product info from context if available
             var productInfo = context?.ProductDescription ?? "未提供商品信息";
             var platform = context?.TargetPlatform ?? "通用电商平台";
 

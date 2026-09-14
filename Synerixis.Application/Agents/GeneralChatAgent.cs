@@ -77,7 +77,8 @@ namespace Synerixis.Application.Agents
                         if (Guid.TryParse(context.ConversationId, out var sid))
                             sessionId = sid;
                         await _usageRecorder.RecordFromChatResultAsync(
-                            sellerId, sessionId, AiUsagePurposes.Draft, DefaultModel, response);
+                            sellerId, sessionId, AiUsagePurposes.Draft, DefaultModel, response,
+                            prompt, response.Content);
                     }
                 }
 

@@ -1,3 +1,5 @@
+using Synerixis.Application.Helpers;
+using Synerixis.Application.Interfaces.Ai;
 using Synerixis.Application.Interfaces;
 using Synerixis.Application.DTOs;
 using Synerixis.Domain.Entities;
@@ -18,16 +20,20 @@ namespace Synerixis.Application.Agents
 
         private readonly IOrderRepository _orderRepository;
         private readonly IPlatformClientRouter? _platformClientRouter;
+        private readonly ILlmClient? _llmClient;
 
         /// <summary>
-        /// platformClientRouter 可选：未注册平台 DI 时不崩溃，仅跳过平台回源。
+        /// platformClientRouter / llmClient 可选：未注册时不崩溃。
+        /// 有 LLM 时润色买家/商家话术并记账 purpose=order。
         /// </summary>
         public OrderAgent(
             IOrderRepository orderRepository,
-            IPlatformClientRouter? platformClientRouter = null)
+            IPlatformClientRouter? platformClientRouter = null,
+            ILlmClient? llmClient = null)
         {
             _orderRepository = orderRepository;
             _platformClientRouter = platformClientRouter;
+            _llmClient = llmClient;
         }
 
         public async Task<AgentProcessResult> ProcessAsync(string userInput, ChatContext context)
@@ -61,7 +67,7 @@ namespace Synerixis.Application.Agents
 
                     if (!string.IsNullOrWhiteSpace(platformSummary))
                     {
-                        var platformReply = FormatPlatformBuyerResponse(platformSummary!);
+                        var platformReply = await MaybePolishAsync(userInput, context, FormatPlatformBuyerResponse(platformSummary!));
                         return new AgentProcessResult(
                             Messages: new List<ChatMessageDto>
                             {
@@ -91,7 +97,7 @@ namespace Synerixis.Application.Agents
                 }
 
                 var recentOrder = orders.First();
-                var response = FormatBuyerResponse(recentOrder);
+                var response = await MaybePolishAsync(userInput, context, FormatBuyerResponse(recentOrder));
 
                 var messages = new List<ChatMessageDto>
                 {
@@ -126,7 +132,7 @@ namespace Synerixis.Application.Agents
                     Success: true);
             }
 
-            var summary = FormatMerchantSummary(paginatedOrders);
+            var summary = await MaybePolishAsync(userInput, context, FormatMerchantSummary(paginatedOrders));
             var merchantMessages = new List<ChatMessageDto>
             {
                 new ChatMessageDto
@@ -232,6 +238,28 @@ namespace Synerixis.Application.Agents
             }
 
             return summaryBuilder.ToString();
+        }
+
+
+        private async Task<string> MaybePolishAsync(string userInput, ChatContext context, string template)
+        {
+            if (_llmClient == null || string.IsNullOrWhiteSpace(template))
+                return template;
+            try
+            {
+                var prompt = $"""
+你是跨境电商客服，根据以下订单事实用口语简短回复（中文，可保留关键单号/状态，不要编造不存在的信息）：
+用户问：{userInput}
+事实：{template}
+""";
+                var usage = LlmUsageHelper.FromChatContext(context, AiUsagePurposes.Order);
+                var polished = await _llmClient.GenerateTextAsync(prompt, usage);
+                return string.IsNullOrWhiteSpace(polished) ? template : polished.Trim();
+            }
+            catch
+            {
+                return template;
+            }
         }
 
         private string MapStatus(string status)

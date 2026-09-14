@@ -3,7 +3,7 @@ using System;
 namespace Synerixis.Domain.Entities
 {
     /// <summary>
-    /// AI 调用用量记账（token / 估算费用）。无真实 usage 时记 0。
+    /// AI 调用用量记账（token / 估算费用）。无真实 usage 时按文本长度粗估并标记 IsEstimated。
     /// </summary>
     public class AiUsageLog
     {
@@ -25,8 +25,11 @@ namespace Synerixis.Domain.Entities
 
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
-        /// <summary>draft | classify | chat | marketing | other</summary>
+        /// <summary>draft | classify | order | logistics | competitor | product | chat | marketing | other</summary>
         public string Purpose { get; set; } = AiUsagePurposes.Other;
+
+        /// <summary>true=Metadata 无 Usage，按 chars/4 估算</summary>
+        public bool IsEstimated { get; set; }
     }
 
     public static class AiUsagePurposes
@@ -35,6 +38,10 @@ namespace Synerixis.Domain.Entities
         public const string Classify = "classify";
         public const string Chat = "chat";
         public const string Marketing = "marketing";
+        public const string Order = "order";
+        public const string Logistics = "logistics";
+        public const string Competitor = "competitor";
+        public const string Product = "product";
         public const string Other = "other";
     }
 }

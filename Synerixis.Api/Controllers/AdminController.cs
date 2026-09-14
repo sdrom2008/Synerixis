@@ -225,7 +225,12 @@ namespace Synerixis.Api.Controllers
                     promptTokens = g.Sum(x => x.PromptTokens),
                     completionTokens = g.Sum(x => x.CompletionTokens),
                     estimatedCostUsd = g.Sum(x => x.EstimatedCostUsd),
-                    calls = g.Count()
+                    calls = g.Count(),
+                    estimatedCalls = g.Count(x => x.IsEstimated),
+                    exactPrompt = g.Where(x => !x.IsEstimated).Sum(x => x.PromptTokens),
+                    exactCompletion = g.Where(x => !x.IsEstimated).Sum(x => x.CompletionTokens),
+                    estimatedPrompt = g.Where(x => x.IsEstimated).Sum(x => x.PromptTokens),
+                    estimatedCompletion = g.Where(x => x.IsEstimated).Sum(x => x.CompletionTokens)
                 })
                 .FirstOrDefaultAsync();
 
@@ -237,7 +242,12 @@ namespace Synerixis.Api.Controllers
                     promptTokens = g.Sum(x => x.PromptTokens),
                     completionTokens = g.Sum(x => x.CompletionTokens),
                     estimatedCostUsd = g.Sum(x => x.EstimatedCostUsd),
-                    calls = g.Count()
+                    calls = g.Count(),
+                    estimatedCalls = g.Count(x => x.IsEstimated),
+                    exactPrompt = g.Where(x => !x.IsEstimated).Sum(x => x.PromptTokens),
+                    exactCompletion = g.Where(x => !x.IsEstimated).Sum(x => x.CompletionTokens),
+                    estimatedPrompt = g.Where(x => x.IsEstimated).Sum(x => x.PromptTokens),
+                    estimatedCompletion = g.Where(x => x.IsEstimated).Sum(x => x.CompletionTokens)
                 })
                 .FirstOrDefaultAsync();
 
@@ -245,6 +255,10 @@ namespace Synerixis.Api.Controllers
             var completionTokensToday = aiToday?.completionTokens ?? 0;
             var promptTokensThisMonth = aiMonth?.promptTokens ?? 0;
             var completionTokensThisMonth = aiMonth?.completionTokens ?? 0;
+            var exactTokensToday = (aiToday?.exactPrompt ?? 0) + (aiToday?.exactCompletion ?? 0);
+            var estimatedTokensToday = (aiToday?.estimatedPrompt ?? 0) + (aiToday?.estimatedCompletion ?? 0);
+            var exactTokensThisMonth = (aiMonth?.exactPrompt ?? 0) + (aiMonth?.exactCompletion ?? 0);
+            var estimatedTokensThisMonth = (aiMonth?.estimatedPrompt ?? 0) + (aiMonth?.estimatedCompletion ?? 0);
 
             return Ok(new
             {
@@ -263,15 +277,82 @@ namespace Synerixis.Api.Controllers
                 promptTokensToday,
                 completionTokensToday,
                 totalTokensToday = promptTokensToday + completionTokensToday,
+                exactTokensToday,
+                estimatedTokensToday,
+                isEstimatedSummaryToday = (aiToday?.estimatedCalls ?? 0) > 0,
                 estimatedCostUsdToday = aiToday?.estimatedCostUsd ?? 0m,
                 aiCallsToday = aiToday?.calls ?? 0,
                 promptTokensThisMonth,
                 completionTokensThisMonth,
                 totalTokensThisMonth = promptTokensThisMonth + completionTokensThisMonth,
+                exactTokensThisMonth,
+                estimatedTokensThisMonth,
+                isEstimatedSummaryThisMonth = (aiMonth?.estimatedCalls ?? 0) > 0,
                 estimatedCostUsdThisMonth = aiMonth?.estimatedCostUsd ?? 0m,
                 aiCallsThisMonth = aiMonth?.calls ?? 0,
-                note = "含 AiUsageLog token 合计与粗估费用；无调用记录时为 0。"
+                note = "含 AiUsageLog；exactTokens=模型 Usage，estimatedTokens=chars/4 粗估（IsEstimated）。"
             });
+        }
+
+        /// <summary>全站近 N 日会话/消息/AI 调用日趋势</summary>
+        [HttpGet("usage/daily")]
+        public async Task<IActionResult> GetUsageDaily([FromQuery] int days = 7)
+        {
+            if (days < 1) days = 1;
+            if (days > 90) days = 90;
+
+            var now = DateTime.UtcNow;
+            var dayStart = new DateTime(now.Year, now.Month, now.Day, 0, 0, 0, DateTimeKind.Utc);
+            var rangeStart = dayStart.AddDays(-(days - 1));
+
+            var sessionRaw = await _db.ChatSessions.AsNoTracking()
+                .Where(s => s.CreatedAt >= rangeStart)
+                .GroupBy(s => s.CreatedAt.Date)
+                .Select(g => new { date = g.Key, sessions = g.Count() })
+                .ToListAsync();
+
+            var msgRaw = await _db.ChatMessages.AsNoTracking()
+                .Where(m => m.CreatedAt >= rangeStart)
+                .GroupBy(m => m.CreatedAt.Date)
+                .Select(g => new { date = g.Key, messages = g.Count() })
+                .ToListAsync();
+
+            var aiRaw = await _db.AiUsageLogs.AsNoTracking()
+                .Where(a => a.CreatedAt >= rangeStart)
+                .GroupBy(a => a.CreatedAt.Date)
+                .Select(g => new
+                {
+                    date = g.Key,
+                    aiCalls = g.Count(),
+                    tokens = g.Sum(x => x.PromptTokens + x.CompletionTokens)
+                })
+                .ToListAsync();
+
+            var byS = sessionRaw.ToDictionary(x => x.date.Date, x => x.sessions);
+            var byM = msgRaw.ToDictionary(x => x.date.Date, x => x.messages);
+            var byA = aiRaw.ToDictionary(x => x.date.Date, x => x);
+
+            var items = new List<object>();
+            var anyNonZero = false;
+            for (var i = 0; i < days; i++)
+            {
+                var d = rangeStart.AddDays(i).Date;
+                byS.TryGetValue(d, out var sessions);
+                byM.TryGetValue(d, out var messages);
+                byA.TryGetValue(d, out var ai);
+                if (sessions > 0 || messages > 0) anyNonZero = true;
+                items.Add(new
+                {
+                    date = d.ToString("yyyy-MM-dd"),
+                    count = sessions,
+                    sessions,
+                    messages,
+                    aiCalls = ai?.aiCalls ?? 0,
+                    tokens = ai?.tokens ?? 0
+                });
+            }
+
+            return Ok(new { days, rangeStart, rangeEnd = now, items, hasData = anyNonZero });
         }
 
         /// <summary>只读配置说明（不写敏感密钥）</summary>

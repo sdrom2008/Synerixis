@@ -80,7 +80,8 @@ MarketingFollowup    - 复购引导、商品推荐、催评价、感谢、促销
             if (_usageRecorder != null && sellerId.HasValue && sellerId.Value != Guid.Empty)
             {
                 await _usageRecorder.RecordFromChatResultAsync(
-                    sellerId.Value, sessionId, AiUsagePurposes.Classify, DefaultModel, result);
+                    sellerId.Value, sessionId, AiUsagePurposes.Classify, DefaultModel, result,
+                    userMessage, result.Content);
             }
 
             var raw = result.Content?.Trim() ?? "";

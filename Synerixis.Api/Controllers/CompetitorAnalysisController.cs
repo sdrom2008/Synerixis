@@ -28,12 +28,18 @@ namespace Synerixis.Api.Controllers
             if (request == null || string.IsNullOrWhiteSpace(request.Keyword))
                 return BadRequest("关键词不能为空");
 
-            // 构造 ChatContext
+            // 构造 ChatContext（ShopId 用于 AiUsageLog）
+            var sellerClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                ?? User.FindFirst("shopId")?.Value
+                ?? User.FindFirst("sellerId")?.Value
+                ?? "";
+            Guid.TryParse(sellerClaim, out var shopId);
             var context = new ChatContext
             {
                 ConversationId = Guid.NewGuid().ToString(),
-                SellerId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "anonymous",
-                Platform = request.Platform,
+                SellerId = sellerClaim,
+                ShopId = shopId,
+                Platform = request.Platform ?? "",
                 ProductName = request.Keyword
             };
 

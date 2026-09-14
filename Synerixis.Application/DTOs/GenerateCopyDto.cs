@@ -8,8 +8,10 @@ namespace Synerixis.Application.DTOs
     public class GenerateCopyDto
     {
         public Guid ProductId { get; set; }
-        public string ProductName { get; set; }
-        public string Keywords { get; set; }
-        public string ToneOfVoice { get; set; } // e.g., "Professional", "Witty", "Sales-oriented"
+        public string ProductName { get; set; } = string.Empty;
+        public string Keywords { get; set; } = string.Empty;
+        public string ToneOfVoice { get; set; } = string.Empty; // e.g., "Professional", "Witty", "Sales-oriented"
+        /// <summary>可选：用于 AiUsageLog 记账</summary>
+        public string? SellerId { get; set; }
     }
 }

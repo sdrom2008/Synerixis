@@ -46,6 +46,14 @@ export function getUsage() {
   return request<Record<string, unknown>>({ url: '/api/admin/usage' })
 }
 
+export function getUsageDaily(days = 7) {
+  return request<{
+    days: number
+    items: { date: string; count: number; sessions?: number; messages?: number }[]
+    hasData?: boolean
+  }>({ url: `/api/admin/usage/daily?days=${days}` })
+}
+
 export function getSettings() {
   return request<Record<string, unknown>>({ url: '/api/admin/settings' })
 }
