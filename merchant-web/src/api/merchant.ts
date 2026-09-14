@@ -1,5 +1,7 @@
 import { request } from './http'
 
+export type SlaUrgency = 'ok' | 'soon' | 'overdue'
+
 export interface SessionItem {
   id: string
   sessionId: string
@@ -7,6 +9,8 @@ export interface SessionItem {
   platform?: string
   status?: string
   priority?: string
+  pendingHumanHandoff?: boolean
+  handoffAt?: string | null
   assignedAgent?: { id: string; name: string } | null
   createdAt?: string
   lastActiveAt?: string
@@ -16,6 +20,8 @@ export interface SessionItem {
   unreadBuyerCount?: number
   hoursSinceLastBuyerMsg?: number
   needsResponseBy?: string
+  responseSlaHours?: number
+  slaUrgency?: SlaUrgency
 }
 
 export interface MessageItem {
@@ -36,11 +42,39 @@ export interface DraftInfo {
 
 export interface SessionMessagesResult {
   sessionStatus?: string
+  pendingHumanHandoff?: boolean
+  handoffAt?: string | null
   lastBuyerMessageAt?: string | null
   hoursSinceLastBuyerMsg?: number
   needsResponseBy?: string
+  responseSlaHours?: number
+  slaUrgency?: SlaUrgency
   pendingDraft?: DraftInfo | null
   items: MessageItem[]
+}
+
+export interface SessionsListResult {
+  items: SessionItem[]
+  total: number
+  pendingDraftCount: number
+  responseSlaHours?: number
+}
+
+export interface MerchantAlertItem {
+  sessionId?: string
+  id?: string
+  customerName?: string
+  hoursSinceLastBuyerMsg?: number
+  slaUrgency?: SlaUrgency
+  needsResponseBy?: string
+  [key: string]: unknown
+}
+
+export interface MerchantAlertsResult {
+  items?: MerchantAlertItem[]
+  total?: number
+  responseSlaHours?: number
+  thresholds?: number[] | string
 }
 
 export interface DashboardKpis {
@@ -55,7 +89,7 @@ export interface DashboardKpis {
 
 export function getSessions(status?: string) {
   const q = status ? `?status=${encodeURIComponent(status)}` : ''
-  return request<{ items: SessionItem[]; total: number; pendingDraftCount: number }>({
+  return request<SessionsListResult>({
     url: `/api/merchant/sessions${q}`,
   })
 }
@@ -63,6 +97,21 @@ export function getSessions(status?: string) {
 export function getSessionMessages(id: string) {
   return request<SessionMessagesResult>({
     url: `/api/merchant/sessions/${id}/messages`,
+  })
+}
+
+export function transferSession(id: string) {
+  return request<{ message?: string; pendingHumanHandoff?: boolean; supersededDrafts?: number }>({
+    url: `/api/merchant/sessions/${id}/transfer`,
+    method: 'POST',
+  })
+}
+
+/** SLA / timeout wake alerts (in-app; push TODO) */
+export function getMerchantAlerts(params: { thresholds?: string } = {}) {
+  const q = params.thresholds ? `?thresholds=${encodeURIComponent(params.thresholds)}` : ''
+  return request<MerchantAlertsResult>({
+    url: `/api/merchant/alerts${q}`,
   })
 }
 

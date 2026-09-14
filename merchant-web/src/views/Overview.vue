@@ -14,9 +14,10 @@
         <span>工作台说明</span>
       </template>
       <ul class="tips">
-        <li>主战场在「收件箱」：会话列表 · 消息时间线 · AI 草稿审发。</li>
-        <li>默认出站模式为 DraftFirst：AI 只写草稿，需人工批准后才会 SendReply。</li>
-        <li>移动端仍使用 <code>frontend/</code>（HBuilder）；本应用为 PC 桌面宽屏。</li>
+        <li>主战场在「收件箱」：三栏会话列表 · 消息时间线 · AI 草稿审发。</li>
+        <li>默认 DraftFirst：AI 只写草稿，人工批准后才 SendReply；转人工后停止新草稿与 AutoSend。</li>
+        <li>SLA 徽章（即将超时 / 已超时）与告警条来自真实会话数据与 GET /api/merchant/alerts。</li>
+        <li>移动端仍用 <code>frontend/</code>（HBuilder）；本应用为 PC 桌面宽屏。</li>
       </ul>
       <el-button type="primary" @click="$router.push('/inbox')">进入收件箱</el-button>
     </el-card>

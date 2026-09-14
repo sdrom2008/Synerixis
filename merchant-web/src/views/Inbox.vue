@@ -7,37 +7,57 @@
           <span>会话</span>
           <el-badge v-if="pendingDraftCount > 0" :value="pendingDraftCount" type="warning" />
         </div>
-        <el-button text :icon="Refresh" :loading="listLoading" @click="loadSessions">刷新</el-button>
+        <el-button text :icon="Refresh" :loading="listLoading" @click="refreshAll">刷新</el-button>
       </div>
+
+      <div v-if="pendingDraftCount > 0" class="draft-banner">
+        待发送草稿 {{ pendingDraftCount }} 条 — 请尽快审发，以免超时影响店铺响应表现
+      </div>
+      <div v-if="alertCount > 0" class="alert-banner" @click="setFilter('alerts')">
+        超时告警 {{ alertCount }} 条 — 点击查看即将超时 / 已超时会话（Push/声音待接入）
+      </div>
+
       <div class="filters">
-        <el-radio-group v-model="statusFilter" size="small" @change="loadSessions">
+        <el-radio-group v-model="statusFilter" size="small" @change="onFilterChange">
           <el-radio-button label="">全部</el-radio-button>
+          <el-radio-button label="draft">待发草稿</el-radio-button>
+          <el-radio-button label="alerts">
+            超时告警
+            <span v-if="alertCount > 0" class="chip-n">{{ alertCount }}</span>
+          </el-radio-button>
+          <el-radio-button label="handoff">待人工</el-radio-button>
           <el-radio-button label="Active">进行中</el-radio-button>
           <el-radio-button label="Pending">待处理</el-radio-button>
         </el-radio-group>
       </div>
-      <div v-if="sessions.length === 0 && !listLoading" class="list-empty">
-        <EmptyState title="暂无会话" desc="绑定店铺并有买家消息后，会话会出现在这里。" />
+
+      <div v-if="displaySessions.length === 0 && !listLoading" class="list-empty">
+        <EmptyState title="暂无会话" desc="绑定店铺并有买家消息后，会话会出现在这里。AI 会生成草稿，需人工确认后才会发到平台。" />
       </div>
       <div v-else class="session-list">
         <button
-          v-for="s in sessions"
+          v-for="s in displaySessions"
           :key="s.id"
           type="button"
-          :class="['session-item', { active: s.id === selectedId }]"
+          :class="['session-item', { active: s.id === selectedId }, urgencyClass(s)]"
           @click="selectSession(s.id)"
         >
           <div class="row1">
             <strong>{{ s.customerName || '买家' }}</strong>
-            <el-tag v-if="s.hasPendingDraft" size="small" type="warning" effect="plain">草稿</el-tag>
+            <div class="badges">
+              <el-tag v-if="s.hasPendingDraft" size="small" type="warning" effect="plain">草稿</el-tag>
+              <el-tag v-if="isHandoff(s)" size="small" type="warning" effect="plain">待人工</el-tag>
+              <el-tag v-if="slaLabel(s) === '已超时'" size="small" type="danger" effect="plain">已超时</el-tag>
+              <el-tag v-else-if="slaLabel(s) === '即将超时'" size="small" class="tag-soon" effect="plain">即将超时</el-tag>
+            </div>
           </div>
           <div class="row2">
             <span>{{ s.platform || '—' }}</span>
             <span v-if="s.unreadBuyerCount" class="unread">未读 {{ s.unreadBuyerCount }}</span>
           </div>
           <div class="row3">
-            <span v-if="s.hoursSinceLastBuyerMsg != null">距买家 {{ s.hoursSinceLastBuyerMsg }}h</span>
-            <span v-if="s.needsResponseBy" class="sla">SLA {{ formatTime(s.needsResponseBy) }}</span>
+            <span v-if="s.hoursSinceLastBuyerMsg != null">买家等待 {{ formatHours(s.hoursSinceLastBuyerMsg) }}</span>
+            <span v-if="s.needsResponseBy" class="sla">截止 {{ formatTime(s.needsResponseBy) }}</span>
           </div>
         </button>
       </div>
@@ -54,19 +74,52 @@
       </template>
       <template v-else>
         <div class="center-head">
-          <div>
-            <strong>{{ currentSession?.customerName || '会话' }}</strong>
-            <el-tag size="small" effect="plain" style="margin-left: 8px">
-              {{ messagesMeta.sessionStatus || currentSession?.status || '—' }}
-            </el-tag>
+          <div class="head-top">
+            <div class="head-title">
+              <strong>{{ currentSession?.customerName || '会话' }}</strong>
+              <el-tag size="small" effect="plain">
+                {{ statusLabel(messagesMeta.sessionStatus || currentSession?.status) }}
+              </el-tag>
+              <el-tag v-if="messagesMeta.pendingHumanHandoff" size="small" type="warning" effect="plain">
+                待人工 / 已停 AI 草稿
+              </el-tag>
+              <el-tag v-if="draft" size="small" type="warning" effect="plain">
+                {{ isSupersededDraft ? '旧草稿可发送' : '待发送草稿' }}
+              </el-tag>
+              <el-tag v-if="messagesMeta.slaUrgency === 'overdue'" size="small" type="danger" effect="plain">
+                已超时
+              </el-tag>
+              <el-tag
+                v-else-if="messagesMeta.slaUrgency === 'soon'"
+                size="small"
+                class="tag-soon"
+                effect="plain"
+              >
+                即将超时
+              </el-tag>
+            </div>
+            <el-button
+              v-if="canTransfer"
+              type="warning"
+              plain
+              size="small"
+              :loading="transferring"
+              @click="onTransfer"
+            >
+              转人工客服
+            </el-button>
+          </div>
+          <div v-if="messagesMeta.pendingHumanHandoff" class="handoff-hint">
+            已转人工：入站消息不再生成新 AI 草稿，也不 AutoSend；下方旧草稿仍可编辑后手动发送。
           </div>
           <div class="meta">
             <span v-if="messagesMeta.hoursSinceLastBuyerMsg != null">
-              距买家消息 {{ messagesMeta.hoursSinceLastBuyerMsg }} 小时
+              买家等待约 {{ formatHours(messagesMeta.hoursSinceLastBuyerMsg) }}
             </span>
             <span v-if="messagesMeta.needsResponseBy">
               建议回复截止 {{ formatTime(messagesMeta.needsResponseBy) }}
             </span>
+            <span v-if="messagesMeta.responseSlaHours">SLA {{ messagesMeta.responseSlaHours }}h</span>
           </div>
         </div>
 
@@ -89,10 +142,14 @@
 
         <div class="draft-panel">
           <div class="draft-head">
-            <strong>AI 草稿</strong>
-            <el-tag v-if="draft" size="small" type="warning" effect="plain">待发送</el-tag>
+            <strong>AI 草稿（未发到平台）</strong>
+            <el-tag v-if="draft && !isSupersededDraft" size="small" type="warning" effect="plain">待发送</el-tag>
+            <el-tag v-else-if="isSupersededDraft" size="small" type="info" effect="plain">已停用但仍可发送</el-tag>
             <el-tag v-else size="small" type="info" effect="plain">无草稿</el-tag>
           </div>
+          <p class="draft-hint">
+            确认无误后再发送。自动生成的草稿不计入平台「真人坐席响应率」；请勿宣称无人值守自动回信。
+          </p>
           <el-input
             v-model="draftContent"
             type="textarea"
@@ -114,19 +171,32 @@
       </template>
     </section>
 
-    <!-- Col 3: order / context placeholder -->
+    <!-- Col 3: order / context -->
     <aside class="col side-col">
-      <div class="side-head">订单 / 上下文</div>
+      <div class="side-head">会话上下文</div>
       <EmptyState
-        title="上下文侧栏占位"
-        desc="订单、物流与买家画像将在此展示。Handoff / SLA 深化可与后端并行落地。"
+        v-if="!currentSession"
+        title="订单 / 买家画像"
+        desc="选中会话后显示平台、SLA 与转人工状态。订单物流对接可后续接入。"
         icon="Document"
       />
-      <el-descriptions v-if="currentSession" :column="1" size="small" border class="ctx">
+      <el-descriptions v-else :column="1" size="small" border class="ctx">
         <el-descriptions-item label="平台">{{ currentSession.platform || '—' }}</el-descriptions-item>
         <el-descriptions-item label="会话 ID">{{ currentSession.sessionId || currentSession.id }}</el-descriptions-item>
         <el-descriptions-item label="优先级">{{ currentSession.priority || '—' }}</el-descriptions-item>
         <el-descriptions-item label="消息数">{{ currentSession.messageCount ?? '—' }}</el-descriptions-item>
+        <el-descriptions-item label="SLA 状态">
+          {{ slaLabel(currentSession) || '正常' }}
+        </el-descriptions-item>
+        <el-descriptions-item label="转人工">
+          {{ isHandoff(currentSession) || messagesMeta.pendingHumanHandoff ? '是（已停 AI 新草稿）' : '否' }}
+        </el-descriptions-item>
+        <el-descriptions-item v-if="messagesMeta.handoffAt" label="转接时间">
+          {{ formatTime(messagesMeta.handoffAt) }}
+        </el-descriptions-item>
+        <el-descriptions-item label="回复 SLA">
+          {{ messagesMeta.responseSlaHours || responseSlaHours || 12 }} 小时
+        </el-descriptions-item>
       </el-descriptions>
     </aside>
   </div>
@@ -141,12 +211,15 @@ import {
   approveDraft,
   discardDraft,
   editAndSendDraft,
+  getMerchantAlerts,
   getSessionMessages,
   getSessions,
+  transferSession,
   updateDraft,
   type MessageItem,
   type SessionItem,
   type DraftInfo,
+  type SlaUrgency,
 } from '@/api/merchant'
 
 const listLoading = ref(false)
@@ -154,9 +227,12 @@ const detailLoading = ref(false)
 const saving = ref(false)
 const sending = ref(false)
 const discarding = ref(false)
+const transferring = ref(false)
 const statusFilter = ref('')
 const sessions = ref<SessionItem[]>([])
 const pendingDraftCount = ref(0)
+const alertCount = ref(0)
+const responseSlaHours = ref(12)
 const selectedId = ref<string | null>(null)
 const messages = ref<MessageItem[]>([])
 const draft = ref<DraftInfo | null>(null)
@@ -164,11 +240,56 @@ const draftContent = ref('')
 const timelineEl = ref<HTMLElement | null>(null)
 const messagesMeta = ref<{
   sessionStatus?: string
+  pendingHumanHandoff?: boolean
+  handoffAt?: string | null
   hoursSinceLastBuyerMsg?: number
   needsResponseBy?: string
+  responseSlaHours?: number
+  slaUrgency?: SlaUrgency
 }>({})
 
 const currentSession = computed(() => sessions.value.find((s) => s.id === selectedId.value) || null)
+
+const isSupersededDraft = computed(() => {
+  const st = draft.value?.status || ''
+  return st === 'Superseded'
+})
+
+const canTransfer = computed(() => {
+  if (messagesMeta.value.pendingHumanHandoff) return false
+  const st = messagesMeta.value.sessionStatus || currentSession.value?.status
+  return st === 'Pending' || st === 'Active'
+})
+
+const displaySessions = computed(() => {
+  let list = sessions.value.slice()
+  if (statusFilter.value === 'draft') {
+    list = list.filter((s) => s.hasPendingDraft)
+  } else if (statusFilter.value === 'handoff') {
+    list = list.filter((s) => isHandoff(s))
+  } else if (statusFilter.value === 'alerts') {
+    list = list.filter((s) => {
+      const u = computeUrgency(s)
+      return u === 'soon' || u === 'overdue'
+    })
+  }
+  // Sort: overdue first, then soon, then pending draft, then by needsResponseBy asc
+  return list.sort((a, b) => {
+    const rank = (s: SessionItem) => {
+      const u = computeUrgency(s)
+      if (u === 'overdue') return 0
+      if (u === 'soon') return 1
+      if (s.hasPendingDraft) return 2
+      return 3
+    }
+    const ra = rank(a)
+    const rb = rank(b)
+    if (ra !== rb) return ra - rb
+    const ta = a.needsResponseBy ? new Date(a.needsResponseBy).getTime() : Number.MAX_SAFE_INTEGER
+    const tb = b.needsResponseBy ? new Date(b.needsResponseBy).getTime() : Number.MAX_SAFE_INTEGER
+    return ta - tb
+  })
+})
 
 function formatTime(v?: string | null) {
   if (!v) return '—'
@@ -179,31 +300,107 @@ function formatTime(v?: string | null) {
   }
 }
 
+function formatHours(h?: number | null) {
+  if (h == null || Number.isNaN(Number(h))) return '—'
+  const n = Number(h)
+  if (n < 1) return `${Math.round(n * 60)} 分钟`
+  return `${n.toFixed(1)} 小时`
+}
+
+function statusLabel(status?: string) {
+  const map: Record<string, string> = {
+    Pending: '待处理',
+    Active: '进行中',
+    Resolved: '已解决',
+    Closed: '已关闭',
+  }
+  return map[status || ''] || status || '—'
+}
+
 function senderClass(t: string) {
   const x = (t || '').toLowerCase()
-  if (x === 'customer' || x === 'buyer') return 'from-buyer'
-  if (x === 'agent' || x === 'seller') return 'from-agent'
+  if (x === 'customer' || x === 'buyer' || x === '1') return 'from-buyer'
+  if (x === 'agent' || x === 'seller' || x === '2') return 'from-agent'
   return 'from-system'
 }
 
 function senderLabel(t: string) {
   const x = (t || '').toLowerCase()
-  if (x === 'customer' || x === 'buyer') return '买家'
-  if (x === 'agent' || x === 'seller') return '坐席/店铺'
+  if (x === 'customer' || x === 'buyer' || x === '1') return '买家'
+  if (x === 'agent' || x === 'seller' || x === '2') return '坐席/店铺'
   return '系统'
+}
+
+function isHandoff(conv: SessionItem) {
+  return !!(conv.pendingHumanHandoff)
+}
+
+function computeUrgency(conv: SessionItem): SlaUrgency {
+  if (conv.slaUrgency) return conv.slaUrgency
+  const h = Number(conv.hoursSinceLastBuyerMsg)
+  const sla = Number(conv.responseSlaHours || responseSlaHours.value || 12)
+  if (Number.isNaN(h)) return 'ok'
+  if (h >= sla) return 'overdue'
+  if (h >= Math.max(sla * 0.75, sla - 0.5)) return 'soon'
+  return 'ok'
+}
+
+function slaLabel(conv: SessionItem) {
+  const u = computeUrgency(conv)
+  if (u === 'overdue') return '已超时'
+  if (u === 'soon') return '即将超时'
+  return ''
+}
+
+function urgencyClass(s: SessionItem) {
+  const u = computeUrgency(s)
+  if (u === 'overdue') return 'urgency-overdue'
+  if (u === 'soon') return 'urgency-soon'
+  return ''
+}
+
+function setFilter(v: string) {
+  statusFilter.value = v
+  onFilterChange()
+}
+
+function onFilterChange() {
+  loadSessions()
+}
+
+async function refreshAll() {
+  await Promise.all([loadSessions(), loadAlerts()])
+  if (selectedId.value) await selectSession(selectedId.value)
+}
+
+async function loadAlerts() {
+  try {
+    const alerts = await getMerchantAlerts()
+    alertCount.value = alerts?.total ?? alerts?.items?.length ?? 0
+  } catch {
+    alertCount.value = 0
+  }
 }
 
 async function loadSessions() {
   listLoading.value = true
   try {
-    const res = await getSessions(statusFilter.value || undefined)
+    const clientOnly = ['draft', 'alerts', 'handoff']
+    const apiStatus =
+      statusFilter.value && !clientOnly.includes(statusFilter.value)
+        ? statusFilter.value
+        : undefined
+    const [res] = await Promise.all([getSessions(apiStatus), loadAlerts()])
     sessions.value = res.items || []
-    pendingDraftCount.value = res.pendingDraftCount ?? sessions.value.filter((s) => s.hasPendingDraft).length
+    pendingDraftCount.value =
+      res.pendingDraftCount ?? sessions.value.filter((s) => s.hasPendingDraft).length
+    responseSlaHours.value = res.responseSlaHours || 12
     if (selectedId.value && !sessions.value.some((s) => s.id === selectedId.value)) {
       selectedId.value = null
       messages.value = []
       draft.value = null
       draftContent.value = ''
+      messagesMeta.value = {}
     }
   } catch {
     sessions.value = []
@@ -222,8 +419,12 @@ async function selectSession(id: string) {
     messages.value = res.items || []
     messagesMeta.value = {
       sessionStatus: res.sessionStatus,
+      pendingHumanHandoff: !!res.pendingHumanHandoff,
+      handoffAt: res.handoffAt,
       hoursSinceLastBuyerMsg: res.hoursSinceLastBuyerMsg,
       needsResponseBy: res.needsResponseBy,
+      responseSlaHours: res.responseSlaHours,
+      slaUrgency: res.slaUrgency,
     }
     draft.value = res.pendingDraft || null
     draftContent.value = res.pendingDraft?.content || ''
@@ -235,9 +436,34 @@ async function selectSession(id: string) {
     messages.value = []
     draft.value = null
     draftContent.value = ''
+    messagesMeta.value = {}
     ElMessage.error('加载消息失败')
   } finally {
     detailLoading.value = false
+  }
+}
+
+async function onTransfer() {
+  if (!selectedId.value || !canTransfer.value) return
+  try {
+    await ElMessageBox.confirm(
+      '转人工后将停止 AI 新草稿与 AutoSend；旧草稿仍可手动发送。确认？',
+      '转人工客服',
+      { type: 'warning', confirmButtonText: '确认转接', cancelButtonText: '取消' },
+    )
+  } catch {
+    return
+  }
+  transferring.value = true
+  try {
+    await transferSession(selectedId.value)
+    ElMessage.success('已转人工，AI 草稿已停')
+    await selectSession(selectedId.value)
+    await loadSessions()
+  } catch {
+    ElMessage.error('转接失败')
+  } finally {
+    transferring.value = false
   }
 }
 
@@ -258,7 +484,6 @@ async function onApprove() {
   if (!selectedId.value || !draft.value) return
   sending.value = true
   try {
-    // If content changed, use edit-send; else approve
     if (draftContent.value.trim() !== (draft.value.content || '').trim()) {
       await editAndSendDraft(selectedId.value, draftContent.value)
     } else {
@@ -317,13 +542,13 @@ async function onDiscard() {
   }
 }
 
-onMounted(loadSessions)
+onMounted(refreshAll)
 </script>
 
 <style scoped lang="scss">
 .inbox {
   display: grid;
-  grid-template-columns: 300px minmax(0, 1fr) 280px;
+  grid-template-columns: 320px minmax(0, 1fr) 280px;
   height: calc(100vh - 56px);
   background: #fff;
 }
@@ -355,9 +580,48 @@ onMounted(loadSessions)
   gap: 8px;
   font-weight: 600;
 }
+.draft-banner,
+.alert-banner {
+  margin: 8px 10px 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.45;
+  flex-shrink: 0;
+}
+.draft-banner {
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  color: #92400e;
+}
+.alert-banner {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #991b1b;
+  cursor: pointer;
+  &:hover {
+    background: #fee2e2;
+  }
+}
 .filters {
-  padding: 8px 12px;
+  padding: 8px 10px;
   border-bottom: 1px solid var(--sx-border);
+  :deep(.el-radio-button__inner) {
+    padding: 6px 10px;
+    font-size: 12px;
+  }
+}
+.chip-n {
+  display: inline-block;
+  margin-left: 4px;
+  min-width: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: #ef4444;
+  color: #fff;
+  font-size: 10px;
+  line-height: 1.4;
+  text-align: center;
 }
 .session-list {
   overflow: auto;
@@ -381,12 +645,28 @@ onMounted(loadSessions)
     background: #eff6ff;
     border-left: 3px solid #2563eb;
   }
+  &.urgency-overdue {
+    background: #fef2f2;
+  }
+  &.urgency-soon {
+    background: #fff7ed;
+  }
+  &.urgency-overdue.active,
+  &.urgency-soon.active {
+    border-left-color: #dc2626;
+  }
 }
 .row1 {
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 8px;
+}
+.badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  justify-content: flex-end;
 }
 .row2,
 .row3 {
@@ -404,17 +684,48 @@ onMounted(loadSessions)
 .sla {
   color: #b45309;
 }
+.tag-soon {
+  --el-tag-text-color: #c2410c;
+  --el-tag-border-color: #fdba74;
+  --el-tag-bg-color: #ffedd5;
+  color: #c2410c !important;
+  border-color: #fdba74 !important;
+  background: #ffedd5 !important;
+}
 .center-head {
   flex-direction: column;
-  align-items: flex-start;
+  align-items: stretch;
+  .head-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+    width: 100%;
+  }
+  .head-title {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+  }
   .meta {
     display: flex;
     flex-wrap: wrap;
     gap: 12px;
     font-size: 12px;
     color: #64748b;
-    margin-top: 4px;
+    margin-top: 6px;
   }
+}
+.handoff-hint {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #92400e;
+  background: #fffbeb;
+  padding: 8px 10px;
+  border-radius: 6px;
+  line-height: 1.45;
+  width: 100%;
 }
 .timeline {
   flex: 1;
@@ -471,6 +782,12 @@ onMounted(loadSessions)
   background: #fff;
   flex-shrink: 0;
 }
+.draft-hint {
+  margin: 0 0 8px;
+  font-size: 12px;
+  color: #64748b;
+  line-height: 1.45;
+}
 .draft-actions {
   margin-top: 10px;
   display: flex;
@@ -491,7 +808,7 @@ onMounted(loadSessions)
 }
 @media (max-width: 1100px) {
   .inbox {
-    grid-template-columns: 260px minmax(0, 1fr);
+    grid-template-columns: 280px minmax(0, 1fr);
   }
   .side-col {
     display: none;
