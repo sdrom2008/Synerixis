@@ -44,6 +44,8 @@ Phase 1 只打透 **Shopee + TikTok Shop**。淘宝 / 抖店 **不再作为 Phas
 
 AI 用量：专用 Agent（order/logistics/competitor/product 等）经 `IAiUsageRecorder` 记账；无模型 Usage 时 chars/4 估算并 `IsEstimated`；商家 Overview 近 7 日图接 `GET /api/merchant/usage/daily`。
 
+Token 过期：店铺页状态标签 + 醒目警告条「立即刷新」；顶栏徽章跳转 `/shops`；审计日志见 `/audit` 与 Admin `/audit`。
+
 
 
 ## Phase 1 平台

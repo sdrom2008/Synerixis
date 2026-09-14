@@ -33,6 +33,7 @@
 | GET | `/api/admin/usage` | 全站用量汇总（含 AI token / exact·estimated） |
 | GET | `/api/admin/usage/daily?days=7` | 全站近 N 日会话/消息/AI 日趋势 |
 | GET | `/api/admin/settings` | 只读配置说明 + health 端点提示 |
+| GET | `/api/admin/audit-logs?take=&shopId=&action=` | 全站审计日志 |
 | GET | `/health` / `/health/ready` | 存活 / 就绪（ready 含 EF DB） |
 
 无数据时返回空列表 / 0，前端不编造指标。

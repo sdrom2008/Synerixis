@@ -34,6 +34,10 @@
           <el-icon><Coin /></el-icon>
           <span>用量计费</span>
         </el-menu-item>
+        <el-menu-item index="/audit">
+          <el-icon><Document /></el-icon>
+          <span>审计日志</span>
+        </el-menu-item>
         <el-menu-item index="/settings">
           <el-icon><Setting /></el-icon>
           <span>系统设置</span>

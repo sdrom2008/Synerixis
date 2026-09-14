@@ -718,6 +718,9 @@ namespace Synerixis.Api.Controllers
                         var platformRouter = sp.GetRequiredService<IPlatformClientRouter>();
                         var client = platformRouter.GetClient(msg.Platform);
                         await client.SendReplyAsync(msg, replyContent);
+                        // 出站成功后写 PlatformMsgId，便于幂等与回声去重
+                        aiMsg.PlatformMsgId = $"outbound:{aiMsg.Id:N}";
+                        await db.SaveChangesAsync();
                         logger.LogWarning(
                             "[Webhook] AutoSend used for shop {ShopId} platform {Platform} — compliance risk; prefer DraftFirst",
                             session.ShopId, msg.Platform);

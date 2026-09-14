@@ -46,6 +46,10 @@
             <el-icon><UserFilled /></el-icon>
             <span>团队</span>
           </el-menu-item>
+          <el-menu-item index="/audit">
+            <el-icon><Document /></el-icon>
+            <span>操作日志</span>
+          </el-menu-item>
         </template>
       </el-menu>
     </el-aside>
@@ -60,6 +64,16 @@
           <el-tag size="small" effect="plain" type="info">桌面工作台 · draft-first</el-tag>
         </div>
         <div class="right">
+          <el-badge
+            v-if="tokenBadge.count > 0"
+            :value="tokenBadge.count"
+            :type="tokenBadge.hasExpired ? 'danger' : 'warning'"
+            class="token-badge"
+          >
+            <el-button size="small" :type="tokenBadge.hasExpired ? 'danger' : 'warning'" plain @click="router.push('/shops')">
+              Token {{ tokenBadge.hasExpired ? '已过期' : '即将过期' }}
+            </el-button>
+          </el-badge>
           <el-tag size="small" type="primary" effect="light">{{ auth.identityLabel }}</el-tag>
           <span class="user-name">{{ auth.displayName }}</span>
           <el-button text type="danger" @click="logout">退出登录</el-button>
@@ -73,9 +87,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { getConnections } from '@/api/merchant'
 
 const route = useRoute()
 const router = useRouter()
@@ -87,10 +102,46 @@ const title = computed(() => (route.meta.title as string) || '桌面工作台')
 const perms = computed(() => auth.permissions)
 const showOverview = computed(() => perms.value.canViewOverview)
 
+const tokenBadge = ref<{ count: number; hasExpired: boolean }>({ count: 0, hasExpired: false })
+let badgeTimer: ReturnType<typeof setInterval> | null = null
+
+async function refreshTokenBadge() {
+  if (!perms.value.canManageShops) {
+    tokenBadge.value = { count: 0, hasExpired: false }
+    return
+  }
+  try {
+    const res = await getConnections()
+    const raw = res as { items?: Record<string, unknown>[] } | Record<string, unknown>[]
+    const items = Array.isArray(raw) ? raw : raw.items || []
+    let expired = 0
+    let expiring = 0
+    for (const c of items) {
+      const st = String(c.status || c.tokenStatus || '')
+      if (st === 'expired') expired++
+      else if (st === 'expiring') expiring++
+    }
+    tokenBadge.value = {
+      count: expired + expiring,
+      hasExpired: expired > 0,
+    }
+  } catch {
+    /* ignore badge errors */
+  }
+}
+
 function logout() {
   auth.clear()
   router.push({ name: 'login' })
 }
+
+onMounted(() => {
+  refreshTokenBadge()
+  badgeTimer = setInterval(refreshTokenBadge, 60_000)
+})
+onUnmounted(() => {
+  if (badgeTimer) clearInterval(badgeTimer)
+})
 </script>
 
 <style scoped lang="scss">
@@ -158,6 +209,9 @@ function logout() {
 .user-name {
   font-size: 13px;
   color: var(--sx-muted);
+}
+.token-badge {
+  margin-right: 4px;
 }
 .main {
   background: var(--sx-bg);

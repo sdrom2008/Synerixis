@@ -337,3 +337,9 @@ export function deleteQuickReply(id: string) {
     method: 'DELETE',
   })
 }
+
+export function getAuditLogs(take = 50) {
+  return request<{ items: Record<string, unknown>[]; total: number; take: number }>({
+    url: `/api/merchant/audit-logs?take=${take}`,
+  })
+}

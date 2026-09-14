@@ -370,6 +370,41 @@ namespace Synerixis.Api.Controllers
         }
 
         /// <summary>只读配置说明（不写敏感密钥）</summary>
+
+        /// <summary>全站审计日志（Admin）</summary>
+        [HttpGet("audit-logs")]
+        public async Task<IActionResult> GetAuditLogs(
+            [FromQuery] int take = 50,
+            [FromQuery] Guid? shopId = null,
+            [FromQuery] string? action = null)
+        {
+            take = Math.Clamp(take, 1, 200);
+            var q = _db.AuditLogs.AsNoTracking().AsQueryable();
+            if (shopId.HasValue)
+                q = q.Where(a => a.ShopId == shopId.Value);
+            if (!string.IsNullOrWhiteSpace(action))
+                q = q.Where(a => a.Action == action.Trim());
+
+            var items = await q
+                .OrderByDescending(a => a.CreatedAt)
+                .Take(take)
+                .Select(a => new
+                {
+                    a.Id,
+                    a.ActorId,
+                    a.ActorType,
+                    a.Action,
+                    a.ResourceType,
+                    a.ResourceId,
+                    a.DetailJson,
+                    a.CreatedAt,
+                    a.ShopId
+                })
+                .ToListAsync();
+
+            return Ok(new { items, total = items.Count, take });
+        }
+
         [HttpGet("settings")]
         public IActionResult GetSettings([FromServices] IConfiguration config, [FromServices] IWebHostEnvironment env)
         {

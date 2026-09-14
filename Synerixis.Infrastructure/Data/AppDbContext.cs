@@ -27,6 +27,7 @@ namespace Synerixis.Infrastructure.Data
         public DbSet<DraftMessage> DraftMessages { get; set; }
         public DbSet<ProcessedWebhookEvent> ProcessedWebhookEvents { get; set; }
         public DbSet<AiUsageLog> AiUsageLogs { get; set; }
+        public DbSet<AuditLog> AuditLogs { get; set; }
 
 
 
@@ -454,6 +455,37 @@ namespace Synerixis.Infrastructure.Data
                       .HasForeignKey(e => e.SellerId)
                       .OnDelete(DeleteBehavior.Restrict);
             });
+
+            modelBuilder.Entity<AuditLog>(entity =>
+            {
+                entity.ToTable("audit_logs");
+                entity.HasKey(e => e.Id);
+
+                entity.Property(e => e.ActorType)
+                      .HasColumnType("varchar(32)")
+                      .HasMaxLength(32)
+                      .IsRequired();
+
+                entity.Property(e => e.Action)
+                      .HasColumnType("varchar(64)")
+                      .HasMaxLength(64)
+                      .IsRequired();
+
+                entity.Property(e => e.ResourceType)
+                      .HasColumnType("varchar(64)")
+                      .HasMaxLength(64);
+
+                entity.Property(e => e.ResourceId)
+                      .HasColumnType("varchar(64)")
+                      .HasMaxLength(64);
+
+                entity.Property(e => e.DetailJson)
+                      .HasColumnType("longtext");
+
+                entity.HasIndex(e => new { e.ShopId, e.CreatedAt });
+                entity.HasIndex(e => e.CreatedAt);
+            });
+
         }
     }
 }

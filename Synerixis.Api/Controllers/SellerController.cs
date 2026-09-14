@@ -23,12 +23,14 @@ namespace Synerixis.Api.Controllers
         private readonly AppDbContext _db;
         private readonly IAuthService _authService;
         private readonly ProductService _productService;
+        private readonly IAuditLogger _audit;
 
-        public SellerController(AppDbContext db, IAuthService authService, ProductService productService)
+        public SellerController(AppDbContext db, IAuthService authService, ProductService productService, IAuditLogger audit)
         {
             _db = db;
             _authService = authService;
             _productService = productService;
+            _audit = audit;
         }
 
         [HttpGet("profile")]
@@ -145,6 +147,16 @@ namespace Synerixis.Api.Controllers
             config.UpdatedAt = DateTime.UtcNow;
 
             await _db.SaveChangesAsync();
+
+            try
+            {
+                var actor = GetCurrentUser();
+                await _audit.LogAsync(actor.UserId, actor.UserType, AuditActions.AiSettingsUpdate,
+                    "SellerConfig", sellerId.ToString(),
+                    new { outboundMode = config.OutboundMode, enableAutoReply = config.EnableAutoReply },
+                    sellerId);
+            }
+            catch { }
 
             return Ok(new { message = "配置更新成功" });
         }
@@ -440,6 +452,16 @@ namespace Synerixis.Api.Controllers
                 _db.Agents.Add(agent);
                 await _db.SaveChangesAsync();
 
+                try
+                {
+                    var actor = GetCurrentUser();
+                    await _audit.LogAsync(actor.UserId, actor.UserType, AuditActions.TeamCreate,
+                        "Agent", agent.Id.ToString(),
+                        new { email = agent.Email, role = agent.Role.ToString() },
+                        shopId);
+                }
+                catch { }
+
                 return Ok(new
                 {
                     message = "客服添加成功",
@@ -487,6 +509,16 @@ namespace Synerixis.Api.Controllers
 
                 await _db.SaveChangesAsync();
 
+                try
+                {
+                    var actor = GetCurrentUser();
+                    await _audit.LogAsync(actor.UserId, actor.UserType, AuditActions.TeamUpdate,
+                        "Agent", agent.Id.ToString(),
+                        new { role = agent.Role.ToString(), isActive = agent.IsActive },
+                        shopId);
+                }
+                catch { }
+
                 return Ok(new
                 {
                     message = "客服信息更新成功",
@@ -514,6 +546,14 @@ namespace Synerixis.Api.Controllers
                 agent.SetActive(false);
                 await _db.SaveChangesAsync();
 
+                try
+                {
+                    var actor = GetCurrentUser();
+                    await _audit.LogAsync(actor.UserId, actor.UserType, AuditActions.TeamDisable,
+                        "Agent", agent.Id.ToString(), null, shopId);
+                }
+                catch { }
+
                 return Ok(new { message = "客服已禁用" });
             }
             catch (UnauthorizedAccessException ex)
@@ -539,6 +579,16 @@ namespace Synerixis.Api.Controllers
 
                 agent.UpdatePassword(AgentPasswordHasher.Hash(dto.NewPassword));
                 await _db.SaveChangesAsync();
+
+                try
+                {
+                    var actor = GetCurrentUser();
+                    await _audit.LogAsync(actor.UserId, actor.UserType, AuditActions.TeamResetPassword,
+                        "Agent", agent.Id.ToString(),
+                        new { note = "password_reset" },
+                        shopId);
+                }
+                catch { }
 
                 return Ok(new { message = "密码重置成功" });
             }

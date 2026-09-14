@@ -6,6 +6,17 @@
       <code>GET /api/merchant/usage/daily?days=7</code>（真实聚合，无数据空态）。
     </p>
 
+    <el-alert
+      v-if="tokenAlert"
+      :type="tokenAlert.type"
+      :closable="false"
+      show-icon
+      style="margin-bottom: 16px"
+      :title="tokenAlert.title"
+    >
+      <el-button type="primary" size="small" @click="$router.push('/shops')">前往店铺绑定</el-button>
+    </el-alert>
+
     <el-row :gutter="16" v-loading="loading">
       <el-col :xs="24" :sm="12" :lg="8" v-for="item in kpis" :key="item.label">
         <KpiCard :label="item.label" :value="item.value" :hint="item.hint" />
@@ -44,12 +55,14 @@ import { ElMessage } from 'element-plus'
 import KpiCard from '@/components/KpiCard.vue'
 import UsageChart from '@/components/UsageChart.vue'
 import {
+  getConnections,
   getMerchantDashboard,
   getMerchantUsageDaily,
   type DashboardKpis,
 } from '@/api/merchant'
 
 const loading = ref(false)
+const tokenAlert = ref<{ type: 'error' | 'warning'; title: string } | null>(null)
 const chartLoading = ref(false)
 const chartReady = ref(false)
 const chartPoints = ref<{ date: string; count: number }[]>([])
@@ -73,11 +86,27 @@ onMounted(async () => {
   loading.value = true
   chartLoading.value = true
   try {
-    const [dash, daily] = await Promise.all([
+    const [dash, daily, conns] = await Promise.all([
       getMerchantDashboard(),
       getMerchantUsageDaily(7).catch(() => null),
+      getConnections().catch(() => null),
     ])
     data.value = dash
+    try {
+      const raw = conns as { items?: Record<string, unknown>[] } | Record<string, unknown>[] | null
+      const items = !raw ? [] : Array.isArray(raw) ? raw : raw.items || []
+      const expired = items.filter((c) => String(c.status || c.tokenStatus) === 'expired').length
+      const expiring = items.filter((c) => String(c.status || c.tokenStatus) === 'expiring').length
+      if (expired > 0) {
+        tokenAlert.value = { type: 'error', title: `${expired} 个店铺 Token 已过期，请立即刷新` }
+      } else if (expiring > 0) {
+        tokenAlert.value = { type: 'warning', title: `${expiring} 个店铺 Token 将在 24 小时内过期` }
+      } else {
+        tokenAlert.value = null
+      }
+    } catch {
+      tokenAlert.value = null
+    }
     const d = dash
     kpis.value = [
       { label: '今日会话', value: d.sessionsToday ?? '—', hint: 'sessionsToday' },

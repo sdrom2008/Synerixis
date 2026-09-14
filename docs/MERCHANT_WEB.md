@@ -57,6 +57,7 @@ POST /api/auth/init-agent
 | /billing | ✓ | ✓ | ✓ | ✗（计费 API 仍可仅 Seller） |
 | /quick-replies | ✓ | ✓ | ✓ | ✗（列表 GET 坐席可读，供 Inbox 插入） |
 | /team | ✓ | ✓ | ✓ | ✗ |
+| /audit | ✓ | ✓ | ✓ | ✗ |
 
 **店铺绑定 API**：`GetConnections` / `BindCallback` / `Unbind` / `refresh` 使用 `GetShopOwnerSellerId()`（Seller→UserId；Supervisor/Admin→JWT `shopId`）；Agent → 403。页面 `/shops` 对 Supervisor ✓ 且 API 真通。
 
@@ -75,6 +76,9 @@ POST /api/auth/init-agent
 - 健康检查：`GET /health`、`GET /health/ready`（ready 含 DB）
 - `GET /api/merchant/connections`、`POST .../bind/callback`、**匿名 GET** `.../bind/callback`（及 `/api/oauth/{platform}/callback`）→ redirect `/shops?bound=1`
 - `POST .../unbind/{platform}`、`POST .../connections/{id}/refresh`
+- `GET /api/merchant/connections` 返回 `expiresAt` / `expiresInHours` / `status=ok|expiring|expired|unknown`（24h 内过期=expiring）
+- `GET /api/merchant/audit-logs?take=50` — 本店操作审计（Seller/Supervisor）
+- `GET /api/merchant/alerts` — SLA 告警 + **connection_token** 类条目
 - 后台：`PlatformTokenRefreshHostedService` 约每 45 分钟扫描即将过期连接并刷新
 - Webhook 幂等：`ProcessedWebhookEvent`（Platform+EventKey 唯一 try-insert）
 

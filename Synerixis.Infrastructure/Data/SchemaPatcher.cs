@@ -208,6 +208,25 @@ DEALLOCATE PREPARE stmt;
             await db.Database.ExecuteSqlRawAsync(aiEstimatedSql);
             logger?.LogInformation("[SchemaPatcher] ai_usage_logs.IsEstimated ensured (MySQL)");
 
+            const string auditSql = @"
+CREATE TABLE IF NOT EXISTS `audit_logs` (
+  `Id` binary(16) NOT NULL,
+  `ActorId` binary(16) NULL,
+  `ActorType` varchar(32) NOT NULL,
+  `Action` varchar(64) NOT NULL,
+  `ResourceType` varchar(64) NULL,
+  `ResourceId` varchar(64) NULL,
+  `DetailJson` longtext NULL,
+  `CreatedAt` datetime(6) NOT NULL,
+  `ShopId` binary(16) NULL,
+  PRIMARY KEY (`Id`),
+  KEY `IX_audit_logs_ShopId_CreatedAt` (`ShopId`, `CreatedAt`),
+  KEY `IX_audit_logs_CreatedAt` (`CreatedAt`)
+) CHARACTER SET utf8mb4;
+";
+            await db.Database.ExecuteSqlRawAsync(auditSql);
+            logger?.LogInformation("[SchemaPatcher] audit_logs table ensured (MySQL)");
+
         }
 
         private static async Task TrySqliteAsync(AppDbContext db, ILogger? logger)
@@ -262,7 +281,21 @@ DEALLOCATE PREPARE stmt;
                 )",
                 @"CREATE INDEX IF NOT EXISTS IX_ai_usage_logs_SellerId_CreatedAt ON ai_usage_logs (SellerId, CreatedAt)",
                 "ALTER TABLE ai_usage_logs ADD COLUMN IsEstimated INTEGER NOT NULL DEFAULT 0",
-                @"CREATE UNIQUE INDEX IF NOT EXISTS IX_processed_webhook_events_Platform_EventKey ON processed_webhook_events (Platform, EventKey)"
+                @"CREATE UNIQUE INDEX IF NOT EXISTS IX_processed_webhook_events_Platform_EventKey ON processed_webhook_events (Platform, EventKey)",
+                @"CREATE TABLE IF NOT EXISTS audit_logs (
+                    Id BLOB NOT NULL PRIMARY KEY,
+                    ActorId BLOB NULL,
+                    ActorType TEXT NOT NULL,
+                    Action TEXT NOT NULL,
+                    ResourceType TEXT NULL,
+                    ResourceId TEXT NULL,
+                    DetailJson TEXT NULL,
+                    CreatedAt TEXT NOT NULL,
+                    ShopId BLOB NULL
+                )",
+                @"CREATE INDEX IF NOT EXISTS IX_audit_logs_ShopId_CreatedAt ON audit_logs (ShopId, CreatedAt)",
+                @"CREATE INDEX IF NOT EXISTS IX_audit_logs_CreatedAt ON audit_logs (CreatedAt)"
+
             })
             {
                 try

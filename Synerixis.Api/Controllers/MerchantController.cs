@@ -34,6 +34,7 @@ namespace Synerixis.Api.Controllers
         private readonly IConfiguration _config;
         private readonly IPlatformClientRouter _platformRouter;
         private readonly ILogger<MerchantController> _logger;
+        private readonly IAuditLogger _audit;
 
         public MerchantController(
             AppDbContext db, 
@@ -43,7 +44,8 @@ namespace Synerixis.Api.Controllers
             IOAuthBindStateStore oauthStateStore,
             IConfiguration config,
             IPlatformClientRouter platformRouter,
-            ILogger<MerchantController> logger)
+            ILogger<MerchantController> logger,
+            IAuditLogger audit)
         {
             _db = db;
             _sessionRepo = sessionRepo;
@@ -53,6 +55,7 @@ namespace Synerixis.Api.Controllers
             _config = config;
             _platformRouter = platformRouter;
             _logger = logger;
+            _audit = audit;
         }
 
         /// <summary>
@@ -126,7 +129,14 @@ namespace Synerixis.Api.Controllers
                 var result = await _platformService.BindShopAsync(request.Platform, request.Code, sellerId);
 
                 if (result.Success)
+                {
+                    var actor = GetCurrentUser();
+                    await _audit.LogAsync(actor.UserId, actor.UserType, AuditActions.ConnectionBind,
+                        "PlatformConnection", result.ConnectionId.ToString(),
+                        new { platform = request.Platform },
+                        sellerId);
                     return Ok(new { message = "绑定成功", result });
+                }
                 return BadRequest(new { message = result.Error });
             }
             catch (UnauthorizedAccessException ex)
@@ -182,7 +192,13 @@ namespace Synerixis.Api.Controllers
             {
                 var result = await _platformService.BindShopAsync(plat, code!, sellerId);
                 if (result.Success)
+                {
+                    await _audit.LogAsync(sellerId, "Seller", AuditActions.ConnectionBind,
+                        "PlatformConnection", result.ConnectionId.ToString(),
+                        new { platform = plat, via = "oauth_redirect" },
+                        sellerId);
                     return Redirect(successUrl);
+                }
                 return Redirect(failUrl + Uri.EscapeDataString(result.Error ?? "bind_failed"));
             }
             catch (Exception ex)
@@ -208,20 +224,28 @@ namespace Synerixis.Api.Controllers
 
                 var items = connections.Select(c =>
                 {
-                    string tokenStatus;
-                    if (!c.IsActive) tokenStatus = "inactive";
+                    // status: ok | expiring | expired | unknown（24h 内过期视为 expiring）
+                    string status;
+                    double? expiresInHours = null;
+                    if (!c.IsActive)
+                        status = "unknown";
                     else if (c.TokenExpiresAt.HasValue)
                     {
-                        if (c.TokenExpiresAt.Value <= now) tokenStatus = "expired";
-                        else if (c.TokenExpiresAt.Value <= now.AddHours(1)) tokenStatus = "expiring";
-                        else tokenStatus = "valid";
+                        expiresInHours = Math.Round((c.TokenExpiresAt.Value - now).TotalHours, 2);
+                        if (c.TokenExpiresAt.Value <= now) status = "expired";
+                        else if (c.TokenExpiresAt.Value <= now.AddHours(24)) status = "expiring";
+                        else status = "ok";
                     }
                     else
+                        status = "unknown";
+
+                    // 兼容旧字段名
+                    var tokenStatus = status switch
                     {
-                        var anchor = c.UpdatedAt ?? c.CreatedAt;
-                        if (anchor <= now.AddHours(-4)) tokenStatus = "expiring";
-                        else tokenStatus = "valid";
-                    }
+                        "ok" => "valid",
+                        "unknown" when !c.IsActive => "inactive",
+                        _ => status
+                    };
 
                     return new
                     {
@@ -231,13 +255,16 @@ namespace Synerixis.Api.Controllers
                         nickname = c.Nickname,
                         c.AvatarUrl,
                         c.IsActive,
+                        expiresAt = c.TokenExpiresAt,
+                        expiresInHours,
+                        status,
                         tokenExpiresAt = c.TokenExpiresAt,
                         tokenStatus,
-                        tokenHint = tokenStatus switch
+                        tokenHint = status switch
                         {
-                            "expired" => "Token 已过期，请刷新或重新绑定",
-                            "expiring" => "Token 即将过期",
-                            "inactive" => "已停用",
+                            "expired" => "Token 已过期，请立即刷新或重新绑定",
+                            "expiring" => "Token 将在 24 小时内过期",
+                            "unknown" => c.IsActive ? "过期时间未知" : "已停用",
                             _ => "有效"
                         },
                         updatedAt = c.UpdatedAt
@@ -271,10 +298,17 @@ namespace Synerixis.Api.Controllers
                 if (!ok)
                     return BadRequest(new { message = "刷新失败（可能缺少 RefreshToken 或平台拒绝）" });
 
+                var actor = GetCurrentUser();
+                await _audit.LogAsync(actor.UserId, actor.UserType, AuditActions.ConnectionRefresh,
+                    "PlatformConnection", connection.Id.ToString(),
+                    new { platform = connection.Platform, shopId = connection.ShopId, tokenExpiresAt = connection.TokenExpiresAt },
+                    sellerId);
+
                 return Ok(new
                 {
                     message = "Token 已刷新",
                     connectionId = connection.Id,
+                    expiresAt = connection.TokenExpiresAt,
                     tokenExpiresAt = connection.TokenExpiresAt,
                     updatedAt = connection.UpdatedAt
                 });
@@ -305,6 +339,11 @@ namespace Synerixis.Api.Controllers
                     return NotFound(new { message = "未找到绑定记录" });
 
                 await _platformService.UnbindShopAsync(connection.Platform, connection.Id);
+                var actor = GetCurrentUser();
+                await _audit.LogAsync(actor.UserId, actor.UserType, AuditActions.ConnectionUnbind,
+                    "PlatformConnection", connection.Id.ToString(),
+                    new { platform = connection.Platform, shopId = connection.ShopId },
+                    sellerId);
                 return Ok(new { message = "已解绑" });
             }
             catch (UnauthorizedAccessException ex)
@@ -747,6 +786,16 @@ namespace Synerixis.Api.Controllers
 
                 await _db.SaveChangesAsync();
 
+                try
+                {
+                    var actor = GetCurrentUser();
+                    await _audit.LogAsync(actor.UserId, actor.UserType, AuditActions.SessionHandoff,
+                        "ChatSession", session.Id.ToString(),
+                        new { supersededDrafts = pendingDrafts.Count },
+                        shopId);
+                }
+                catch { /* ignore audit actor errors */ }
+
                 return Ok(new
                 {
                     message = "已转人工：已停止 AI 新草稿与 AutoSend，旧草稿仍可手动发送",
@@ -1095,7 +1144,7 @@ namespace Synerixis.Api.Controllers
                     })
                     .ToListAsync();
 
-                var alertItems = sessions
+                var slaAlerts = sessions
                     .Select(s =>
                     {
                         var msgAnchor = s.LastBuyerMessageAt ?? s.LastActiveAt ?? s.CreatedAt;
@@ -1106,28 +1155,79 @@ namespace Synerixis.Api.Controllers
                         var needsBy = msgAnchor.AddHours(slaHours);
                         return new
                         {
-                            sessionId = s.Id,
-                            sessionBizId = s.SessionId,
-                            customerName = s.CustomerName,
-                            platform = s.Platform,
-                            status = s.status,
+                            type = "sla",
+                            sessionId = (Guid?)s.Id,
+                            sessionBizId = (string?)s.SessionId,
+                            customerName = (string?)s.CustomerName,
+                            platform = (string?)s.Platform,
+                            status = (string?)s.status,
                             pendingHumanHandoff = s.PendingHumanHandoff,
                             hoursSinceLastBuyerMsg = Math.Round(hours, 2),
                             thresholdHours = highest,
-                            needsResponseBy = needsBy,
+                            needsResponseBy = (DateTime?)needsBy,
                             slaUrgency = now >= needsBy ? "overdue" : "soon",
-                            // TODO: push / sound notification channel
-                            channel = "in-app"
+                            channel = "in-app",
+                            connectionId = (Guid?)null,
+                            tokenStatus = (string?)null,
+                            message = (string?)null
                         };
                     })
                     .Where(a => a != null)
-                    .OrderByDescending(a => a!.hoursSinceLastBuyerMsg)
+                    .Select(a => a!)
+                    .ToList();
+
+                // Token 过期/即将过期（24h）连接告警
+                var conns = await _db.PlatformConnections
+                    .AsNoTracking()
+                    .Where(c => c.SellerId == shopId && c.IsActive)
+                    .Select(c => new { c.Id, c.Platform, c.Nickname, c.ShopId, c.TokenExpiresAt })
+                    .ToListAsync();
+                var tokenAlerts = conns
+                    .Select(c =>
+                    {
+                        if (!c.TokenExpiresAt.HasValue)
+                            return null;
+                        string tokenStatus;
+                        if (c.TokenExpiresAt.Value <= now) tokenStatus = "expired";
+                        else if (c.TokenExpiresAt.Value <= now.AddHours(24)) tokenStatus = "expiring";
+                        else return null;
+                        var hrs = Math.Round((c.TokenExpiresAt.Value - now).TotalHours, 2);
+                        return new
+                        {
+                            type = "connection_token",
+                            sessionId = (Guid?)null,
+                            sessionBizId = (string?)null,
+                            customerName = (string?)null,
+                            platform = (string?)c.Platform,
+                            status = (string?)tokenStatus,
+                            pendingHumanHandoff = false,
+                            hoursSinceLastBuyerMsg = 0.0,
+                            thresholdHours = 24.0,
+                            needsResponseBy = (DateTime?)c.TokenExpiresAt,
+                            slaUrgency = tokenStatus == "expired" ? "overdue" : "soon",
+                            channel = "in-app",
+                            connectionId = (Guid?)c.Id,
+                            tokenStatus = (string?)tokenStatus,
+                            message = (string?)(tokenStatus == "expired"
+                                ? $"店铺 {c.Nickname ?? c.ShopId ?? c.Platform} Token 已过期"
+                                : $"店铺 {c.Nickname ?? c.ShopId ?? c.Platform} Token 将在 {hrs:0.#} 小时内过期")
+                        };
+                    })
+                    .Where(a => a != null)
+                    .Select(a => a!)
+                    .ToList();
+
+                var alertItems = slaAlerts.Concat(tokenAlerts)
+                    .OrderByDescending(a => a!.type == "connection_token" && a.status == "expired")
+                    .ThenByDescending(a => a!.hoursSinceLastBuyerMsg)
                     .ToList();
 
                 return Ok(new
                 {
                     items = alertItems,
                     total = alertItems.Count,
+                    slaCount = slaAlerts.Count,
+                    tokenAlertCount = tokenAlerts.Count,
                     responseSlaHours = slaHours,
                     thresholds = hoursList,
                     // TODO: WebPush / 桌面声音
@@ -1314,6 +1414,15 @@ namespace Synerixis.Api.Controllers
                     d.UpdatedAt = DateTime.UtcNow;
                 }
                 await _db.SaveChangesAsync();
+                try
+                {
+                    var actor = GetCurrentUser();
+                    await _audit.LogAsync(actor.UserId, actor.UserType, AuditActions.DraftReject,
+                        "ChatSession", id.ToString(),
+                        new { discarded = drafts.Count },
+                        shopId);
+                }
+                catch { }
                 return Ok(new { message = "草稿已丢弃", discarded = drafts.Count });
             }
             catch (Exception ex)
@@ -1365,6 +1474,8 @@ namespace Synerixis.Api.Controllers
                 await client.SendReplyAsync(platformMsg, draft.Content);
 
                 var aiMsg = ChatMessage.FromAI(draft.Content, chatSessionId: session.Id);
+                // 出站成功后写 PlatformMsgId，避免平台回声/重放被当成新进线重复处理
+                aiMsg.PlatformMsgId = $"outbound:{aiMsg.Id:N}";
                 _db.ChatMessages.Add(aiMsg);
                 session.AddAiMessage();
 
@@ -1374,6 +1485,17 @@ namespace Synerixis.Api.Controllers
                 draft.UpdatedAt = DateTime.UtcNow;
 
                 await _db.SaveChangesAsync();
+
+                try
+                {
+                    var actor = GetCurrentUser();
+                    await _audit.LogAsync(actor.UserId, actor.UserType, AuditActions.DraftApprove,
+                        "DraftMessage", draft.Id.ToString(),
+                        new { sessionId = session.Id, messageId = aiMsg.Id },
+                        shopId);
+                }
+                catch { }
+
                 return Ok(new
                 {
                     message = "已发送到平台",
@@ -1388,6 +1510,49 @@ namespace Synerixis.Api.Controllers
         }
 
 
+
+
+        /// <summary>
+        /// 本店操作审计日志（Seller / Supervisor；Admin 亦可按 shopId）。
+        /// </summary>
+        [HttpGet("audit-logs")]
+        public async Task<IActionResult> GetAuditLogs([FromQuery] int take = 50)
+        {
+            try
+            {
+                if (!CanManageShopOwnerResources())
+                    return Forbid();
+                var shopId = GetShopOwnerSellerId();
+                take = Math.Clamp(take, 1, 200);
+                var items = await _db.AuditLogs
+                    .AsNoTracking()
+                    .Where(a => a.ShopId == shopId)
+                    .OrderByDescending(a => a.CreatedAt)
+                    .Take(take)
+                    .Select(a => new
+                    {
+                        a.Id,
+                        a.ActorId,
+                        a.ActorType,
+                        a.Action,
+                        a.ResourceType,
+                        a.ResourceId,
+                        a.DetailJson,
+                        a.CreatedAt,
+                        a.ShopId
+                    })
+                    .ToListAsync();
+                return Ok(new { items, total = items.Count, take });
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return Unauthorized(new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                return HandleError(ex);
+            }
+        }
 
         /// <summary>快捷回复列表（本店 + 全局）。Seller/Supervisor/Admin。</summary>
         [HttpGet("quick-replies")]

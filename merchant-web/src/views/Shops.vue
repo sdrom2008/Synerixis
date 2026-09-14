@@ -14,74 +14,108 @@
       style="margin-bottom: 16px"
     />
 
-    <el-card v-else shadow="never" class="sx-card" v-loading="loading">
-      <template #header>
-        <div class="head">
-          <span>已连接店铺</span>
-          <div class="head-actions">
-            <el-button size="small" :loading="loading" @click="load">刷新</el-button>
-            <el-button type="primary" size="small" :loading="binding" @click="startBind('shopee')">
-              绑定 Shopee
-            </el-button>
-          </div>
-        </div>
-      </template>
-
-      <el-table v-if="connections.length" :data="connections" stripe>
-        <el-table-column prop="platform" label="平台" min-width="100">
-          <template #default="{ row }">{{ row.platform || row.Platform || '—' }}</template>
-        </el-table-column>
-        <el-table-column label="店铺昵称" min-width="140">
-          <template #default="{ row }">
-            {{ row.nickname || row.Nickname || row.shopName || '—' }}
-          </template>
-        </el-table-column>
-        <el-table-column label="平台店铺 ID" min-width="140">
-          <template #default="{ row }">{{ row.shopId || row.ShopId || '—' }}</template>
-        </el-table-column>
-        <el-table-column label="Token" width="120">
-          <template #default="{ row }">
-            <el-tag :type="tokenTagType(row)" size="small">
-              {{ row.tokenHint || tokenLabel(row) }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="isActive" label="状态" width="100">
-          <template #default="{ row }">
-            <el-tag :type="row.isActive || row.IsActive ? 'success' : 'info'" size="small">
-              {{ row.isActive || row.IsActive ? '已连接' : '未激活' }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="180">
-          <template #default="{ row }">
+    <template v-else>
+      <el-alert
+        v-for="w in tokenWarnings"
+        :key="String(w.id || w.Id)"
+        :type="connStatus(w) === 'expired' ? 'error' : 'warning'"
+        :closable="false"
+        show-icon
+        class="token-banner"
+      >
+        <template #title>
+          <div class="banner-row">
+            <span>
+              {{ w.nickname || w.Nickname || w.platform || w.Platform }}：
+              {{ w.tokenHint || (connStatus(w) === 'expired' ? 'Token 已过期' : 'Token 将在 24 小时内过期') }}
+              <template v-if="expiresInLabel(w)">（{{ expiresInLabel(w) }}）</template>
+            </span>
             <el-button
-              text
               type="primary"
               size="small"
-              :loading="refreshingId === (row.id || row.Id)"
-              @click="onRefresh(row)"
+              :loading="refreshingId === String(w.id || w.Id)"
+              @click="onRefresh(w)"
             >
-              刷新 Token
+              立即刷新
             </el-button>
-            <el-button
-              text
-              type="danger"
-              size="small"
-              @click="onUnbind(row.platform || row.Platform)"
-            >
-              解绑
-            </el-button>
-          </template>
-        </el-table-column>
-      </el-table>
+          </div>
+        </template>
+      </el-alert>
 
-      <EmptyState
-        v-else
-        title="尚未绑定店铺"
-        desc="点击「绑定 Shopee」跳转 OAuth。完成后回到此页将自动刷新。"
-      />
-    </el-card>
+      <el-card shadow="never" class="sx-card" v-loading="loading">
+        <template #header>
+          <div class="head">
+            <span>已连接店铺</span>
+            <div class="head-actions">
+              <el-button size="small" :loading="loading" @click="load">刷新</el-button>
+              <el-button type="primary" size="small" :loading="binding" @click="startBind('shopee')">
+                绑定 Shopee
+              </el-button>
+            </div>
+          </div>
+        </template>
+
+        <el-table v-if="connections.length" :data="connections" stripe>
+          <el-table-column prop="platform" label="平台" min-width="100">
+            <template #default="{ row }">{{ row.platform || row.Platform || '—' }}</template>
+          </el-table-column>
+          <el-table-column label="店铺昵称" min-width="140">
+            <template #default="{ row }">
+              {{ row.nickname || row.Nickname || row.shopName || '—' }}
+            </template>
+          </el-table-column>
+          <el-table-column label="平台店铺 ID" min-width="140">
+            <template #default="{ row }">{{ row.shopId || row.ShopId || '—' }}</template>
+          </el-table-column>
+          <el-table-column label="Token 状态" width="130">
+            <template #default="{ row }">
+              <el-tag :type="tokenTagType(row)" size="small" effect="dark">
+                {{ row.tokenHint || tokenLabel(row) }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="过期时间" min-width="160">
+            <template #default="{ row }">
+              {{ formatExpires(row) }}
+            </template>
+          </el-table-column>
+          <el-table-column prop="isActive" label="连接" width="100">
+            <template #default="{ row }">
+              <el-tag :type="row.isActive || row.IsActive ? 'success' : 'info'" size="small">
+                {{ row.isActive || row.IsActive ? '已连接' : '未激活' }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="操作" width="180">
+            <template #default="{ row }">
+              <el-button
+                text
+                type="primary"
+                size="small"
+                :loading="refreshingId === String(row.id || row.Id)"
+                @click="onRefresh(row)"
+              >
+                刷新 Token
+              </el-button>
+              <el-button
+                text
+                type="danger"
+                size="small"
+                @click="onUnbind(row.platform || row.Platform)"
+              >
+                解绑
+              </el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+
+        <EmptyState
+          v-else
+          title="尚未绑定店铺"
+          desc="点击「绑定 Shopee」跳转 OAuth。完成后回到此页将自动刷新。"
+        />
+      </el-card>
+    </template>
   </div>
 </template>
 
@@ -104,20 +138,51 @@ const refreshingId = ref<string | null>(null)
 const connections = ref<Record<string, unknown>[]>([])
 let focusHandler: (() => void) | null = null
 
+function connStatus(row: Record<string, unknown>) {
+  return String(row.status || row.tokenStatus || '')
+}
+
 function tokenLabel(row: Record<string, unknown>) {
-  const st = String(row.tokenStatus || '')
+  const st = connStatus(row)
   if (st === 'expired') return '已过期'
   if (st === 'expiring') return '即将过期'
-  if (st === 'inactive') return '停用'
+  if (st === 'inactive' || st === 'unknown') return st === 'inactive' ? '停用' : '未知'
+  if (st === 'ok' || st === 'valid') return '有效'
   return '有效'
 }
 
 function tokenTagType(row: Record<string, unknown>) {
-  const st = String(row.tokenStatus || '')
+  const st = connStatus(row)
   if (st === 'expired') return 'danger'
   if (st === 'expiring') return 'warning'
-  if (st === 'inactive') return 'info'
+  if (st === 'inactive' || st === 'unknown') return 'info'
   return 'success'
+}
+
+const tokenWarnings = computed(() =>
+  connections.value.filter((c) => {
+    const st = connStatus(c)
+    return st === 'expired' || st === 'expiring'
+  }),
+)
+
+function expiresInLabel(row: Record<string, unknown>) {
+  const h = row.expiresInHours
+  if (h === null || h === undefined || h === '') return ''
+  const n = Number(h)
+  if (Number.isNaN(n)) return ''
+  if (n < 0) return `已过期 ${Math.abs(n).toFixed(1)} 小时`
+  return `剩余约 ${n.toFixed(1)} 小时`
+}
+
+function formatExpires(row: Record<string, unknown>) {
+  const raw = row.expiresAt || row.tokenExpiresAt || row.TokenExpiresAt
+  if (!raw) return '—'
+  try {
+    return new Date(String(raw)).toLocaleString('zh-CN', { hour12: false })
+  } catch {
+    return String(raw)
+  }
 }
 
 async function load() {
@@ -237,5 +302,16 @@ onUnmounted(() => {
 .head-actions {
   display: flex;
   gap: 8px;
+}
+.token-banner {
+  margin-bottom: 12px;
+}
+.banner-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  width: 100%;
 }
 </style>

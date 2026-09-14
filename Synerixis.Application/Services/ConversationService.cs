@@ -7,6 +7,10 @@ using Synerixis.Domain.Entities;
 
 namespace Synerixis.Application.Services
 {
+    /// <summary>
+    /// 早期进线草稿路径。生产 IM Webhook 由 WebhookController.ProcessInboundAiReplyAsync 负责，
+    /// 含 draft-first / handoff 硬闸；请勿为「复用」把该硬闸旁路到本类。
+    /// </summary>
     public class ConversationService : IConversationService
     {
         private readonly IConversationRepository _conversationRepo;

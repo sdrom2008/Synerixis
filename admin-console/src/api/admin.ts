@@ -57,3 +57,11 @@ export function getUsageDaily(days = 7) {
 export function getSettings() {
   return request<Record<string, unknown>>({ url: '/api/admin/settings' })
 }
+
+export function getAuditLogs(take = 50, shopId?: string) {
+  const params = new URLSearchParams({ take: String(take) })
+  if (shopId) params.set('shopId', shopId)
+  return request<{ items: Record<string, unknown>[]; total: number; take: number }>({
+    url: `/api/admin/audit-logs?${params}`,
+  })
+}

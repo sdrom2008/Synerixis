@@ -259,6 +259,7 @@ builder.Services.AddHealthChecks()
 builder.Services.Configure<Synerixis.Application.Options.AiPricingOptions>(
     builder.Configuration.GetSection(Synerixis.Application.Options.AiPricingOptions.SectionName));
 builder.Services.AddScoped<IAiUsageRecorder, AiUsageRecorder>();
+builder.Services.AddScoped<IAuditLogger, AuditLogger>();
 builder.Services.AddScoped<IQuickReplyContextProvider, QuickReplyContextProvider>();
 
 // 7. AiChatService（最后注册，依赖 Router）

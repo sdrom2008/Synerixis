@@ -17,6 +17,7 @@ const routes: RouteRecordRaw[] = [
       { path: 'shops', name: 'shops', component: () => import('@/views/Shops.vue'), meta: { title: '店铺连接' } },
       { path: 'sessions', name: 'sessions', component: () => import('@/views/Sessions.vue'), meta: { title: '会话监控' } },
       { path: 'usage', name: 'usage', component: () => import('@/views/Usage.vue'), meta: { title: '用量计费' } },
+      { path: 'audit', name: 'audit', component: () => import('@/views/AuditLogs.vue'), meta: { title: '审计日志' } },
       { path: 'settings', name: 'settings', component: () => import('@/views/Settings.vue'), meta: { title: '系统设置' } },
     ],
   },
