@@ -1,4 +1,4 @@
-import { request } from './http'
+import http, { request } from './http'
 
 export interface AgentLoginResult {
   token: string
@@ -108,3 +108,34 @@ export function setMerchantSubscription(id: string, level: string) {
     data: { level, Level: level },
   })
 }
+
+function triggerCsvDownload(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+export async function exportAuditLogsCsv(take = 5000, shopId?: string, action?: string) {
+  const params = new URLSearchParams({ take: String(take) })
+  if (shopId) params.set('shopId', shopId)
+  if (action) params.set('action', action)
+  const res = await http.request<Blob>({
+    url: `/api/admin/audit-logs/export?${params}`,
+    method: 'GET',
+    responseType: 'blob',
+  })
+  triggerCsvDownload(res.data, `admin-audit-${new Date().toISOString().slice(0, 10)}.csv`)
+}
+
+export async function exportUsageCsv(days = 30) {
+  const res = await http.request<Blob>({
+    url: `/api/admin/usage/export?days=${days}`,
+    method: 'GET',
+    responseType: 'blob',
+  })
+  triggerCsvDownload(res.data, `admin-usage-${new Date().toISOString().slice(0, 10)}.csv`)
+}
+

@@ -8,19 +8,20 @@
 
 | 能力 | 说明 |
 |------|------|
-| 商家工作台 `merchant-web` | 登录、概览、收件箱三栏、草稿审发、转人工、SLA、团队、计费用量、上手清单 |
+| 商家工作台 `merchant-web` | 登录、概览、收件箱三栏、草稿审发、转人工、SLA、团队、计费用量、上手清单、审计/用量 **导出 CSV** |
 | 移动端 `frontend` | Dashboard / 店铺 / 收件箱 / AI 设置 / 计费主路径 |
-| Admin `admin-console` | 商家/连接/会话/用量/可写运营设置；审计 |
+| Admin `admin-console` | 商家/连接/会话/用量/可写运营设置；审计；用量/审计 **可选导出 CSV** |
 | Shopee OAuth 绑店 | 授权 URL → 回调 upsert `PlatformConnection`；**可按 region 绑店**（SG/TW/VN/…） |
 | Shopee 多站点 partner | `Shopee:Partners[]` 或 `Shopee:{Region}:Host/PartnerId/PartnerKey`；兼容单组 AppKey/Secret；无多 key 时默认 SG/全球 |
 | Shopee Webhook | 验签（可多 PartnerKey）、幂等、会话入库、draft-first |
 | Shopee 订单 / 物流 | `get_order_*` + **`get_tracking_info` 真实轨迹**；失败诚实降级，不编造 checkpoint |
 | TikTok Shop 客户端 | Webhook 验签/解析、IM 回复、OAuth 骨架 |
 | TikTok 物流轨迹 | **`GET /fulfillment/202309/orders/{order_id}/tracking`**；有数据返回 checkpoints；无权限/失败空轨迹 + warning |
-| Token 生命周期 | `TokenExpiresAt` 后台刷新；**过期/即将过期告警 UI**（Shops 顶栏/列表，已在更早 commit）；刷新失败引导重绑 |
+| Token 生命周期 | `TokenExpiresAt` 后台刷新；**过期/即将过期告警 UI**；刷新失败引导重绑 |
 | 人工协同 | Handoff 硬闸、敏感词/低置信自动转人工、营业外策略、坐席分配/认领 |
 | 运维 | `/health` + `/health/ready`；Maintenance 闸；Webhook 限流（默认 Memory；可选 Redis） |
 | AI 用量 | `AiUsageLog` + byPurpose；快捷回复 CRUD |
+| 本地一键 | `docker-compose.yml` + `.env.example` + `scripts/smoke.sh` + [`DOCKER.md`](./DOCKER.md) |
 
 ## 2. 需外部账号 / 沙箱才能验
 
@@ -42,7 +43,45 @@
 - RegimeTrader / 无关交易模块  
 - **假物流轨迹**（任何平台失败一律空 checkpoints + warning）
 
-## 4. 配置要点（多站点 + 限流）
+## 4. 本地验收最短路径
+
+### A. Docker Compose（推荐有 Docker 的环境）
+
+```bash
+cp .env.example .env
+docker compose up -d --build
+# 可选：--profile redis --profile web
+./scripts/smoke.sh
+curl -sS -X POST http://localhost:5000/api/auth/init-agent   # 开发测号 JWT
+```
+
+详见 [`DOCKER.md`](./DOCKER.md)。API `EnsureCreated` + **SchemaPatcher** 自动补表/列。
+
+### B. 无 Docker：dotnet + npm
+
+```bash
+# DB：本机 MySQL/MariaDB，连接串见 appsettings.Development.example.json
+cp Synerixis.Api/appsettings.Development.example.json Synerixis.Api/appsettings.Development.json
+dotnet build Synerixis.sln -c Release
+cd Synerixis.Api && ASPNETCORE_ENVIRONMENT=Development dotnet run
+# 另开终端：
+cd merchant-web && npm install && npm run dev   # :5174
+cd admin-console && npm install && npm run dev  # :3000
+./scripts/smoke.sh   # BASE_URL 按实际端口，如 http://localhost:7092
+```
+
+Box 细节见 [`DEV_SETUP_BOX.md`](./DEV_SETUP_BOX.md)。
+
+### 验收勾选（代码侧）
+
+- [ ] `/health`、`/health/ready` 200  
+- [ ] `init-agent` 或登录拿到 JWT；`GET /api/merchant/sessions` 200  
+- [ ] merchant-web Audit / Billing「导出 CSV」可下载  
+- [ ] （可选）Admin Usage / Audit 导出  
+
+**下一步需用户配 Partner / LLM Key 做沙箱实机验收**（第 2 节）；工程自动补全阶段至此收口。
+
+## 5. 配置要点（多站点 + 限流）
 
 ### Shopee 多站点
 
@@ -72,15 +111,19 @@
 - **Memory（默认）**：单实例足够。  
 - **Redis**：多实例部署必须；未配 Redis 连接串时自动回退 Memory 并打日志。
 
-## 5. 过时缺口说明（已对齐）
+## 6. 过时缺口说明（已对齐）
 
 以下条目**不再作为工程缺口**（勿再列入「下一轮必做」）：
 
 - ~~Token 过期告警 UI~~ → 已完成  
 - ~~Shopee 真实物流轨迹~~ → 已完成  
-- ~~TikTok 轨迹路径~~ → 本轮已接（实机仍需账号）  
-- ~~Shopee 多站点 partner 配置/绑店 region~~ → 本轮已完成  
-- ~~多实例限流开关~~ → 本轮可选 Redis；默认 Memory  
+- ~~TikTok 轨迹路径~~ → 已接（实机仍需账号）  
+- ~~Shopee 多站点 partner 配置/绑店 region~~ → 已完成  
+- ~~多实例限流开关~~ → 可选 Redis；默认 Memory  
+- ~~Docker / smoke / CSV 导出 / 本地验收文档~~ → 本轮收尾包已齐  
 
 仍依赖外部的项见第 2 节；明确不做见第 3 节。
 
+---
+
+**工程自动补全阶段收口**：代码侧 MVP 可本地验收；剩余为第 2 节外部账号与第 3 节明确不做项。

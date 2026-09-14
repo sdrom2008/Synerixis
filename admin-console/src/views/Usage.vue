@@ -4,6 +4,9 @@
     <p class="page-desc">
       全站诚实聚合 · <code>GET /api/admin/usage</code> +
       <code>/usage/daily</code>（含 AI token / exact·estimated，无数据为 0）
+      <el-button size="small" type="primary" plain style="margin-left: 12px" :loading="exporting" @click="exportCsv">
+        导出 CSV
+      </el-button>
     </p>
 
     <el-row :gutter="16" v-loading="loading">
@@ -55,9 +58,10 @@
 import { onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import UsageChart from '@/components/UsageChart.vue'
-import { getUsage, getUsageDaily } from '@/api/admin'
+import { getUsage, getUsageDaily, exportUsageCsv } from '@/api/admin'
 
 const loading = ref(false)
+const exporting = ref(false)
 const cards = ref<{ label: string; value: string }[]>([])
 const bySub = ref<{ level: string; count: number; totalQuota: number }[]>([])
 const byPurpose = ref<{ purpose: string; calls: number; tokens: number; costUsd: number | string }[]>([])
@@ -68,6 +72,18 @@ const chartPoints = ref<{ date: string; count: number }[]>([])
 function fmt(v: unknown) {
   if (v === null || v === undefined) return '—'
   return String(v)
+}
+
+async function exportCsv() {
+  exporting.value = true
+  try {
+    await exportUsageCsv(30)
+    ElMessage.success('已开始下载 CSV')
+  } catch {
+    ElMessage.error('导出用量失败')
+  } finally {
+    exporting.value = false
+  }
 }
 
 onMounted(async () => {

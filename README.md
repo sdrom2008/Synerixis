@@ -11,6 +11,15 @@
 
 Phase 1 只打透 **Shopee + TikTok Shop**。淘宝 / 抖店 **不再作为 Phase1 目标**（历史代码与文案中如有残留，视为废弃方向）。
 
+## 本地一键（Docker）
+
+```bash
+cp .env.example .env && docker compose up -d --build
+./scripts/smoke.sh
+```
+
+详见 [`docs/DOCKER.md`](docs/DOCKER.md)、[`docs/PRODUCT_STATUS.md`](docs/PRODUCT_STATUS.md)。
+
 ## 本地开发环境
 
 | 组件 | 要求 |

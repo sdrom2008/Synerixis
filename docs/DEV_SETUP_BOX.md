@@ -129,3 +129,9 @@ npm run build    # 生产构建校验
 - **Webhook 限流**：`Webhook:RateLimitStore=Memory`（默认）。多实例设 `Redis` 并填写 `ConnectionStrings:Redis`。未配 Redis 时回退 Memory。
 
 产品完成度见 [`PRODUCT_STATUS.md`](./PRODUCT_STATUS.md)。
+
+## 9. Docker Compose 一键（可选）
+
+有 Docker 权限时优先看 [`DOCKER.md`](./DOCKER.md)：`docker compose up -d --build`、SchemaPatcher、`scripts/smoke.sh`、端口说明。  
+无 Docker 时继续用本文第 1–5 节的 MariaDB + `dotnet run` + npm。
+

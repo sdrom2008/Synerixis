@@ -1,0 +1,100 @@
+# Synerixis local one-shot stack
+# Usage: cp .env.example .env && docker compose up -d --build
+# Optional: docker compose --profile redis --profile web up -d --build
+
+services:
+  mysql:
+    image: mariadb:11.4
+    container_name: synerixis-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root_dev}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-synerixis}
+      MYSQL_USER: ${MYSQL_USER:-synerixis}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-synerixis_dev}
+    ports:
+      - "${MYSQL_PORT:-3306}:3306"
+    volumes:
+      - synerixis_mysql:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+
+  redis:
+    profiles: ["redis"]
+    image: redis:7-alpine
+    container_name: synerixis-redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: synerixis-api
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    ports:
+      - "${API_PORT:-5000}:8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Development}
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__MySqlConnection: "Server=mysql;Port=3306;Database=${MYSQL_DATABASE:-synerixis};User=${MYSQL_USER:-synerixis};Password=${MYSQL_PASSWORD:-synerixis_dev};CharSet=utf8mb4;SslMode=None;"
+      Database__Provider: mysql
+      Database__ConnectionString: "Server=mysql;Port=3306;Database=${MYSQL_DATABASE:-synerixis};User=${MYSQL_USER:-synerixis};Password=${MYSQL_PASSWORD:-synerixis_dev};CharSet=utf8mb4;SslMode=None;"
+      ConnectionStrings__Redis: ${REDIS_CONNECTION:-}
+      Jwt__Key: ${JWT_KEY:-REPLACE_WITH_LOCAL_DEV_SECRET_AT_LEAST_32_CHARS}
+      Jwt__Issuer: ${JWT_ISSUER:-Synerixis.Dev}
+      Jwt__Audience: ${JWT_AUDIENCE:-Synerixis.Client}
+      Cors__Origins: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:5173,http://localhost:5174,http://localhost:8080}
+      Shopee__PartnerId: ${SHOPEE_PARTNER_ID:-}
+      Shopee__PartnerKey: ${SHOPEE_PARTNER_KEY:-}
+      Shopee__AppKey: ${SHOPEE_APP_KEY:-}
+      Shopee__AppSecret: ${SHOPEE_APP_SECRET:-}
+      Shopee__RedirectUri: ${SHOPEE_REDIRECT_URI:-http://localhost:5000/api/oauth/shopee/callback}
+      Shopee__RedirectUrl: ${SHOPEE_REDIRECT_URI:-http://localhost:5000/api/oauth/shopee/callback}
+      Shopee__Endpoint: ${SHOPEE_ENDPOINT:-https://partner.test-stable.shopeemobile.com}
+      Shopee__ApiBaseUrl: ${SHOPEE_ENDPOINT:-https://partner.test-stable.shopeemobile.com}
+      Shopee__Region: ${SHOPEE_REGION:-SG}
+      Llm__Provider: ${LLM_PROVIDER:-Aliyun}
+      Llm__ApiKey: ${LLM_API_KEY:-}
+      Llm__Model: ${LLM_MODEL:-qwen-plus}
+      Ai__PricePer1kInput: ${AI_PRICE_PER_1K_INPUT:-0.0004}
+      Ai__PricePer1kOutput: ${AI_PRICE_PER_1K_OUTPUT:-0.0012}
+      Frontends__MerchantWebBaseUrl: ${MERCHANT_WEB_BASE_URL:-http://localhost:8080}
+      Webhook__RateLimitPerMinute: ${WEBHOOK_RATE_LIMIT:-120}
+      Webhook__RateLimitStore: ${WEBHOOK_RATE_LIMIT_STORE:-Memory}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8080/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+
+  merchant-web:
+    profiles: ["web"]
+    build:
+      context: .
+      dockerfile: docker/merchant-web/Dockerfile
+    container_name: synerixis-merchant-web
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "${MERCHANT_WEB_PORT:-8080}:80"
+
+volumes:
+  synerixis_mysql:

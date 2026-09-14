@@ -23,6 +23,7 @@
               <el-option v-for="a in actionOptions" :key="a" :label="a" :value="a" />
             </el-select>
             <el-button size="small" :loading="loading" @click="load">刷新</el-button>
+            <el-button size="small" type="primary" plain :loading="exporting" @click="exportCsv">导出 CSV</el-button>
           </div>
         </div>
       </template>
@@ -60,9 +61,10 @@
 import { onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import EmptyState from '@/components/EmptyState.vue'
-import { getAuditLogs } from '@/api/merchant'
+import { getAuditLogs, exportAuditLogsCsv } from '@/api/merchant'
 
 const loading = ref(false)
+const exporting = ref(false)
 const items = ref<Record<string, unknown>[]>([])
 const actionFilter = ref<string | undefined>()
 
@@ -104,6 +106,18 @@ async function load() {
     ElMessage.warning('加载操作日志失败（需商家或主管权限）')
   } finally {
     loading.value = false
+  }
+}
+
+async function exportCsv() {
+  exporting.value = true
+  try {
+    await exportAuditLogsCsv(actionFilter.value || undefined)
+    ElMessage.success('已开始下载 CSV')
+  } catch {
+    ElMessage.error('导出失败（需 Seller/Supervisor）')
+  } finally {
+    exporting.value = false
   }
 }
 

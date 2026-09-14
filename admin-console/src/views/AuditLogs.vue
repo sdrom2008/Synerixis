@@ -7,7 +7,10 @@
       <template #header>
         <div class="head">
           <span>最近 {{ items.length }} 条</span>
-          <el-button size="small" :loading="loading" @click="load">刷新</el-button>
+          <div class="actions">
+            <el-button size="small" :loading="loading" @click="load">刷新</el-button>
+            <el-button size="small" type="primary" plain :loading="exporting" @click="exportCsv">导出 CSV</el-button>
+          </div>
         </div>
       </template>
       <el-table :data="items" stripe empty-text="暂无数据" size="small">
@@ -40,9 +43,10 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { getAuditLogs } from '@/api/admin'
+import { getAuditLogs, exportAuditLogsCsv } from '@/api/admin'
 
 const loading = ref(false)
+const exporting = ref(false)
 const items = ref<Record<string, unknown>[]>([])
 
 function formatTime(v: unknown) {
@@ -67,6 +71,18 @@ async function load() {
   }
 }
 
+async function exportCsv() {
+  exporting.value = true
+  try {
+    await exportAuditLogsCsv(5000)
+    ElMessage.success('已开始下载 CSV')
+  } catch {
+    ElMessage.error('导出失败')
+  } finally {
+    exporting.value = false
+  }
+}
+
 onMounted(load)
 </script>
 
@@ -75,6 +91,10 @@ onMounted(load)
   display: flex;
   align-items: center;
   justify-content: space-between;
+}
+.actions {
+  display: flex;
+  gap: 8px;
 }
 .muted {
   color: #94a3b8;

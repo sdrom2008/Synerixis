@@ -29,7 +29,12 @@
     </el-card>
 
     <el-card shadow="never" class="sx-card" style="margin-top: 16px" v-loading="loading">
-      <template #header>真实用量</template>
+      <template #header>
+        <div class="head">
+          <span>真实用量</span>
+          <el-button size="small" type="primary" plain :loading="exporting" @click="exportCsv">导出 CSV</el-button>
+        </div>
+      </template>
       <el-descriptions :column="2" border>
         <el-descriptions-item v-for="row in usageRows" :key="row.label" :label="row.label">
           {{ row.value }}
@@ -54,10 +59,11 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { getMerchantUsage } from '@/api/merchant'
+import { getMerchantUsage, exportUsageCsv } from '@/api/merchant'
 import { getSellerProfile } from '@/api/seller'
 
 const loading = ref(false)
+const exporting = ref(false)
 const subscriptionLevel = ref<string>('')
 const subscriptionEnd = ref<string>('')
 const freeQuota = ref<number | string | null>(null)
@@ -126,6 +132,18 @@ function fmt(v: unknown) {
     }
   }
   return String(v)
+}
+
+async function exportCsv() {
+  exporting.value = true
+  try {
+    await exportUsageCsv(30)
+    ElMessage.success('已开始下载 CSV（byPurpose + 近 30 日明细）')
+  } catch {
+    ElMessage.error('导出用量失败')
+  } finally {
+    exporting.value = false
+  }
 }
 
 onMounted(async () => {
@@ -207,6 +225,12 @@ onMounted(async () => {
 </script>
 
 <style scoped lang="scss">
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
 .plan {
   margin-bottom: 16px;
   &.current {

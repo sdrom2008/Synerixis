@@ -41,6 +41,7 @@ venv/
 .env.mysql
 .env
 *.env
+!.env.example
 
 # Local ASP.NET config with secrets (example files are committed)
 **/appsettings.Development.json

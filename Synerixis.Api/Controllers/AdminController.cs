@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Synerixis.Application.Interfaces;
 using Synerixis.Domain.Entities;
 using Synerixis.Infrastructure.Data;
+using Synerixis.Api.Helpers;
 
 namespace Synerixis.Api.Controllers
 {
@@ -313,6 +314,67 @@ namespace Synerixis.Api.Controllers
             });
         }
 
+        /// <summary>全站用量 CSV：byPurpose + 近 N 日明细</summary>
+        [HttpGet("usage/export")]
+        public async Task<IActionResult> ExportUsage([FromQuery] int days = 30)
+        {
+            if (days < 1) days = 1;
+            if (days > 90) days = 90;
+            var now = DateTime.UtcNow;
+            var monthStart = new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+            var rangeStart = now.Date.AddDays(-(days - 1));
+
+            var byPurpose = await _db.AiUsageLogs.AsNoTracking()
+                .Where(a => a.CreatedAt >= monthStart)
+                .GroupBy(a => a.Purpose)
+                .Select(g => new
+                {
+                    purpose = g.Key,
+                    calls = g.Count(),
+                    tokens = g.Sum(x => x.PromptTokens + x.CompletionTokens),
+                    costUsd = g.Sum(x => x.EstimatedCostUsd)
+                })
+                .OrderByDescending(x => x.calls)
+                .ToListAsync();
+
+            var details = await _db.AiUsageLogs.AsNoTracking()
+                .Where(a => a.CreatedAt >= rangeStart)
+                .OrderByDescending(a => a.CreatedAt)
+                .Take(10000)
+                .Select(a => new
+                {
+                    a.Id,
+                    a.SellerId,
+                    a.SessionId,
+                    a.Model,
+                    a.Purpose,
+                    a.PromptTokens,
+                    a.CompletionTokens,
+                    a.EstimatedCostUsd,
+                    a.IsEstimated,
+                    a.CreatedAt
+                })
+                .ToListAsync();
+
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine("# section=byPurpose period=month");
+            sb.AppendLine(CsvExport.Line("purpose", "calls", "tokens", "costUsd"));
+            foreach (var r in byPurpose)
+                sb.AppendLine(CsvExport.Line(r.purpose, r.calls, r.tokens, r.costUsd));
+            sb.AppendLine();
+            sb.AppendLine($"# section=detailLogs days={days} from={rangeStart:yyyy-MM-dd}");
+            sb.AppendLine(CsvExport.Line(
+                "id", "sellerId", "sessionId", "model", "purpose",
+                "promptTokens", "completionTokens", "estimatedCostUsd", "isEstimated", "createdAt"));
+            foreach (var a in details)
+                sb.AppendLine(CsvExport.Line(
+                    a.Id, a.SellerId, a.SessionId, a.Model, a.Purpose,
+                    a.PromptTokens, a.CompletionTokens, a.EstimatedCostUsd, a.IsEstimated, a.CreatedAt));
+
+            return CsvExport.File(sb.ToString(), $"admin-usage-{now:yyyyMMdd}.csv");
+        }
+
+
         /// <summary>全站近 N 日会话/消息/AI 调用日趋势</summary>
         [HttpGet("usage/daily")]
         public async Task<IActionResult> GetUsageDaily([FromQuery] int days = 7)
@@ -408,6 +470,49 @@ namespace Synerixis.Api.Controllers
                 .ToListAsync();
 
             return Ok(new { items, total = items.Count, take });
+        }
+
+        /// <summary>全站审计日志 CSV</summary>
+        [HttpGet("audit-logs/export")]
+        public async Task<IActionResult> ExportAuditLogs(
+            [FromQuery] int take = 5000,
+            [FromQuery] Guid? shopId = null,
+            [FromQuery] string? action = null)
+        {
+            take = Math.Clamp(take, 1, 20000);
+            var q = _db.AuditLogs.AsNoTracking().AsQueryable();
+            if (shopId.HasValue)
+                q = q.Where(a => a.ShopId == shopId.Value);
+            if (!string.IsNullOrWhiteSpace(action))
+                q = q.Where(a => a.Action == action.Trim());
+
+            var items = await q
+                .OrderByDescending(a => a.CreatedAt)
+                .Take(take)
+                .Select(a => new
+                {
+                    a.Id,
+                    a.ActorId,
+                    a.ActorType,
+                    a.Action,
+                    a.ResourceType,
+                    a.ResourceId,
+                    a.DetailJson,
+                    a.CreatedAt,
+                    a.ShopId
+                })
+                .ToListAsync();
+
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine(CsvExport.Line(
+                "id", "createdAt", "actorId", "actorType", "action",
+                "resourceType", "resourceId", "shopId", "detailJson"));
+            foreach (var a in items)
+                sb.AppendLine(CsvExport.Line(
+                    a.Id, a.CreatedAt, a.ActorId, a.ActorType, a.Action,
+                    a.ResourceType, a.ResourceId, a.ShopId, a.DetailJson));
+
+            return CsvExport.File(sb.ToString(), $"admin-audit-{DateTime.UtcNow:yyyyMMdd}.csv");
         }
 
 

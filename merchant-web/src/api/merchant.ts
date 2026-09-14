@@ -1,4 +1,4 @@
-import { request } from './http'
+import http, { request } from './http'
 
 export type SlaUrgency = 'ok' | 'soon' | 'overdue'
 
@@ -418,6 +418,38 @@ export function getAuditLogs(take = 50, action?: string) {
   })
 }
 
+
+
+function triggerCsvDownload(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+/** 导出审计 CSV（Seller/Supervisor） */
+export async function exportAuditLogsCsv(action?: string, take = 2000) {
+  const params = new URLSearchParams({ take: String(take) })
+  if (action) params.set('action', action)
+  const res = await http.request<Blob>({
+    url: `/api/merchant/audit-logs/export?${params}`,
+    method: 'GET',
+    responseType: 'blob',
+  })
+  triggerCsvDownload(res.data, `merchant-audit-${new Date().toISOString().slice(0, 10)}.csv`)
+}
+
+/** 导出用量 CSV（byPurpose + 近 N 日明细） */
+export async function exportUsageCsv(days = 30) {
+  const res = await http.request<Blob>({
+    url: `/api/merchant/usage/export?days=${days}`,
+    method: 'GET',
+    responseType: 'blob',
+  })
+  triggerCsvDownload(res.data, `merchant-usage-${new Date().toISOString().slice(0, 10)}.csv`)
+}
 
 export interface OnboardingItem {
   id: string
