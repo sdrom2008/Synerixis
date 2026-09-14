@@ -103,3 +103,19 @@ POST /api/auth/init-agent
 ### 遗留（非本次 MVP）
 
 - Admin-console 深化、支付网关、RegimeTrader、全自动回复
+
+## 本机联调端口（Windows）
+
+| 服务 | 地址 |
+|------|------|
+| API | `http://0.0.0.0:7092`（`launchSettings` / Kestrel，绑所有网卡） |
+| merchant-web | `http://localhost:5174`，Vite 代理 `/api` → `http://127.0.0.1:7092` |
+
+1. 复制 `merchant-web/.env.development.example` → `merchant-web/.env.development`
+2. 复制 `Synerixis.Api/appsettings.Development.example.json` → `appsettings.Development.json`，改库连接串
+3. VS 启动 Api（确认控制台 `listening on http://0.0.0.0:7092`）
+4. `cd merchant-web && npm run dev`，浏览器只用 `http://localhost:5174`（不要写死局域网 IP）
+5. 自检：`curl http://127.0.0.1:7092/health`
+
+双网卡时：本机网页端始终用 `127.0.0.1` 代理；真机/HBuilder 再改 `frontend` 的 BASE_URL 为手机同网段的本机 IP:7092。
+

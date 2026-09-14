@@ -52,3 +52,6 @@ venv/
 admin-console/dist/
 merchant-web/dist/
 
+
+!.env.development.example
+!merchant-web/.env.development.example

@@ -158,28 +158,48 @@ builder.Services.AddSenparcWeixinServices(builder.Configuration);
 //builder.Services.AddEndpointsApiExplorer();
 //builder.Services.AddSwaggerGen();
 
-// CORS 配置 - 生产环境使用环境变量，开发环境允许所有（生产环境应收紧）
-var corsOrigins = builder.Configuration["Cors:Origins"] ?? "http://localhost:3000";
+// CORS：开发环境放行 localhost / 127.0.0.1 / 局域网私网（双网卡联调）；生产仍用 Cors:Origins 白名单
+var corsOrigins = builder.Configuration["Cors:Origins"]
+    ?? "http://localhost:3000,http://localhost:5173,http://localhost:5174,http://127.0.0.1:5174";
 
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowSpecific", p =>
     {
-        p.WithOrigins(corsOrigins.Split(',').Select(o => o.Trim()).ToArray())
-         .AllowAnyMethod()
-         .AllowAnyHeader()
-         .WithExposedHeaders("X-Platform", "X-Signature")
-         .AllowCredentials();
-    });
-    
-    // 允许跨子域名（开发环境）
-    options.AddPolicy("AllowSubdomains", p =>
-    {
-        p.WithOrigins("http://localhost:*", "https://localhost:*")
-         .AllowAnyMethod()
-         .AllowAnyHeader()
-         .WithExposedHeaders("X-Platform", "X-Signature")
-         .AllowCredentials();
+        if (builder.Environment.IsDevelopment())
+        {
+            p.SetIsOriginAllowed(static origin =>
+                {
+                    if (string.IsNullOrWhiteSpace(origin)) return false;
+                    if (!Uri.TryCreate(origin, UriKind.Absolute, out var uri)) return false;
+                    var host = uri.Host;
+                    if (host is "localhost" or "127.0.0.1") return true;
+                    // 私网：双网卡 192.168.x / 10.x / 172.16-31.x
+                    if (System.Net.IPAddress.TryParse(host, out var ip))
+                    {
+                        var b = ip.GetAddressBytes();
+                        if (ip.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
+                        {
+                            if (b[0] == 10) return true;
+                            if (b[0] == 192 && b[1] == 168) return true;
+                            if (b[0] == 172 && b[1] >= 16 && b[1] <= 31) return true;
+                        }
+                    }
+                    return false;
+                })
+             .AllowAnyMethod()
+             .AllowAnyHeader()
+             .WithExposedHeaders("X-Platform", "X-Signature")
+             .AllowCredentials();
+        }
+        else
+        {
+            p.WithOrigins(corsOrigins.Split(',').Select(o => o.Trim()).Where(o => o.Length > 0).ToArray())
+             .AllowAnyMethod()
+             .AllowAnyHeader()
+             .WithExposedHeaders("X-Platform", "X-Signature")
+             .AllowCredentials();
+        }
     });
 });
 

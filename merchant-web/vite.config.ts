@@ -7,7 +7,8 @@ import { resolve } from 'path'
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
-  const apiTarget = env.VITE_API_PROXY_TARGET || 'http://localhost:5000'
+  // 本机 PC 联调默认走 127.0.0.1:7092（与 launchSettings 一致）；勿用局域网 IP 打本机 API
+  const apiTarget = env.VITE_API_PROXY_TARGET || 'http://127.0.0.1:7092'
 
   return {
     plugins: [
@@ -25,7 +26,9 @@ export default defineConfig(({ mode }) => {
       },
     },
     server: {
+      host: '0.0.0.0',
       port: 5174,
+      strictPort: true,
       proxy: {
         '/api': {
           target: apiTarget,

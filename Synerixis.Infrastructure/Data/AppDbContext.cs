@@ -443,16 +443,16 @@ namespace Synerixis.Infrastructure.Data
                       .HasColumnType("bit");
 
                 entity.Property(e => e.CreatedAt)
-                      .HasColumnType("datetime2");
+                      .HasColumnType("datetime(6)");
 
                 entity.Property(e => e.UpdatedAt)
-                      .HasColumnType("datetime2");
+                      .HasColumnType("datetime(6)");
 
                 entity.Property(e => e.TokenExpiresAt)
-                      .HasColumnType("datetime2");
+                      .HasColumnType("datetime(6)");
 
                 entity.Property(e => e.LastRefreshAt)
-                      .HasColumnType("datetime2");
+                      .HasColumnType("datetime(6)");
 
                 entity.Property(e => e.LastRefreshError)
                       .HasColumnType("varchar(512)")
@@ -485,7 +485,7 @@ namespace Synerixis.Infrastructure.Data
                       .IsRequired();
 
                 entity.Property(e => e.UpdatedAt)
-                      .HasColumnType("datetime2");
+                      .HasColumnType("datetime(6)");
             });
 
             modelBuilder.Entity<AuditLog>(entity =>
