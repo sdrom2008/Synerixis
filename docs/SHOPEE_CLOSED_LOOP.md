@@ -14,8 +14,8 @@
 | Webhook 入口 | ✅ | `WebhookController` `POST /api/webhook/{platform}` | 路由、签名校验、解析、会话落库、异步 `SendReplyAsync` |
 | Webhook 签名 | ✅ | `VerifySignatureAsync` | HMAC；缺 `AppSecret` 直接失败 |
 | Webhook 解析 | ✅ | `ParseWebhookAsync` | `type=message` 抽 CustomerId / ConversationId / Content |
-| 幂等 | ⚠️ | `IsDuplicateAsync` | 有 MsgId 去重意图，但条件判断疑似反了（`!IsDuplicate` 当重复忽略），需修 |
-| 意图识别 | ⚠️ | `IntentClassifier` + `ConversationService` | 服务存在；**Webhook 路径未调用**，现用 `GenerateAiReply` 占位话术 |
+| 幂等 | ⚠️ | `IsDuplicateAsync` | 条件已修正（已存在 MsgId 才忽略）；空 MsgId 仍放行；无分布式锁/去重表，并发窗口仍可能重复 |
+| 意图识别 | ✅ | `IntentClassifier` ← `WebhookController.ProcessInboundAiReplyAsync` | Webhook IM 路径：classify → AgentRouter / GeneralChat；缺 AI Key 时降级 Unknown + 本地兜底 |
 | Intent ↔ Agent | ✅ | `OrderAgent.SupportedIntent = OrderQuery` | 与 Classifier 统一为 `OrderQuery`（`QueryOrder` 同值别名保留） |
 | 订单查询（DB） | ✅ | `OrderAgent` → `IOrderRepository` | B2C 按 shop+customer 查库 |
 | 订单查询（平台 API） | ✅ | `OrderAgent` → `IPlatformClientRouter` → `GetCustomerOrderAsync` | DB 未命中时回源；平台 null / DI 缺失时保持友好无单话术 |
@@ -34,12 +34,13 @@
 ### 2. Webhook → 会话
 
 - ✅ 验签、解析、建 `ChatSession`、写 `ChatMessage`  
-- ⚠️ Shopee 事件类型未像 TikTok 那样枚举分流；非 chat 推送走 default「未处理」  
-- ⚠️ 测试接口 `POST /api/webhook/shopee/test` 仅本地模拟，不验签
+- ✅ Shopee IM：`CustomerId` 非空 → `IM_MESSAGE_RECEIVED` → 意图链路；无买家仍走 default「未处理」  
+- ⚠️ 测试接口 `POST /api/webhook/shopee/test` 仅本地模拟，不验签、不走 Classifier
 
 ### 3. Intent → Agent
 
-- ⚠️ 生产 Webhook 未走 `IConversationService.ProcessIncomingMessageAsync`  
+- ✅ 生产 Webhook：`HandleChatMessageAsync` → `ProcessInboundAiReplyAsync`（IntentClassifier → AgentRouter，尤其 `OrderQuery`→`OrderAgent`；General/Unknown → `IGeneralChatAgent`）  
+- ⚠️ `IConversationService.ProcessIncomingMessageAsync` 仍独立存在（SellerId 占位），Webhook 未复用该入口  
 - ✅ `OrderQuery` / `QueryOrder` 已统一（权威名 `OrderQuery`，别名同值）
 
 ### 4. Order → Reply
@@ -57,7 +58,7 @@
 ## 建议验收用例（人工）
 
 1. 配置齐 `Shopee:*`，用真实/沙箱 order_sn 调 `GetCustomerOrderAsync`，得到非 null 摘要。  
-2. Webhook 推一条 message，DB 有会话与用户消息，且尝试 `SendReplyAsync`（无 token 时应仅 Warning）。  
+2. Webhook 推一条 message，DB 有会话与用户消息；意图走 Classifier→Agent（订单问询应触达 OrderAgent）；再尝试 `SendReplyAsync`（无 token / 无 AI Key 时应仅 Warning，Webhook 仍 200）。  
 3. 商户调用转人工后，会话状态为 Pending/待接入。  
 4. ✅ 库空时平台回源查单话术：有摘要 → 买家可读回复；平台 null → 「还没有订单记录」。
 

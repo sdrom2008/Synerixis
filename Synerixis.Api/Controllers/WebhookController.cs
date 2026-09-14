@@ -1,8 +1,12 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Synerixis.Application.DTOs;
 using Synerixis.Application.Interfaces;
 using Synerixis.Domain.Entities;
+using Synerixis.Domain.Enums;
+using ChatMessage = Synerixis.Domain.Entities.ChatMessage;
 using Synerixis.Infrastructure.Clients;
 using Synerixis.Infrastructure.Data;
 using System.Data;
@@ -26,16 +30,19 @@ namespace Synerixis.Api.Controllers
         private readonly IConversationRepository _conversationRepo;
         private readonly ILogger<WebhookController> _logger;
         private readonly AppDbContext _db;
+        private readonly IServiceScopeFactory _scopeFactory;
 
         public WebhookController(
             IPlatformClientRouter router,
             IConversationRepository conversationRepo,
             AppDbContext db,
+            IServiceScopeFactory scopeFactory,
             ILogger<WebhookController> logger)
         {
             _router = router;
             _conversationRepo = conversationRepo;
             _db = db;
+            _scopeFactory = scopeFactory;
             _logger = logger;
         }
 
@@ -77,14 +84,17 @@ namespace Synerixis.Api.Controllers
                 else
                 {
                     platformMsg = await client.ParseWebhookAsync(Request);
-                    eventType = WebhookEventType.Unknown;
+                    // Shopee 等：ParseWebhook 对买家聊天会填 CustomerId；无买家则视为非 IM
+                    eventType = !string.IsNullOrEmpty(platformMsg.CustomerId)
+                        ? WebhookEventType.IM_MESSAGE_RECEIVED
+                        : WebhookEventType.Unknown;
                 }
 
                 _logger.LogInformation("[Webhook] Parsed message: Platform={Platform}, Event={Event}, MsgId={MsgId}, Content={Content}",
                     platformMsg.Platform, eventType, platformMsg.MsgId, platformMsg.Content);
 
-                // 4. 幂等性检查：通过 MsgId 去重
-                if (!await IsDuplicateAsync(platformMsg))
+                // 4. 幂等性检查：通过 MsgId 去重（已存在则忽略）
+                if (await IsDuplicateAsync(platformMsg))
                 {
                     _logger.LogWarning("[Webhook] Duplicate webhook ignored: MsgId={MsgId}", platformMsg.MsgId);
                     return Ok(new { code = 0, message = "duplicate" });
@@ -150,27 +160,13 @@ namespace Synerixis.Api.Controllers
             session.AddUserMessage();
             await _db.SaveChangesAsync();
 
-            // 调用 AI 自动回复（异步，不阻塞 webhook 响应）
+            // 意图分类 → Agent 路由 → 平台回信（独立 scope，不阻塞 webhook 200）
+            var sessionId = session.Id;
+            var platformSnapshot = msg;
+            var userContent = msg.Content;
             _ = Task.Run(async () =>
             {
-                try
-                {
-                    // 这里可以接入真实 AI 服务
-                    var aiReply = GenerateAiReply(session, msg.Content);
-
-                    var aiMsg = ChatMessage.FromAI(aiReply, chatSessionId: session.Id);
-                    session.Messages.Add(aiMsg);
-                    session.AddAiMessage();
-                    await _db.SaveChangesAsync();
-
-                    // 通过平台客户端发送回复
-                    var client = _router.GetClient(msg.Platform);
-                    await client.SendReplyAsync(msg, aiReply);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "[Webhook] Async reply failed for session {SessionId}", session.Id);
-                }
+                await ProcessInboundAiReplyAsync(sessionId, platformSnapshot, userContent);
             });
 
             return Ok(new { code = 0, message = "success" });
@@ -456,12 +452,109 @@ namespace Synerixis.Api.Controllers
         }
 
         /// <summary>
-        /// 生成 AI 回复（演示用，后续接入真实 LLM）
+        /// 已落库的用户消息 → IntentClassifier → IAgent / GeneralChat → SendReplyAsync。
+        /// 缺 AI Key / 平台 Token 时仅打日志，不向上抛（Webhook 已返回 200）。
         /// </summary>
-        private string GenerateAiReply(ChatSession session, string userMessage)
+        private async Task ProcessInboundAiReplyAsync(Guid sessionId, PlatformMessage msg, string userContent)
         {
-            // TODO: 接入阿里云通义千问或其他 LLM 服务
-            return $"【AI 自动回复】您好！您关于「{userMessage}」的问题已收到。我们的客服团队将在 24 小时内为您处理。";
+            try
+            {
+                using var scope = _scopeFactory.CreateScope();
+                var sp = scope.ServiceProvider;
+                var db = sp.GetRequiredService<AppDbContext>();
+                var logger = sp.GetRequiredService<ILogger<WebhookController>>();
+
+                var session = await db.ChatSessions
+                    .Include(s => s.Messages)
+                    .FirstOrDefaultAsync(s => s.Id == sessionId);
+                if (session == null)
+                {
+                    logger.LogWarning("[Webhook] Session {SessionId} missing for AI reply", sessionId);
+                    return;
+                }
+
+                var historyDtos = session.Messages
+                    .OrderBy(m => m.CreatedAt)
+                    .Select(m => new ChatMessageDto
+                    {
+                        IsFromUser = m.SenderType == 1,
+                        Content = m.Content,
+                        MessageType = m.MessageType == 1 ? "text" : "other",
+                        Timestamp = m.CreatedAt
+                    })
+                    .ToList();
+
+                var chatContext = new ChatContext
+                {
+                    ConversationId = session.Id.ToString(),
+                    ShopId = session.ShopId,
+                    SellerId = session.ShopId.ToString(),
+                    Platform = session.Platform,
+                    CustomerId = session.CustomerId ?? msg.CustomerId ?? string.Empty,
+                    Messages = historyDtos
+                };
+
+                ChatIntent intent = ChatIntent.Unknown;
+                try
+                {
+                    var classifier = sp.GetRequiredService<IIntentClassifier>();
+                    intent = await classifier.ClassifyAsync(userContent, historyDtos);
+                    logger.LogInformation("[Webhook] Intent={Intent} Session={SessionId} Platform={Platform}",
+                        intent, sessionId, session.Platform);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(ex, "[Webhook] Intent classify failed (missing AI key?); fallback Unknown");
+                    intent = ChatIntent.Unknown;
+                }
+
+                string replyContent;
+                try
+                {
+                    var agentRouter = sp.GetRequiredService<IAgentRouter>();
+                    var agent = agentRouter.GetAgent(intent);
+
+                    // 有匹配 Agent（如 OrderQuery→OrderAgent）则走专用路径；General/Unknown 走口语化 LLM
+                    if (agent != null && intent is not (ChatIntent.GeneralChat or ChatIntent.Unknown))
+                    {
+                        var agentResult = await agent.ProcessAsync(userContent, chatContext);
+                        replyContent = agentResult.Messages.LastOrDefault()?.Content
+                            ?? "抱歉，我暂时无法处理您的问题。";
+                    }
+                    else
+                    {
+                        var generalChat = sp.GetRequiredService<IGeneralChatAgent>();
+                        replyContent = await generalChat.GenerateReplyAsync(userContent, chatContext);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(ex, "[Webhook] Agent/LLM reply failed; using local fallback");
+                    replyContent = "您好！您的消息已收到，我们会尽快为您处理。";
+                }
+
+                var aiMsg = ChatMessage.FromAI(replyContent, chatSessionId: session.Id);
+                session.Messages.Add(aiMsg);
+                session.AddAiMessage();
+                await db.SaveChangesAsync();
+
+                try
+                {
+                    var platformRouter = sp.GetRequiredService<IPlatformClientRouter>();
+                    var client = platformRouter.GetClient(msg.Platform);
+                    await client.SendReplyAsync(msg, replyContent);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(ex,
+                        "[Webhook] SendReply skipped/failed for {Platform} (missing token/config?)",
+                        msg.Platform);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[Webhook] Async reply failed for session {SessionId}", sessionId);
+            }
         }
 
         #endregion
