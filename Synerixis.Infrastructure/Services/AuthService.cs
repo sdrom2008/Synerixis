@@ -28,15 +28,16 @@ namespace Synerixis.Infrastructure.Services
                 new Claim("uid", userId.ToString())
             };
 
-            if (shopId.HasValue)
-            {
-                claims.Add(new Claim("shopId", shopId.Value.ToString()));
-            }
-
-            // 为了向后兼容，如果角色是Seller，我们额外添加一个sellerId claim
+            // Seller: ChatSession.ShopId == Seller.Id; always emit shopId for merchant APIs
             if (userType.Equals("Seller", StringComparison.OrdinalIgnoreCase))
             {
+                var sellerShopId = shopId ?? userId;
+                claims.Add(new Claim("shopId", sellerShopId.ToString()));
                 claims.Add(new Claim("sellerId", userId.ToString()));
+            }
+            else if (shopId.HasValue)
+            {
+                claims.Add(new Claim("shopId", shopId.Value.ToString()));
             }
 
             var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_config["Jwt:Key"]!));

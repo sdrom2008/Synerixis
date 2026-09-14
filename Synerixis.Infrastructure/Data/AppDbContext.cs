@@ -81,6 +81,13 @@ namespace Synerixis.Infrastructure.Data
                 entity.ToTable("seller_configs");
                 entity.HasKey(c => c.Id);
 
+                entity.Property(c => c.BusinessHoursStart)
+                      .HasColumnType("varchar(8)")
+                      .HasMaxLength(8);
+                entity.Property(c => c.BusinessHoursEnd)
+                      .HasColumnType("varchar(8)")
+                      .HasMaxLength(8);
+
                 entity.HasOne(c => c.Seller)
                       .WithOne(s => s.Config)
                       .HasForeignKey<SellerConfig>(c => c.SellerId)

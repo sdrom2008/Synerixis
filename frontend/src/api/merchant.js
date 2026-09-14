@@ -41,30 +41,38 @@ export function transferSession(id) {
   return request({ url: `/api/merchant/sessions/${id}/transfer`, method: 'POST' });
 }
 
+/** Real DB aggregates from GET /api/merchant/dashboard */
+export function getMerchantDashboard() {
+  return request({ url: '/api/merchant/dashboard' });
+}
+
+/** Monthly usage from GET /api/merchant/usage */
+export function getMerchantUsage() {
+  return request({ url: '/api/merchant/usage' });
+}
+
 /**
- * TODO: Backend dashboard KPI endpoint for merchant console not yet dedicated.
- * Prefer /api/reports/dashboard when merchant-scoped; until then return nulls.
+ * Dashboard KPIs — honest nulls when API field is null/absent.
  */
 export async function getDashboardKpis() {
-  // Do not invent numbers. Attempt sessions summary only.
   try {
-    const data = await getSessions();
-    const items = data?.items || [];
-    const pending = items.filter((s) => s.status === 'Pending').length;
+    const data = await getMerchantDashboard();
     return {
-      todaySessions: null, // TODO: need date-filtered API
-      autoResolveRate: null, // TODO: need metrics API
-      pendingHandoff: pending || (items.length ? pending : null),
-      shopStatus: null, // filled by connections caller
-      sessionsTotal: typeof data?.total === 'number' ? data.total : items.length,
-      rawSessions: items
+      todaySessions: data?.sessionsToday ?? data?.SessionsToday ?? null,
+      autoResolveRate: data?.autoResolveRate ?? data?.AutoResolveRate ?? null,
+      pendingHandoff: data?.pendingHandoff ?? data?.PendingHandoff ?? null,
+      connectedShops: data?.connectedShops ?? data?.ConnectedShops ?? null,
+      messagesThisMonth: data?.messagesThisMonth ?? data?.MessagesThisMonth ?? null,
+      sessionsTotal: null,
+      rawSessions: []
     };
   } catch (e) {
     return {
       todaySessions: null,
       autoResolveRate: null,
       pendingHandoff: null,
-      shopStatus: null,
+      connectedShops: null,
+      messagesThisMonth: null,
       sessionsTotal: null,
       rawSessions: []
     };

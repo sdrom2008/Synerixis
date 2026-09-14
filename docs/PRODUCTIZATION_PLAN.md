@@ -35,12 +35,20 @@
 | 仪表盘 Dashboard | KPI：今日会话、自动解决率、待人工、店铺状态；折线/柱状占位；无数据用「—」 | [x] |
 | 店铺绑定 | Shopee OAuth 入口、连接状态、Token 过期提示 UI | [x] |
 | 收件箱 / 会话 | 会话列表、消息时间线、转人工标记（接 `/api/merchant/sessions*`） | [x] |
-| AI 设置 | 语气、自动回复开关、业务时段（本地 + SellerConfig；时段字段待后端） | [x] |
-| 计费 Billing | 套餐卡片对齐 `PRICING_DRAFT.md`（静态）；用量/发票待 API | [x] |
+| AI 设置 | 语气、自动回复、营业时段已持久化 `SellerConfig`（`EnableAutoReply` / `BusinessHours*`） | [x] |
+| 计费 Billing | 套餐卡片对齐 `PRICING_DRAFT.md`；本月消息数接 `/api/merchant/usage` | [x] |
 | 知识片段（简版） | AI 设置内知识库片段编辑 | [ ] |
-| 真实 KPI / 图表数据 | 商家端专用报表埋点与 ECharts 接入 | [ ] |
+| 真实 KPI / 图表数据 | `GET /api/merchant/dashboard` 已接真实聚合；趋势图/ECharts 仍占位 | [~] |
 
 **产出**：H5/桌面宽屏可用的商家端主路径，中文文案统一。（2026-09-14 前端壳与主路径已落地）
+
+
+### P1 深化（2026-09-14）
+
+- 后端：`GET /api/merchant/dashboard`、`GET /api/merchant/usage`（诚实 DB 聚合；自动解决率无今日已结束会话时返回 `null`）。
+- `SellerConfig` 新增 `EnableAutoReply` / `BusinessHoursStart` / `BusinessHoursEnd`；启动时 `SchemaPatcher` + `Migrations/AddSellerConfigAiSettings_20260914.sql`（因 `EnsureCreated` 不改已有表）。
+- Webhook：关闭自动回复时仅落库不 `SendReply`（不打断验签与会话创建）。
+- 商家 JWT：`shopId` 回退为 `Seller.Id`，修复 sessions 接口无 shop 声明失败。
 
 ### P1b — Admin 控制台从零搭建（admin-console）
 

@@ -240,7 +240,106 @@ namespace Synerixis.Api.Controllers
             }
         }
 
-        private string GenerateState()
+        /// <summary>
+        /// 商家仪表盘真实 KPI（仅 DB 聚合；不可计算字段返回 null）
+        /// </summary>
+        [HttpGet("dashboard")]
+        public async Task<IActionResult> GetDashboard()
+        {
+            try
+            {
+                var sellerId = GetCurrentSellerId();
+                // ChatSession.ShopId == Seller.Id
+                var shopId = sellerId;
+                var now = DateTime.UtcNow;
+                var todayStart = DateTime.SpecifyKind(now.Date, DateTimeKind.Utc);
+                var monthStart = new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+
+                var sessionsToday = await _db.ChatSessions
+                    .CountAsync(s => s.ShopId == shopId && s.CreatedAt >= todayStart);
+
+                var pendingHandoff = await _db.ChatSessions
+                    .CountAsync(s => s.ShopId == shopId && s.Status == SessionStatus.Pending);
+
+                var connectedShops = await _db.PlatformConnections
+                    .CountAsync(c => c.SellerId == sellerId && c.IsActive);
+
+                // 自动解决率：今日已结束会话中，无人工消息且有 AI 回复的占比；无已结束会话则 null
+                var endedToday = await _db.ChatSessions
+                    .Where(s => s.ShopId == shopId
+                        && s.CreatedAt >= todayStart
+                        && (s.Status == SessionStatus.Resolved || s.Status == SessionStatus.Closed))
+                    .Select(s => new { s.AiMessageCount, s.AgentMessageCount })
+                    .ToListAsync();
+
+                double? autoResolveRate = null;
+                if (endedToday.Count > 0)
+                {
+                    var aiOnly = endedToday.Count(s => s.AgentMessageCount == 0 && s.AiMessageCount > 0);
+                    autoResolveRate = Math.Round(aiOnly * 100.0 / endedToday.Count, 1);
+                }
+
+                var messagesThisMonth = await (
+                    from m in _db.ChatMessages
+                    join s in _db.ChatSessions on m.ChatSessionId equals s.Id
+                    where s.ShopId == shopId && m.CreatedAt >= monthStart
+                    select m.Id
+                ).CountAsync();
+
+                return Ok(new
+                {
+                    sessionsToday,
+                    pendingHandoff,
+                    connectedShops,
+                    autoResolveRate,
+                    messagesThisMonth,
+                    generatedAt = now
+                });
+            }
+            catch (Exception ex)
+            {
+                return HandleError(ex);
+            }
+        }
+
+        /// <summary>
+        /// 本月用量摘要（计费页诚实计数）
+        /// </summary>
+        [HttpGet("usage")]
+        public async Task<IActionResult> GetUsage()
+        {
+            try
+            {
+                var sellerId = GetCurrentSellerId();
+                var shopId = sellerId;
+                var now = DateTime.UtcNow;
+                var monthStart = new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+
+                var messagesThisMonth = await (
+                    from m in _db.ChatMessages
+                    join s in _db.ChatSessions on m.ChatSessionId equals s.Id
+                    where s.ShopId == shopId && m.CreatedAt >= monthStart
+                    select m.Id
+                ).CountAsync();
+
+                var sessionsThisMonth = await _db.ChatSessions
+                    .CountAsync(s => s.ShopId == shopId && s.CreatedAt >= monthStart);
+
+                return Ok(new
+                {
+                    periodStart = monthStart,
+                    periodEnd = now,
+                    messagesThisMonth,
+                    sessionsThisMonth
+                });
+            }
+            catch (Exception ex)
+            {
+                return HandleError(ex);
+            }
+        }
+
+                private string GenerateState()
         {
             var buffer = new byte[16];
             using var rng = RandomNumberGenerator.Create();

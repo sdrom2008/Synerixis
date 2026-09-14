@@ -1,8 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using System;
 
 namespace Synerixis.Application.DTOs
 {
@@ -14,7 +10,10 @@ namespace Synerixis.Application.DTOs
         public string? TargetCustomerDesc { get; set; }
         public string? DefaultReplyTone { get; set; }
         public string? PreferredLanguage { get; set; }
-        public bool EnableAutoMarketingReminder { get; set; }
-        public int MemoryRetentionDays { get; set; }
+        public bool? EnableAutoMarketingReminder { get; set; }
+        public int? MemoryRetentionDays { get; set; }
+        public bool? EnableAutoReply { get; set; }
+        public string? BusinessHoursStart { get; set; }
+        public string? BusinessHoursEnd { get; set; }
     }
 }

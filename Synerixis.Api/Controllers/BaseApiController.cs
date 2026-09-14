@@ -41,9 +41,8 @@ namespace Synerixis.Api.Controllers
             var current = GetCurrentUser();
             if (!current.IsSeller)
                 throw new UnauthorizedAccessException("仅商户可访问");
-            if (!current.ShopId.HasValue)
-                throw new UnauthorizedAccessException("商户未绑定店铺");
-            return current.ShopId.Value;
+            // Seller JWT historically omits shopId; ChatSession.ShopId == Seller.Id
+            return current.ShopId ?? current.UserId;
         }
 
         /// <summary>

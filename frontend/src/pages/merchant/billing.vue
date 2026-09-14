@@ -14,7 +14,11 @@
           <text class="plan-name">{{ currentPlan }}</text>
           <text class="expiry">{{ expiryText }}</text>
         </view>
-        <text class="muted tip">用量与发票入口将在计费 API 就绪后接入；此处不展示伪造用量。</text>
+        <view class="usage-row" v-if="messagesThisMonth !== null">
+          <text class="muted">本月消息（DB 计数）</text>
+          <text class="usage-val">{{ messagesThisMonth }}</text>
+        </view>
+        <text v-else class="muted tip">本月用量加载中或暂无数据时显示 —</text>
       </view>
 
       <view class="plans">
@@ -58,7 +62,7 @@
 
 <script>
 import AppShell from '@/components/merchant/AppShell.vue';
-import { getSellerProfile } from '@/api/merchant.js';
+import { getSellerProfile, getMerchantUsage } from '@/api/merchant.js';
 
 export default {
   components: { AppShell },
@@ -66,6 +70,7 @@ export default {
     return {
       currentPlan: '—',
       subscriptionEnd: null,
+      messagesThisMonth: null,
       plans: [
         {
           id: 'trial',
@@ -134,6 +139,13 @@ export default {
       } catch (e) {
         this.currentPlan = '—';
       }
+      try {
+        const u = await getMerchantUsage();
+        const n = u?.messagesThisMonth ?? u?.MessagesThisMonth;
+        this.messagesThisMonth = typeof n === 'number' ? n : null;
+      } catch (e) {
+        this.messagesThisMonth = null;
+      }
     },
     selectPlan(plan) {
       if (plan.id === 'agency') {
@@ -183,6 +195,21 @@ export default {
 
 .tip {
   line-height: 1.5;
+}
+
+.usage-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-top: 16rpx;
+  padding-top: 16rpx;
+  border-top: 1rpx solid #E2E8F0;
+}
+
+.usage-val {
+  font-size: 34rpx;
+  font-weight: 700;
+  color: #0F172A;
 }
 
 .plans {

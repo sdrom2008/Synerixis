@@ -257,7 +257,10 @@ var app = builder.Build();
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    db.Database.EnsureCreated();  // 根据当前模型创建所有表（开发环境用）
+    var logger = scope.ServiceProvider.GetService<Microsoft.Extensions.Logging.ILoggerFactory>()
+        ?.CreateLogger("SchemaPatcher");
+    db.Database.EnsureCreated();  // 根据当前模型创建所有表（开发环境用；不会 ALTER 已有表）
+    Synerixis.Infrastructure.Data.SchemaPatcher.ApplyAsync(db, logger).GetAwaiter().GetResult();
 }
 
 //配置静态文件服务

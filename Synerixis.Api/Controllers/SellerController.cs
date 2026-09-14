@@ -108,6 +108,12 @@ namespace Synerixis.Api.Controllers
             config.MemoryRetentionDays = dto.MemoryRetentionDays.HasValue && dto.MemoryRetentionDays.Value > 0
                 ? dto.MemoryRetentionDays.Value
                 : config.MemoryRetentionDays;
+            if (dto.EnableAutoReply.HasValue)
+                config.EnableAutoReply = dto.EnableAutoReply.Value;
+            if (!string.IsNullOrWhiteSpace(dto.BusinessHoursStart))
+                config.BusinessHoursStart = dto.BusinessHoursStart.Trim();
+            if (!string.IsNullOrWhiteSpace(dto.BusinessHoursEnd))
+                config.BusinessHoursEnd = dto.BusinessHoursEnd.Trim();
             config.UpdatedAt = DateTime.UtcNow;
 
             await _db.SaveChangesAsync();
@@ -500,5 +506,8 @@ namespace Synerixis.Api.Controllers
         public string? PreferredLanguage { get; set; }
         public bool? EnableAutoMarketingReminder { get; set; }
         public int? MemoryRetentionDays { get; set; }
+        public bool? EnableAutoReply { get; set; }
+        public string? BusinessHoursStart { get; set; }
+        public string? BusinessHoursEnd { get; set; }
     }
 }

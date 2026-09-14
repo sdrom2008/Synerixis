@@ -476,6 +476,18 @@ namespace Synerixis.Api.Controllers
                     return;
                 }
 
+                // Respect merchant AI auto-reply toggle (default true if no config row)
+                var sellerConfig = await db.SellerConfigs
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(c => c.SellerId == session.ShopId);
+                if (sellerConfig != null && !sellerConfig.EnableAutoReply)
+                {
+                    logger.LogInformation(
+                        "[Webhook] Auto-reply disabled for shop {ShopId}; skipping AI reply",
+                        session.ShopId);
+                    return;
+                }
+
                 var historyDtos = session.Messages
                     .OrderBy(m => m.CreatedAt)
                     .Select(m => new ChatMessageDto

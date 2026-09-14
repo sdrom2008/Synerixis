@@ -10,8 +10,8 @@
       </view>
 
       <view class="sx-kpi-grid">
-        <KpiCard label="今日会话" :value="kpis.todaySessions" hint="接通日期筛选后显示" />
-        <KpiCard label="自动解决率" :value="autoRateDisplay" hint="需用量埋点后显示" />
+        <KpiCard label="今日会话" :value="kpis.todaySessions" hint="按 UTC 日切分的进线会话" />
+        <KpiCard label="自动解决率" :value="autoRateDisplay" :hint="autoRateHint" />
         <KpiCard label="待人工" :value="kpis.pendingHandoff" unit="条" />
         <KpiCard label="店铺状态" :value="shopStatusLabel" :hint="shopHint" />
       </view>
@@ -25,7 +25,7 @@
           <view class="bars">
             <view v-for="n in 7" :key="n" class="bar" :style="{ height: barHeight(n) }" />
           </view>
-          <text class="chart-note">图表将对接报表 API；当前无真实数据，不展示伪造指标</text>
+          <text class="chart-note">趋势图仍为占位；上方 KPI 已接 /api/merchant/dashboard 真实聚合</text>
         </view>
       </view>
 
@@ -80,6 +80,7 @@ export default {
         todaySessions: null,
         autoResolveRate: null,
         pendingHandoff: null,
+        connectedShops: null,
         sessionsTotal: null
       },
       connections: [],
@@ -94,16 +95,28 @@ export default {
       if (this.kpis.autoResolveRate === null || this.kpis.autoResolveRate === undefined) return null;
       return `${this.kpis.autoResolveRate}%`;
     },
+    autoRateHint() {
+      if (this.kpis.autoResolveRate === null || this.kpis.autoResolveRate === undefined) {
+        return '今日尚无已结束会话时显示 —';
+      }
+      return '今日已结束会话中纯 AI 占比';
+    },
     shopConnected() {
+      if (typeof this.kpis.connectedShops === 'number') {
+        return this.kpis.connectedShops > 0;
+      }
       return (this.connections || []).some((c) => c.isActive || c.IsActive);
     },
     shopStatusLabel() {
       if (!this.loaded) return null;
+      if (typeof this.kpis.connectedShops === 'number') {
+        return this.kpis.connectedShops > 0 ? `${this.kpis.connectedShops} 店` : '未绑定';
+      }
       return this.shopConnected ? '已连接' : '未绑定';
     },
     shopHint() {
       if (!this.loaded) return '';
-      return this.shopConnected ? 'Shopee 连接正常' : '请完成 OAuth 授权';
+      return this.shopConnected ? '已绑定活跃店铺' : '请完成 OAuth 授权';
     },
     showEmptyShop() {
       return this.loaded && !this.shopConnected;
@@ -140,6 +153,7 @@ export default {
         todaySessions: kpis.todaySessions,
         autoResolveRate: kpis.autoResolveRate,
         pendingHandoff: kpis.pendingHandoff,
+        connectedShops: kpis.connectedShops,
         sessionsTotal: kpis.sessionsTotal
       };
       this.loaded = true;

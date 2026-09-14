@@ -40,7 +40,7 @@
 
       <view class="sx-card section">
         <view class="section-label">营业时段</view>
-        <text class="hint">营业时段外可降级为留言模板（逻辑 TODO：后端尚未持久化时段字段）</text>
+        <text class="hint">已持久化到商家配置；营业时段外降级留言模板逻辑仍待 Webhook 接入</text>
         <view class="hours-row">
           <picker mode="time" :value="form.businessStart" @change="onStart">
             <view class="time-box">{{ form.businessStart }}</view>
@@ -141,8 +141,17 @@ export default {
         if (cfg.preferredLanguage || cfg.PreferredLanguage) {
           this.form.preferredLanguage = cfg.preferredLanguage || cfg.PreferredLanguage;
         }
+        const auto =
+          cfg.enableAutoReply ?? cfg.EnableAutoReply;
+        if (typeof auto === 'boolean') {
+          this.form.autoReplyEnabled = auto;
+        }
+        const start = cfg.businessHoursStart || cfg.BusinessHoursStart;
+        const end = cfg.businessHoursEnd || cfg.BusinessHoursEnd;
+        if (start) this.form.businessStart = start;
+        if (end) this.form.businessEnd = end;
       } catch (e) {
-        /* keep local */
+        /* keep local fallback */
       }
       this.toneIndex = Math.max(
         0,
@@ -157,7 +166,13 @@ export default {
     },
     async save() {
       this.saving = true;
-      // Persist local extras (auto-reply / hours) until backend fields exist
+      const payload = {
+        defaultReplyTone: this.form.defaultReplyTone,
+        preferredLanguage: this.form.preferredLanguage,
+        enableAutoReply: this.form.autoReplyEnabled,
+        businessHoursStart: this.form.businessStart,
+        businessHoursEnd: this.form.businessEnd
+      };
       uni.setStorageSync(LOCAL_KEY, {
         autoReplyEnabled: this.form.autoReplyEnabled,
         businessStart: this.form.businessStart,
@@ -166,12 +181,7 @@ export default {
         preferredLanguage: this.form.preferredLanguage
       });
       try {
-        // Wire known SellerConfig fields; autoReply/hours are TODO stubs
-        await updateSellerConfig({
-          defaultReplyTone: this.form.defaultReplyTone,
-          preferredLanguage: this.form.preferredLanguage
-          // TODO: autoReplyEnabled, businessStart, businessEnd — backend fields pending
-        });
+        await updateSellerConfig(payload);
         uni.showToast({ title: '已保存', icon: 'success' });
       } catch (e) {
         uni.showToast({ title: '已存本地，云端同步失败', icon: 'none' });
