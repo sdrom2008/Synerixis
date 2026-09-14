@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Synerixis.Application.DTOs;
+using Synerixis.Application.Helpers;
 using Synerixis.Application.Interfaces;
 using Synerixis.Domain.Entities;
 using Synerixis.Domain.Enums;
@@ -558,10 +559,63 @@ namespace Synerixis.Api.Controllers
                     return;
                 }
 
+                session.UpdatePlatformReplyContext(msg.ConversationId, msg.OpenId);
+
+                // —— 敏感词自动 handoff：命中则转人工，不生成新草稿 ——
+                var sensitiveHit = OutboundPolicyHelper.FindSensitiveHit(
+                    userContent, sellerConfig?.SensitiveKeywords);
+                if (sensitiveHit != null)
+                {
+                    session.TransferToAgent();
+                    await SupersedePendingDraftsAsync(db, session.Id);
+                    await db.SaveChangesAsync();
+                    logger.LogWarning(
+                        "[Webhook] Auto-handoff by sensitive keyword '{Keyword}' Session={SessionId} Shop={ShopId}",
+                        sensitiveHit, sessionId, session.ShopId);
+                    return;
+                }
+
+                // —— 营业时间外：禁止 AutoSend；可系统提示草稿；默认直接 handoff ——
+                var withinHours = OutboundPolicyHelper.IsWithinBusinessHours(
+                    sellerConfig?.BusinessHoursStart,
+                    sellerConfig?.BusinessHoursEnd,
+                    sellerConfig?.TimeZoneId);
+                var handoffOutside = sellerConfig?.HandoffOutsideBusinessHours ?? true;
+                if (!withinHours)
+                {
+                    logger.LogInformation(
+                        "[Webhook] Outside business hours Shop={ShopId} Session={SessionId} Hours={Start}-{End} Tz={Tz}",
+                        session.ShopId, sessionId,
+                        sellerConfig?.BusinessHoursStart ?? "09:00",
+                        sellerConfig?.BusinessHoursEnd ?? "22:00",
+                        sellerConfig?.TimeZoneId ?? "Asia/Shanghai");
+
+                    if (handoffOutside)
+                    {
+                        session.TransferToAgent();
+                        await SupersedePendingDraftsAsync(db, session.Id);
+                        var tip = new DraftMessage
+                        {
+                            Id = Guid.NewGuid(),
+                            ChatSessionId = session.Id,
+                            Content = "【营业外】非营业时间，请人工稍后回复。",
+                            Status = DraftStatuses.Pending,
+                            CreatedAt = DateTime.UtcNow
+                        };
+                        db.DraftMessages.Add(tip);
+                        await db.SaveChangesAsync();
+                        logger.LogInformation(
+                            "[Webhook] Outside-hours handoff Session={SessionId}; tip draft saved (no AI / no AutoSend)",
+                            sessionId);
+                        return;
+                    }
+                }
+
                 var outboundMode = OutboundModes.Normalize(sellerConfig?.OutboundMode);
                 var allowAutoSend = OutboundModes.IsAutoSend(outboundMode)
                     && !session.PendingHumanHandoff
-                    && session.Status != SessionStatus.Pending;
+                    && session.Status != SessionStatus.Pending
+                    && withinHours; // 营业外永不 AutoSend
 
                 var historyDtos = session.Messages
                     .OrderBy(m => m.CreatedAt)
@@ -587,17 +641,38 @@ namespace Synerixis.Api.Controllers
                 };
 
                 ChatIntent intent = ChatIntent.Unknown;
+                double confidence = 0.15;
                 try
                 {
                     var classifier = sp.GetRequiredService<IIntentClassifier>();
-                    intent = await classifier.ClassifyAsync(userContent, historyDtos);
-                    logger.LogInformation("[Webhook] Intent={Intent} Session={SessionId} Platform={Platform}",
-                        intent, sessionId, session.Platform);
+                    var classified = await classifier.ClassifyWithConfidenceAsync(userContent, historyDtos);
+                    intent = classified.Intent;
+                    confidence = classified.Confidence;
+                    logger.LogInformation(
+                        "[Webhook] Intent={Intent} Confidence={Confidence:F2} Session={SessionId} Platform={Platform}",
+                        intent, confidence, sessionId, session.Platform);
                 }
                 catch (Exception ex)
                 {
                     logger.LogWarning(ex, "[Webhook] Intent classify failed (missing AI key?); fallback Unknown");
                     intent = ChatIntent.Unknown;
+                    confidence = 0.15;
+                }
+
+                // —— 低置信度自动 handoff ——
+                var autoLow = sellerConfig?.AutoHandoffOnLowConfidence ?? true;
+                var threshold = sellerConfig?.HandoffConfidenceThreshold ?? 0.45;
+                if (threshold < 0) threshold = 0;
+                if (threshold > 1) threshold = 1;
+                if (autoLow && confidence < threshold)
+                {
+                    session.TransferToAgent();
+                    await SupersedePendingDraftsAsync(db, session.Id);
+                    await db.SaveChangesAsync();
+                    logger.LogWarning(
+                        "[Webhook] Auto-handoff by low confidence {Confidence:F2}<{Threshold:F2} Intent={Intent} Session={SessionId} Shop={ShopId}",
+                        confidence, threshold, intent, sessionId, session.ShopId);
+                    return;
                 }
 
                 string replyContent;
@@ -625,17 +700,10 @@ namespace Synerixis.Api.Controllers
                     replyContent = "您好！您的消息已收到，我们会尽快为您处理。";
                 }
 
-                session.UpdatePlatformReplyContext(msg.ConversationId, msg.OpenId);
+                if (!withinHours)
+                    replyContent = "【营业外】" + replyContent;
 
-                // 作废同会话旧 Pending 草稿（一会话一待发草稿）
-                var oldDrafts = await db.DraftMessages
-                    .Where(d => d.ChatSessionId == session.Id && d.Status == DraftStatuses.Pending)
-                    .ToListAsync();
-                foreach (var d in oldDrafts)
-                {
-                    d.Status = DraftStatuses.Discarded;
-                    d.UpdatedAt = DateTime.UtcNow;
-                }
+                await SupersedePendingDraftsAsync(db, session.Id);
 
                 if (allowAutoSend)
                 {
@@ -675,8 +743,8 @@ namespace Synerixis.Api.Controllers
                     db.DraftMessages.Add(draft);
                     await db.SaveChangesAsync();
                     logger.LogInformation(
-                        "[Webhook] Draft saved Session={SessionId} DraftId={DraftId} Mode={Mode} (no SendReply)",
-                        sessionId, draft.Id, outboundMode);
+                        "[Webhook] Draft saved Session={SessionId} DraftId={DraftId} Mode={Mode} OutsideHours={Outside} (no SendReply)",
+                        sessionId, draft.Id, outboundMode, !withinHours);
                 }
             }
             catch (Exception ex)
@@ -684,6 +752,19 @@ namespace Synerixis.Api.Controllers
                 _logger.LogError(ex, "[Webhook] Async reply failed for session {SessionId}", sessionId);
             }
         }
+
+        private static async Task SupersedePendingDraftsAsync(AppDbContext db, Guid sessionId)
+        {
+            var oldDrafts = await db.DraftMessages
+                .Where(d => d.ChatSessionId == sessionId && d.Status == DraftStatuses.Pending)
+                .ToListAsync();
+            foreach (var d in oldDrafts)
+            {
+                d.Status = DraftStatuses.Superseded;
+                d.UpdatedAt = DateTime.UtcNow;
+            }
+        }
+
 
         #endregion
     }

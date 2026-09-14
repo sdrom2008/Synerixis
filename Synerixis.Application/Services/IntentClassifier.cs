@@ -1,6 +1,3 @@
-﻿// Synerixis.Application/Services/LlmIntentClassifier.cs
-// 或直接叫 IntentClassifier.cs （如果你决定覆盖旧版）
-
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
 using Microsoft.SemanticKernel.Connectors.OpenAI;
@@ -19,13 +16,15 @@ public class IntentClassifier : IIntentClassifier
         _chatService = chatService ?? throw new ArgumentNullException(nameof(chatService));
     }
 
-    /// <summary>
-    /// 
-    /// </summary>
-    /// <param name="userInput"></param>
-    /// <param name="recentHistory"></param>
-    /// <returns></returns>
-    public async Task<ChatIntent> ClassifyAsync(string userInput,IReadOnlyList<ChatMessageDto> recentHistory)
+    public async Task<ChatIntent> ClassifyAsync(string userInput, IReadOnlyList<ChatMessageDto> recentHistory)
+    {
+        var result = await ClassifyWithConfidenceAsync(userInput, recentHistory);
+        return result.Intent;
+    }
+
+    public async Task<IntentClassificationResult> ClassifyWithConfidenceAsync(
+        string userInput,
+        IReadOnlyList<ChatMessageDto> recentHistory)
     {
         var historyText = string.Join("\n", recentHistory
             .TakeLast(6)
@@ -60,7 +59,6 @@ MarketingFollowup    - 复购引导、商品推荐、催评价、感谢、促销
 
         try
         {
-            // 在方法里改成这样：
             var executionSettings = new OpenAIPromptExecutionSettings
             {
                 Temperature = 0.1,
@@ -70,12 +68,13 @@ MarketingFollowup    - 复购引导、商品推荐、催评价、感谢、促销
 
             var result = await _chatService.GetChatMessageContentAsync(
                 chatHistory,
-                executionSettings: executionSettings  // 注意用命名参数
+                executionSettings: executionSettings
             );
 
-            var category = result.Content?.Trim()?.ToLowerInvariant() ?? "unknown";
+            var raw = result.Content?.Trim() ?? "";
+            var category = raw.ToLowerInvariant();
 
-            return category switch
+            var intent = category switch
             {
                 "generalchat" => ChatIntent.GeneralChat,
                 "orderquery" => ChatIntent.OrderQuery,
@@ -85,12 +84,31 @@ MarketingFollowup    - 复购引导、商品推荐、催评价、感谢、促销
                 "marketingfollowup" => ChatIntent.MarketingFollowup,
                 _ => ChatIntent.Unknown
             };
+
+            // 粗置信度：明确命中较高；Unknown 偏低（触发 AutoHandoff）
+            double confidence = intent switch
+            {
+                ChatIntent.Unknown => 0.25,
+                ChatIntent.GeneralChat => 0.70,
+                ChatIntent.AfterSale => 0.80,
+                _ => 0.85
+            };
+
+            return new IntentClassificationResult
+            {
+                Intent = intent,
+                Confidence = confidence,
+                RawLabel = raw
+            };
         }
-        catch (Exception ex)
+        catch
         {
-            // 可以记录日志
-            //_logger.LogWarning("意图分类失败，使用默认 Unknown: {Error}", ex.Message);
-            return ChatIntent.Unknown;
+            return new IntentClassificationResult
+            {
+                Intent = ChatIntent.Unknown,
+                Confidence = 0.15,
+                RawLabel = null
+            };
         }
     }
 }

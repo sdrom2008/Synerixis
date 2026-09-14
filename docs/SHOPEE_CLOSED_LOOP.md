@@ -24,7 +24,7 @@
 | 订单查询（平台 API） | ✅ | `GetCustomerOrderAsync(..., platformShopId)` | DB 未命中回源；`ChatContext.PlatformShopId` 来自 webhook `to_shop_id` |
 | AI 草稿（默认） | ✅ | `DraftMessage` + `OutboundMode=DraftFirst` | 默认不 `SendReply`；`AutoSend` 显式开启才出站 |
 | 人审出站 | ✅ | `POST .../draft/approve` 等 | 调用 `SendReplyAsync`（per-shop token） |
-| 转人工 handoff | ✅ | `ChatSession.PendingHumanHandoff` + `TransferToAgent` | 转人工硬闸：停新 AI 草稿与 AutoSend；旧草稿可 Superseded 后仍人手发送；自动升级仍 TODO |
+| 转人工 handoff | ✅ | `ChatSession.PendingHumanHandoff` + `TransferToAgent` | 硬闸 + **敏感词/低置信自动 handoff**；营业外不 AutoSend（可 handoff） |
 | 配置 | ⚠️ | `Shopee:AppKey/AppSecret/AccessToken/ShopId/Endpoint` | 缺配置 Warning + skip；appsettings 已 gitignore |
 
 ## 分步说明
@@ -59,7 +59,8 @@
 ### 5. Handoff
 
 - ✅ 商户 API 转人工（`PendingHumanHandoff=true`，与新建会话的 `Status=Pending` 解耦）  
-- ❌ 低置信度 / 敏感词自动 handoff  
+- ✅ 低置信度 / 敏感词自动 handoff（`AutoHandoffOnLowConfidence` / `SensitiveKeywords`）  
+- ✅ 营业时间外：不 AutoSend；`HandoffOutsideBusinessHours` 默认转人工 + 系统提示草稿  
 - ✅ **硬闸**：转人工后 Webhook **不再生成新 AI 草稿**，并跳过 AutoSend；旧草稿保留（可标 Superseded）仍可人审发送  
 - ✅ SLA 唤醒：`needsResponseBy` / `hoursSinceLastBuyerMsg` / `GET /api/merchant/alerts`；收件箱排序按超时升序  
 

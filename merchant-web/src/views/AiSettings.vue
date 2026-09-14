@@ -2,7 +2,7 @@
   <div>
     <h2 class="page-title">AI 设置</h2>
     <p class="page-desc">
-      语气、营业时段、出站模式与回复 SLA。默认 DraftFirst：AI 只写草稿，人工批准后发送。
+      语气、营业时段、自动 handoff、出站模式与回复 SLA。默认 DraftFirst：AI 只写草稿，人工批准后发送。
     </p>
 
     <el-card shadow="never" class="sx-card" v-loading="loading">
@@ -39,6 +39,39 @@
         </el-form-item>
         <el-form-item label="营业结束">
           <el-input v-model="form.businessHoursEnd" placeholder="如 22:00" />
+        </el-form-item>
+        <el-form-item label="时区">
+          <el-input v-model="form.timeZoneId" placeholder="Asia/Shanghai" />
+          <div class="field-hint">店铺本地时区（IANA）；营业时段按此时区判断</div>
+        </el-form-item>
+        <el-form-item label="营业外转人工">
+          <el-switch v-model="form.handoffOutsideBusinessHours" />
+          <div class="field-hint">开启后非营业时间直接 PendingHumanHandoff，不 AutoSend</div>
+        </el-form-item>
+
+        <el-divider content-position="left">自动转人工</el-divider>
+
+        <el-form-item label="低置信度转人工">
+          <el-switch v-model="form.autoHandoffOnLowConfidence" />
+        </el-form-item>
+        <el-form-item label="置信度阈值">
+          <el-input-number
+            v-model="form.handoffConfidenceThreshold"
+            :min="0"
+            :max="1"
+            :step="0.05"
+            :precision="2"
+          />
+          <div class="field-hint">默认 0.45；分类置信度低于此值则转人工且不生成新草稿</div>
+        </el-form-item>
+        <el-form-item label="敏感词">
+          <el-input
+            v-model="form.sensitiveKeywords"
+            type="textarea"
+            :rows="2"
+            placeholder="退款,律师,投诉,police,..."
+          />
+          <div class="field-hint">逗号分隔；命中则转人工，不生成新 AI 草稿</div>
         </el-form-item>
 
         <el-divider content-position="left">回复 SLA</el-divider>
@@ -84,6 +117,11 @@ const form = reactive({
   enableAutoReply: true,
   businessHoursStart: '09:00',
   businessHoursEnd: '22:00',
+  timeZoneId: 'Asia/Shanghai',
+  handoffOutsideBusinessHours: true,
+  autoHandoffOnLowConfidence: true,
+  handoffConfidenceThreshold: 0.45,
+  sensitiveKeywords: '退款,律师,投诉,police,lawyer,refund,lawsuit,举报,报警,法院,诉讼',
   responseSlaHours: 12 as number,
   alertThresholdHours: '1,3,12',
 })
@@ -110,6 +148,16 @@ onMounted(async () => {
     if (start) form.businessHoursStart = String(start)
     const end = pick(cfg, 'BusinessHoursEnd', 'businessHoursEnd')
     if (end) form.businessHoursEnd = String(end)
+    const tz = pick(cfg, 'TimeZoneId', 'timeZoneId')
+    if (tz) form.timeZoneId = String(tz)
+    const ho = pick(cfg, 'HandoffOutsideBusinessHours', 'handoffOutsideBusinessHours')
+    if (typeof ho === 'boolean') form.handoffOutsideBusinessHours = ho
+    const ah = pick(cfg, 'AutoHandoffOnLowConfidence', 'autoHandoffOnLowConfidence')
+    if (typeof ah === 'boolean') form.autoHandoffOnLowConfidence = ah
+    const thr = pick(cfg, 'HandoffConfidenceThreshold', 'handoffConfidenceThreshold')
+    if (thr != null) form.handoffConfidenceThreshold = Number(thr)
+    const sk = pick(cfg, 'SensitiveKeywords', 'sensitiveKeywords')
+    if (sk) form.sensitiveKeywords = String(sk)
     const sla = pick(cfg, 'ResponseSlaHours', 'responseSlaHours')
     if (sla != null) form.responseSlaHours = Number(sla) || 12
     const th = pick(cfg, 'AlertThresholdHours', 'alertThresholdHours')
@@ -135,6 +183,16 @@ async function save() {
       businessHoursStart: form.businessHoursStart,
       BusinessHoursEnd: form.businessHoursEnd,
       businessHoursEnd: form.businessHoursEnd,
+      TimeZoneId: form.timeZoneId,
+      timeZoneId: form.timeZoneId,
+      HandoffOutsideBusinessHours: form.handoffOutsideBusinessHours,
+      handoffOutsideBusinessHours: form.handoffOutsideBusinessHours,
+      AutoHandoffOnLowConfidence: form.autoHandoffOnLowConfidence,
+      autoHandoffOnLowConfidence: form.autoHandoffOnLowConfidence,
+      HandoffConfidenceThreshold: form.handoffConfidenceThreshold,
+      handoffConfidenceThreshold: form.handoffConfidenceThreshold,
+      SensitiveKeywords: form.sensitiveKeywords,
+      sensitiveKeywords: form.sensitiveKeywords,
       ResponseSlaHours: form.responseSlaHours,
       responseSlaHours: form.responseSlaHours,
       AlertThresholdHours: form.alertThresholdHours,

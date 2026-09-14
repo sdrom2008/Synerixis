@@ -127,6 +127,21 @@ namespace Synerixis.Api.Controllers
                 config.ResponseSlaHours = dto.ResponseSlaHours.Value;
             if (!string.IsNullOrWhiteSpace(dto.AlertThresholdHours))
                 config.AlertThresholdHours = dto.AlertThresholdHours.Trim();
+            if (dto.AutoHandoffOnLowConfidence.HasValue)
+                config.AutoHandoffOnLowConfidence = dto.AutoHandoffOnLowConfidence.Value;
+            if (dto.HandoffConfidenceThreshold.HasValue)
+            {
+                var th = dto.HandoffConfidenceThreshold.Value;
+                if (th < 0) th = 0;
+                if (th > 1) th = 1;
+                config.HandoffConfidenceThreshold = th;
+            }
+            if (dto.SensitiveKeywords != null)
+                config.SensitiveKeywords = dto.SensitiveKeywords.Trim();
+            if (dto.HandoffOutsideBusinessHours.HasValue)
+                config.HandoffOutsideBusinessHours = dto.HandoffOutsideBusinessHours.Value;
+            if (!string.IsNullOrWhiteSpace(dto.TimeZoneId))
+                config.TimeZoneId = dto.TimeZoneId.Trim();
             config.UpdatedAt = DateTime.UtcNow;
 
             await _db.SaveChangesAsync();
@@ -590,5 +605,10 @@ namespace Synerixis.Api.Controllers
         public string? OutboundMode { get; set; }
         public int? ResponseSlaHours { get; set; }
         public string? AlertThresholdHours { get; set; }
+        public bool? AutoHandoffOnLowConfidence { get; set; }
+        public double? HandoffConfidenceThreshold { get; set; }
+        public string? SensitiveKeywords { get; set; }
+        public bool? HandoffOutsideBusinessHours { get; set; }
+        public string? TimeZoneId { get; set; }
     }
 }

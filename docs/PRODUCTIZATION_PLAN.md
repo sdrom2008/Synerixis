@@ -36,7 +36,7 @@
 | 仪表盘 Dashboard | KPI：今日会话、自动解决率、待人工、店铺状态；折线/柱状占位；无数据用「—」 | [x] |
 | 店铺绑定 | Shopee OAuth 入口、连接状态、Token 过期提示 UI | [x] |
 | 收件箱 / 会话 | 待发送草稿角标、草稿编辑/发送/丢弃、超时排序字段 | [x] |
-| AI 设置 | 语气、草稿生成、`OutboundMode`、营业时段持久化 | [x] |
+| AI 设置 | 语气、草稿生成、`OutboundMode`、营业时段、自动 handoff / 敏感词 | [x] |
 | 计费 Billing | 套餐卡片对齐 `PRICING_DRAFT.md`；本月消息数接 `/api/merchant/usage` | [x] |
 | 知识片段（简版） | AI 设置内知识库片段编辑 | [ ] |
 | 真实 KPI / 图表数据 | `GET /api/merchant/dashboard` 已接真实聚合；趋势图/ECharts 仍占位 | [~] |
@@ -75,7 +75,7 @@
 
 **MVP 状态（网页端可演示）**：登录 → 绑店（Seller/Supervisor）→ 收件箱审发/转人工/SLA → 订单侧栏 → 多店筛选 → Token 后台刷新。详见验收清单。
 
-**不**替换移动端 `frontend/`。Admin / 计费深化 / 幂等存储仍为遗留。
+**不**替换移动端 `frontend/`。计费深化（模型费用记账）仍为遗留；Admin P1b 与 Webhook 幂等已落地。
 
 ### P1d — Handoff 硬闸 + SLA 超时唤醒（2026-09-14）
 
@@ -85,28 +85,42 @@
 - [x] `GET /api/merchant/alerts` 应用内告警列表（Push/声音 TODO stub）
 - [x] 商家端：转人工按钮生效闸；收件箱「即将超时 / 已超时」徽章；AI 设置可改 SLA 小时
 
-### P1b — Admin 控制台从零搭建（admin-console）
+### P1e — 自动 handoff + 营业时间外策略（2026-09-14）
 
-当前 `admin-console` 仅为依赖壳；本阶段交付可构建的专业壳：
+- [x] `SellerConfig`：`AutoHandoffOnLowConfidence` / `HandoffConfidenceThreshold`(0.45) / `SensitiveKeywords` / `HandoffOutsideBusinessHours` / `TimeZoneId`
+- [x] `SchemaPatcher` + `Migrations/AddAutoHandoffAndBusinessHours_20260914.sql`
+- [x] Webhook：敏感词或低置信 → `TransferToAgent`，不生成新 AI 草稿；打日志
+- [x] Webhook：营业外禁止 AutoSend；默认 handoff +「营业外」系统提示草稿
+- [x] merchant-web AiSettings 暴露上述配置
+
+### P1b — Admin 控制台可用化（admin-console）（2026-09-14）
+
+- [x] 登录接 `POST /api/auth/agent-login`（仅 `AgentRole.Admin`）+ 路由守卫
+- [x] 后端 `/api/admin/*`：dashboard / merchants / shops|connections / sessions / usage / settings
+- [x] 前端各页接真实 API；无数据不伪造
+- [x] `docs/ADMIN_CONSOLE.md` + README（端口 3000，proxy → :5000）
 
 | 侧栏 | 职责 |
 |------|------|
-| 概览 | 租户/商家/会话/费用 KPI（占位，禁止伪造生产指标） |
-| 商家 | 租户与商家账号、启停 |
-| 店铺连接 | 平台连接与健康 |
-| 会话监控 | 实时/近期会话抽样、失败原因 |
-| 用量计费 | Token / 消息用量、模型成本 |
-| 系统设置 | 环境、特性开关、管理员 |
+| 概览 | 商家/连接店铺/今日会话/待手审/SLA overdue |
+| 商家 | 分页列表（手机/昵称/订阅/额度/连接数） |
+| 店铺连接 | PlatformConnection 列表 |
+| 会话监控 | 最近会话只读 |
+| 用量计费 | 全站消息/会话诚实计数 |
+| 系统设置 | 只读配置说明 |
 
 技术：Vue3 + Element Plus + Pinia + Vue Router + ECharts；支持 **深色 / 浅色** 专业风。
 
 ### P2 — 可靠性与人工协同
 
 - Token 刷新（Shopee refresh）与过期告警
-- [x] 人工接管（handoff）硬闸与商家端入口（自动升级 / 置信度触发仍 TODO）
+- [x] 人工接管（handoff）硬闸与商家端入口
+- [x] 敏感词 / 低置信度自动 handoff（`AutoHandoffOnLowConfidence` + `SensitiveKeywords`）
+- [x] 营业时间外不 AutoSend；`HandoffOutsideBusinessHours` 默认转人工
 - 幂等表（Webhook / 出站消息去重）
 - 基础审计日志
-- [~] SLA 超时唤醒 UI + alerts API 已落地；Push/声音仍 TODO
+- [x] SLA 超时唤醒 UI + alerts API；merchant-web 收件箱 **声音提醒**已落地
+- [ ] Push 推送仍 TODO
 
 ### P3 — 增长面
 

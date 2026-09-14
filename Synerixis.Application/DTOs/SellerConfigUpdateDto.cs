@@ -19,5 +19,10 @@ namespace Synerixis.Application.DTOs
         public string? OutboundMode { get; set; }
         public int? ResponseSlaHours { get; set; }
         public string? AlertThresholdHours { get; set; }
+        public bool? AutoHandoffOnLowConfidence { get; set; }
+        public double? HandoffConfidenceThreshold { get; set; }
+        public string? SensitiveKeywords { get; set; }
+        public bool? HandoffOutsideBusinessHours { get; set; }
+        public string? TimeZoneId { get; set; }
     }
 }

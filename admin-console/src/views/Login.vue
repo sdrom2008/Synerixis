@@ -7,8 +7,8 @@
         <p>跨境电商 AI 客服 · 运营控制台</p>
       </div>
       <el-form :model="form" @submit.prevent="onSubmit">
-        <el-form-item label="账号">
-          <el-input v-model="form.username" placeholder="管理员账号" autocomplete="username" />
+        <el-form-item label="邮箱">
+          <el-input v-model="form.email" placeholder="Admin 邮箱" autocomplete="username" />
         </el-form-item>
         <el-form-item label="密码">
           <el-input
@@ -23,7 +23,11 @@
           登录
         </el-button>
       </el-form>
-      <p class="hint">本地脚手架：任意非空账号密码即可进入（未接真实鉴权）。</p>
+      <p class="hint">
+        使用 <code>POST /api/auth/agent-login</code>，账号须为
+        <strong>AgentRole.Admin</strong>。开发可先调
+        <code>POST /api/auth/init-agent</code>（仅 Development）。
+      </p>
     </el-card>
   </div>
 </template>
@@ -32,22 +36,40 @@
 import { reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
+import { agentLogin } from '@/api/admin'
 
 const router = useRouter()
 const route = useRoute()
 const loading = ref(false)
-const form = reactive({ username: '', password: '' })
+const form = reactive({ email: '', password: '' })
 
 async function onSubmit() {
-  if (!form.username.trim() || !form.password.trim()) {
-    ElMessage.warning('请输入账号和密码')
+  if (!form.email.trim() || !form.password.trim()) {
+    ElMessage.warning('请输入邮箱和密码')
     return
   }
   loading.value = true
   try {
-    localStorage.setItem('sx_admin_token', 'dev-scaffold')
+    const res = await agentLogin(form.email.trim(), form.password)
+    const role = String(res.role || res.userType || '')
+    if (role.toLowerCase() !== 'admin') {
+      ElMessage.error(`需要 Admin 角色，当前为 ${role || '未知'}`)
+      return
+    }
+    if (!res.token) {
+      ElMessage.error('登录失败：未返回 token')
+      return
+    }
+    localStorage.setItem('sx_admin_token', res.token)
+    localStorage.setItem('sx_admin_name', res.name || res.nickname || form.email)
     const redirect = (route.query.redirect as string) || '/dashboard'
     await router.replace(redirect)
+  } catch (e: unknown) {
+    const msg =
+      (e as { response?: { data?: unknown } })?.response?.data ||
+      (e as Error)?.message ||
+      '登录失败'
+    ElMessage.error(typeof msg === 'string' ? msg : '登录失败')
   } finally {
     loading.value = false
   }
@@ -104,6 +126,10 @@ p {
   margin-top: 16px;
   font-size: 12px;
   color: #94a3b8;
-  text-align: center;
+  text-align: left;
+  line-height: 1.5;
+  code {
+    font-size: 11px;
+  }
 }
 </style>

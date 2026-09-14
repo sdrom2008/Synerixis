@@ -104,6 +104,23 @@ DEALLOCATE PREPARE stmt2;
             await db.Database.ExecuteSqlRawAsync(handoffSql);
             logger?.LogInformation("[SchemaPatcher] handoff + SLA columns ensured (MySQL)");
 
+            const string autoHandoffSql = @"
+SET @db := DATABASE();
+SET @col := (
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = @db AND TABLE_NAME = 'seller_configs' AND COLUMN_NAME = 'AutoHandoffOnLowConfidence'
+);
+SET @ddl := IF(@col = 0,
+  'ALTER TABLE `seller_configs` ADD COLUMN `AutoHandoffOnLowConfidence` TINYINT(1) NOT NULL DEFAULT 1, ADD COLUMN `HandoffConfidenceThreshold` DOUBLE NOT NULL DEFAULT 0.45, ADD COLUMN `SensitiveKeywords` VARCHAR(1024) NOT NULL DEFAULT ''退款,律师,投诉,police,lawyer,refund,lawsuit,举报,报警,法院,诉讼'', ADD COLUMN `HandoffOutsideBusinessHours` TINYINT(1) NOT NULL DEFAULT 1, ADD COLUMN `TimeZoneId` VARCHAR(64) NOT NULL DEFAULT ''Asia/Shanghai''',
+  'SELECT 1');
+PREPARE stmt FROM @ddl;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+";
+            await db.Database.ExecuteSqlRawAsync(autoHandoffSql);
+            logger?.LogInformation("[SchemaPatcher] auto-handoff + business-hours policy columns ensured (MySQL)");
+
+
             const string draftSql = @"
 CREATE TABLE IF NOT EXISTS `draft_messages` (
   `Id` binary(16) NOT NULL,
@@ -165,6 +182,11 @@ CREATE TABLE IF NOT EXISTS `processed_webhook_events` (
                 "ALTER TABLE seller_configs ADD COLUMN OutboundMode TEXT NOT NULL DEFAULT 'DraftFirst'",
                 "ALTER TABLE seller_configs ADD COLUMN ResponseSlaHours INTEGER NOT NULL DEFAULT 12",
                 "ALTER TABLE seller_configs ADD COLUMN AlertThresholdHours TEXT NOT NULL DEFAULT '1,3,12'",
+                "ALTER TABLE seller_configs ADD COLUMN AutoHandoffOnLowConfidence INTEGER NOT NULL DEFAULT 1",
+                "ALTER TABLE seller_configs ADD COLUMN HandoffConfidenceThreshold REAL NOT NULL DEFAULT 0.45",
+                "ALTER TABLE seller_configs ADD COLUMN SensitiveKeywords TEXT NOT NULL DEFAULT '退款,律师,投诉,police,lawyer,refund,lawsuit,举报,报警,法院,诉讼'",
+                "ALTER TABLE seller_configs ADD COLUMN HandoffOutsideBusinessHours INTEGER NOT NULL DEFAULT 1",
+                "ALTER TABLE seller_configs ADD COLUMN TimeZoneId TEXT NOT NULL DEFAULT 'Asia/Shanghai'",
                 "ALTER TABLE chat_sessions ADD COLUMN PlatformConversationId TEXT NULL",
                 "ALTER TABLE chat_sessions ADD COLUMN PlatformShopOpenId TEXT NULL",
                 "ALTER TABLE chat_sessions ADD COLUMN LastBuyerMessageAt TEXT NULL",

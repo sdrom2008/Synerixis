@@ -2,21 +2,34 @@
 
 运营后台（Vue 3 + Element Plus + Vite + ECharts）。
 
-## 功能壳（P1b 起步）
+## 功能（P1b 可用化）
 
-- 登录页（本地脚手架鉴权桩）
-- 侧栏布局：概览 / 商家 / 店铺连接 / 会话监控 / 用量计费 / 系统设置
-- 概览页：KPI 卡片（占位「—」）+ ECharts 折线示意（全 0，非生产数据）
-- 亮/暗主题切换
+- 登录：`POST /api/auth/agent-login`，**仅 AgentRole.Admin** JWT
+- 侧栏：概览 / 商家 / 店铺连接 / 会话监控 / 用量计费 / 系统设置
+- 真实只读 API：`/api/admin/dashboard|merchants|shops|sessions|usage|settings`
+- **禁止伪造生产指标**；无数据时「—」或空表
 
 ## 开发
 
 ```bash
+# 终端 1：API（默认 http://localhost:5000）
+cd Synerixis.Api && dotnet run
+
+# 终端 2：Admin 控制台
 cd admin-console
 npm install
 npm run dev
 # http://localhost:3000  （/api 代理到 http://localhost:5000）
 ```
+
+开发环境可先创建 Admin：
+
+```bash
+curl -X POST http://localhost:5000/api/auth/init-agent
+# 默认邮箱 admin@test.com / 密码 Agent123!（Role=Admin）
+```
+
+再在登录页使用该邮箱密码。
 
 ## 构建
 
@@ -28,6 +41,6 @@ npm run build
 
 - 桌面优先，中文文案
 - 主色 `#2563EB`
-- **禁止展示伪造生产指标**；未接 API 时用「—」或「暂无数据」
+- 产品定位：工作台 + AI 草稿人审，**不是**全自动 chatbot
 
-详见仓库 `docs/PRODUCTIZATION_PLAN.md`。
+详见 `docs/ADMIN_CONSOLE.md`、`docs/PRODUCTIZATION_PLAN.md`。

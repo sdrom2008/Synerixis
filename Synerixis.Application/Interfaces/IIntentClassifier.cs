@@ -1,9 +1,6 @@
-﻿using Synerixis.Application.DTOs;
+using Synerixis.Application.DTOs;
 using Synerixis.Domain.Enums;
-using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
 using System.Threading.Tasks;
 
 namespace Synerixis.Application.Interfaces
@@ -14,5 +11,10 @@ namespace Synerixis.Application.Interfaces
         /// 根据用户输入和最近对话历史，分类意图
         /// </summary>
         Task<ChatIntent> ClassifyAsync(string userInput, IReadOnlyList<ChatMessageDto> recentHistory);
+
+        /// <summary>分类并返回粗置信度（自动 handoff 用）</summary>
+        Task<IntentClassificationResult> ClassifyWithConfidenceAsync(
+            string userInput,
+            IReadOnlyList<ChatMessageDto> recentHistory);
     }
 }

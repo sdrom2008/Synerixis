@@ -42,6 +42,22 @@ namespace Synerixis.Domain.Entities
         /// <summary>告警阈值小时数，逗号分隔，如 1,3,12（用于 /api/merchant/alerts）</summary>
         public string AlertThresholdHours { get; set; } = "1,3,12";
 
+        /// <summary>低置信度时自动转人工（默认开启）</summary>
+        public bool AutoHandoffOnLowConfidence { get; set; } = true;
+
+        /// <summary>分类置信度低于此阈值则转人工（0~1，默认 0.45）</summary>
+        public double HandoffConfidenceThreshold { get; set; } = 0.45;
+
+        /// <summary>敏感词（逗号分隔）；命中则转人工且不生成新草稿</summary>
+        public string SensitiveKeywords { get; set; } =
+            "退款,律师,投诉,police,lawyer,refund,lawsuit,举报,报警,法院,诉讼";
+
+        /// <summary>营业时间外是否直接 PendingHumanHandoff（默认 true）</summary>
+        public bool HandoffOutsideBusinessHours { get; set; } = true;
+
+        /// <summary>店铺本地时区（IANA，默认 Asia/Shanghai）</summary>
+        public string TimeZoneId { get; set; } = "Asia/Shanghai";
+
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 

@@ -12,6 +12,10 @@ import { useThemeStore } from '@/stores/theme'
 
 echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, CanvasRenderer])
 
+const props = defineProps<{
+  points?: { date: string; count: number }[]
+}>()
+
 const el = ref<HTMLDivElement | null>(null)
 const theme = useThemeStore()
 let chart: echarts.ECharts | null = null
@@ -20,28 +24,32 @@ function render() {
   if (!el.value) return
   if (!chart) chart = echarts.init(el.value)
   const dark = theme.isDark
+  const pts = props.points?.length
+    ? props.points
+    : []
+  const hasData = pts.length > 0
   chart.setOption({
     color: ['#2563eb'],
     textStyle: { color: dark ? '#94a3b8' : '#64748b' },
     grid: { left: 40, right: 20, top: 40, bottom: 30 },
     tooltip: { trigger: 'axis' },
-    legend: { data: ['消息量（示意）'] },
+    legend: { data: [hasData ? '会话数' : '暂无数据'] },
     xAxis: {
       type: 'category',
-      data: ['周一', '周二', '周三', '周四', '周五', '周六', '周日'],
+      data: hasData ? pts.map((p) => p.date) : ['—'],
       axisLine: { lineStyle: { color: dark ? '#334155' : '#e2e8f0' } },
     },
     yAxis: {
       type: 'value',
+      minInterval: 1,
       splitLine: { lineStyle: { color: dark ? '#1e293b' : '#f1f5f9' } },
     },
     series: [
       {
-        name: '消息量（示意）',
+        name: hasData ? '会话数' : '暂无数据',
         type: 'line',
         smooth: true,
-        // 仅作布局示意，非真实生产数据
-        data: [0, 0, 0, 0, 0, 0, 0],
+        data: hasData ? pts.map((p) => p.count) : [0],
         areaStyle: { opacity: 0.08 },
       },
     ],
@@ -54,6 +62,7 @@ onMounted(() => {
 })
 
 watch(() => theme.isDark, () => render())
+watch(() => props.points, () => render(), { deep: true })
 
 onBeforeUnmount(() => {
   chart?.dispose()
