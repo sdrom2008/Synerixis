@@ -1,0 +1,87 @@
+<template>
+  <div>
+    <h2 class="page-title">概览</h2>
+    <p class="page-desc">来自 GET /api/merchant/dashboard 的真实聚合；无数据时显示「—」，不伪造 KPI。</p>
+
+    <el-row :gutter="16" v-loading="loading">
+      <el-col :xs="24" :sm="12" :lg="8" v-for="item in kpis" :key="item.label">
+        <KpiCard :label="item.label" :value="item.value" :hint="item.hint" />
+      </el-col>
+    </el-row>
+
+    <el-card shadow="never" class="hint-card sx-card" style="margin-top: 20px">
+      <template #header>
+        <span>工作台说明</span>
+      </template>
+      <ul class="tips">
+        <li>主战场在「收件箱」：会话列表 · 消息时间线 · AI 草稿审发。</li>
+        <li>默认出站模式为 DraftFirst：AI 只写草稿，需人工批准后才会 SendReply。</li>
+        <li>移动端仍使用 <code>frontend/</code>（HBuilder）；本应用为 PC 桌面宽屏。</li>
+      </ul>
+      <el-button type="primary" @click="$router.push('/inbox')">进入收件箱</el-button>
+    </el-card>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { onMounted, ref } from 'vue'
+import { ElMessage } from 'element-plus'
+import KpiCard from '@/components/KpiCard.vue'
+import { getMerchantDashboard, type DashboardKpis } from '@/api/merchant'
+
+const loading = ref(false)
+const data = ref<DashboardKpis | null>(null)
+
+const kpis = ref([
+  { label: '今日会话', value: '—' as string | number, hint: 'sessionsToday' },
+  { label: '待人工', value: '—' as string | number, hint: 'pendingHandoff' },
+  { label: '待发草稿', value: '—' as string | number, hint: 'pendingDrafts' },
+  { label: '已连店铺', value: '—' as string | number, hint: 'connectedShops' },
+  { label: '自动解决率', value: '—' as string | number, hint: '无已结束会话时为 —' },
+  { label: '本月消息', value: '—' as string | number, hint: 'messagesThisMonth' },
+])
+
+function fmtRate(v: number | null | undefined) {
+  if (v === null || v === undefined) return '—'
+  return `${v}%`
+}
+
+onMounted(async () => {
+  loading.value = true
+  try {
+    data.value = await getMerchantDashboard()
+    const d = data.value
+    kpis.value = [
+      { label: '今日会话', value: d.sessionsToday ?? '—', hint: 'sessionsToday' },
+      { label: '待人工', value: d.pendingHandoff ?? '—', hint: 'pendingHandoff' },
+      { label: '待发草稿', value: d.pendingDrafts ?? '—', hint: 'pendingDrafts' },
+      { label: '已连店铺', value: d.connectedShops ?? '—', hint: 'connectedShops' },
+      { label: '自动解决率', value: fmtRate(d.autoResolveRate), hint: '无已结束会话时为 —' },
+      { label: '本月消息', value: d.messagesThisMonth ?? '—', hint: 'messagesThisMonth' },
+    ]
+  } catch {
+    ElMessage.warning('无法加载概览（请确认已登录且 API 可用）')
+  } finally {
+    loading.value = false
+  }
+})
+</script>
+
+<style scoped lang="scss">
+.el-col {
+  margin-bottom: 16px;
+}
+.tips {
+  margin: 0 0 16px;
+  padding-left: 18px;
+  color: #475569;
+  line-height: 1.7;
+  font-size: 14px;
+}
+code {
+  background: #f1f5f9;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+</style>

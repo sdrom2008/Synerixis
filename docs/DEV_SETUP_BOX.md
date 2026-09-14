@@ -12,6 +12,7 @@
 | 库 `synerixis` / 用户 `synerixis` | 本地 only，密码见示例配置（勿用于生产） |
 | `frontend`（uni-app） | `npm install` |
 | `admin-console` | Vue3 + Element Plus 脚手架 |
+| `merchant-web` | Vue3 + Element Plus 商家桌面工作台 |
 
 ## 1. 克隆与构建 API
 
@@ -88,6 +89,20 @@ npm run build    # 生产构建校验
 ```
 
 默认代理 `/api` → `http://localhost:5000`（见 `vite.config.ts`）。
+
+
+## 5b. 商家桌面工作台 merchant-web
+
+独立于 uni-app `frontend/` 的 PC 端商家控制台（收件箱三栏 + draft-first 审发）。
+
+```bash
+cd merchant-web
+npm install
+npm run dev      # http://localhost:5174
+npm run build    # 生产构建校验
+```
+
+默认代理 `/api` → `http://localhost:5000`（可用 `VITE_API_PROXY_TARGET` / `VITE_API_BASE_URL` 配置）。详见 `merchant-web/README.md`。
 
 ## 6. 与 Win11 主环境的关系
 

@@ -8,7 +8,7 @@
 交付可对 **跨境电商（CBEC）商家** 售卖的 SaaS：
 
 - 商家绑定 Shopee 店铺后，Webhook 入站 → 意图识别 → Agent 路由 → **生成回复草稿（默认坐席确认后发送）**；订单 / 物流上下文注入。
-- 提供 **专业商家控制台**（uni-app H5，可兼顾桌面宽屏）与 **运营 Admin 控制台**（Vue3 + Element Plus）——统一收件箱为 P0/P1 重心。
+- 提供 **商家移动端**（`frontend/` uni-app）、**商家 PC 桌面工作台**（`merchant-web/` Vue3 + Element Plus）与 **运营 Admin 控制台**（`admin-console/`）——统一收件箱为 P0/P1 重心。
 - 计费与用量可观测，首个付费店铺可闭环上线；Chat API / ISV 合规（禁止促销广播与 chatbot 滥用）写进 Onboarding。
 
 **非目标（本阶段）**：多平台同时首发、完整营销站、玩具感 Demo UI、国内微信登录核心路径、竞品分析/文案 Agent。
@@ -61,6 +61,20 @@
 - [x] 前端收件箱角标 + 会话详情草稿操作 + 设置风险文案
 - [x] ISV 清单：`docs/ISV_APPLICATION_CHECKLIST.md`
 
+### P1d — 商家桌面工作台（merchant-web）（2026-09-14）
+
+独立于 uni-app `frontend/` 与 `admin-console/` 的 **PC 浏览器商家控制台**：
+
+| 项 | 说明 |
+|----|------|
+| 技术 | Vue3 + Vite + TS + Element Plus + Pinia + Vue Router + Axios |
+| 壳 | 顶栏 + 左导航：概览、收件箱、店铺绑定、AI 设置、计费、团队(stub) |
+| 收件箱 | 三栏：会话列表 \| 消息时间线+草稿审发 \| 订单/上下文占位 |
+| API | 对齐 draft-first（`a3dc779`）MerchantController：sessions / messages / draft approve·edit-send·discard |
+| 路径 | 仓库根目录 `merchant-web/`；详见该目录 `README.md` |
+
+**不**替换移动端 `frontend/`。Handoff/SLA 可并行演进；桌面端已展示 SLA 相关字段。
+
 ### P1b — Admin 控制台从零搭建（admin-console）
 
 当前 `admin-console` 仅为依赖壳；本阶段交付可构建的专业壳：
@@ -95,7 +109,8 @@
 2. **中文文案**：按钮/空状态/错误提示全部中文；术语与 Shopee 商家习惯一致。
 3. **双端重心**：
    - Admin：**桌面优先**（≥1280），侧栏 + 顶栏。
-   - 商家：H5 优先，桌面宽屏自适应（卡片栅格）。
+   - 商家移动：`frontend/` H5 / 小程序优先。
+   - 商家桌面：`merchant-web/` PC 宽屏（顶栏+侧栏；收件箱三栏）。
 4. **品牌色建议**：
    - 主色：`#2563EB`（可信蓝，SaaS 通用）
    - 辅色：`#0F172A` 侧栏 / 标题；成功 `#16A34A`；警告 `#D97706`；危险 `#DC2626`

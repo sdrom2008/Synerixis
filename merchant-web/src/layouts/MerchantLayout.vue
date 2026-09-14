@@ -1,0 +1,162 @@
+<template>
+  <el-container class="merchant-shell">
+    <el-aside :width="collapsed ? '64px' : '220px'" class="aside">
+      <div class="brand">
+        <span class="logo">S</span>
+        <div v-if="!collapsed" class="brand-text">
+          <strong>Synerixis</strong>
+          <span>商家工作台</span>
+        </div>
+      </div>
+      <el-menu
+        :default-active="active"
+        :collapse="collapsed"
+        router
+        background-color="#0f172a"
+        text-color="#94a3b8"
+        active-text-color="#ffffff"
+        class="menu"
+      >
+        <el-menu-item index="/overview">
+          <el-icon><Odometer /></el-icon>
+          <span>概览</span>
+        </el-menu-item>
+        <el-menu-item index="/inbox">
+          <el-icon><ChatDotRound /></el-icon>
+          <span>收件箱</span>
+        </el-menu-item>
+        <el-menu-item index="/shops">
+          <el-icon><Shop /></el-icon>
+          <span>店铺绑定</span>
+        </el-menu-item>
+        <el-menu-item index="/ai-settings">
+          <el-icon><Cpu /></el-icon>
+          <span>AI 设置</span>
+        </el-menu-item>
+        <el-menu-item index="/billing">
+          <el-icon><Coin /></el-icon>
+          <span>计费</span>
+        </el-menu-item>
+        <el-menu-item index="/team">
+          <el-icon><UserFilled /></el-icon>
+          <span>团队</span>
+        </el-menu-item>
+      </el-menu>
+    </el-aside>
+
+    <el-container>
+      <el-header class="header">
+        <div class="left">
+          <el-button text @click="collapsed = !collapsed">
+            <el-icon><Fold v-if="!collapsed" /><Expand v-else /></el-icon>
+          </el-button>
+          <span class="header-title">{{ title }}</span>
+          <el-tag size="small" effect="plain" type="info">桌面端 · draft-first</el-tag>
+        </div>
+        <div class="right">
+          <span class="user-name">{{ displayName }}</span>
+          <el-button text type="danger" @click="logout">退出</el-button>
+        </div>
+      </el-header>
+      <el-main :class="['main', { flush: !!route.meta.flush }]">
+        <router-view />
+      </el-main>
+    </el-container>
+  </el-container>
+</template>
+
+<script setup lang="ts">
+import { computed, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { useAuthStore } from '@/stores/auth'
+
+const route = useRoute()
+const router = useRouter()
+const auth = useAuthStore()
+const collapsed = ref(false)
+
+const active = computed(() => route.path)
+const title = computed(() => (route.meta.title as string) || '商家工作台')
+const displayName = computed(() => auth.profile?.nickname || '商家账号')
+
+function logout() {
+  auth.clear()
+  router.push({ name: 'login' })
+}
+</script>
+
+<style scoped lang="scss">
+.merchant-shell {
+  height: 100%;
+}
+.aside {
+  background: #0f172a;
+  transition: width 0.2s ease;
+  overflow: hidden;
+  border-right: 1px solid #1e293b;
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 56px;
+  padding: 0 16px;
+  color: #fff;
+}
+.logo {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: #2563eb;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+.brand-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.2;
+  strong {
+    font-size: 14px;
+  }
+  span {
+    font-size: 11px;
+    color: #94a3b8;
+  }
+}
+.menu {
+  border-right: none;
+}
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 56px;
+  border-bottom: 1px solid var(--sx-border);
+  background: var(--sx-surface);
+}
+.left,
+.right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.header-title {
+  font-weight: 600;
+}
+.user-name {
+  font-size: 13px;
+  color: var(--sx-muted);
+}
+.main {
+  background: var(--sx-bg);
+  padding: 20px 24px;
+  &.flush {
+    padding: 0;
+    overflow: hidden;
+  }
+}
+</style>

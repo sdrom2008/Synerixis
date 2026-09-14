@@ -17,7 +17,9 @@ Phase 1 只打透 **Shopee + TikTok Shop**。淘宝 / 抖店 **不再作为 Phas
 |------|------|
 | OS | Windows 11 |
 | IDE | Visual Studio 2022（打开 `Synerixis.sln`） |
-| 前端 | HBuilder（`frontend/`，多端 H5 / 小程序） |
+| 商家移动端 | HBuilder（`frontend/`，H5 / 小程序） |
+| 商家桌面端 | `merchant-web/`（Vue3 + Vite，PC 浏览器） |
+| 运营后台 | `admin-console/`（Vue3 + Element Plus） |
 | 数据库 | MySQL 8.x（连接串放 `.env.mysql`，已 gitignore） |
 | 运行时 | .NET 8 |
 
@@ -40,7 +42,9 @@ Synerixis.sln
 ├── Synerixis.Application/      # Agent、意图、会话服务
 ├── Synerixis.Domain/           # 实体与枚举
 ├── Synerixis.Infrastructure/   # Shopee/TikTok 客户端、EF、LLM
-├── frontend/                   # HBuilder / uni-app 前端
+├── frontend/                   # HBuilder / uni-app 商家移动端
+├── merchant-web/               # 商家 PC 桌面工作台（Vue3）
+├── admin-console/              # 运营 Admin 控制台
 └── docs/                       # 商业计划、闭环清单、定价草案
 ```
 

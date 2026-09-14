@@ -49,4 +49,5 @@ venv/
 
 # Admin build output
 admin-console/dist/
+merchant-web/dist/
 

@@ -1,0 +1,42 @@
+:root {
+  --sx-primary: #2563eb;
+  --sx-bg: #f1f5f9;
+  --sx-sidebar: #0f172a;
+  --sx-surface: #ffffff;
+  --sx-border: #e2e8f0;
+  --sx-muted: #64748b;
+  --sx-text: #0f172a;
+  --el-color-primary: #2563eb;
+}
+
+html,
+body,
+#app {
+  margin: 0;
+  height: 100%;
+  font-family: "PingFang SC", "Microsoft YaHei", system-ui, -apple-system, sans-serif;
+  background: var(--sx-bg);
+  color: var(--sx-text);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+.page-title {
+  margin: 0 0 4px;
+  font-size: 22px;
+  font-weight: 600;
+}
+
+.page-desc {
+  margin: 0 0 20px;
+  color: var(--sx-muted);
+  font-size: 14px;
+}
+
+.sx-card {
+  border-radius: 12px;
+  border: 1px solid var(--sx-border);
+  background: var(--sx-surface);
+}
