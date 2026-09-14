@@ -1,7 +1,15 @@
 <template>
   <div>
-    <h2 class="page-title">概览</h2>
-    <p class="page-desc">运营总览 · 数据来自 <code>GET /api/admin/dashboard</code>，无数据时显示「—」。</p>
+    <div class="page-head">
+      <div>
+        <h2 class="page-title">概览</h2>
+        <p class="page-desc">
+          平台运营总览 · <code>GET /api/admin/dashboard</code> +
+          <code>/usage/daily</code>；无数据时显示「—」，不编造指标。
+        </p>
+      </div>
+      <el-button :loading="loading" @click="reload">刷新</el-button>
+    </div>
 
     <el-row :gutter="16" v-loading="loading">
       <el-col :xs="24" :sm="12" :lg="8" v-for="item in kpis" :key="item.label">
@@ -12,12 +20,17 @@
     <el-card shadow="never" class="chart-card">
       <template #header>
         <div class="card-head">
-          <span>近 7 日会话量</span>
+          <span>近 7 日会话趋势</span>
           <el-tag v-if="!chartReady" type="info" size="small" effect="plain">暂无趋势数据</el-tag>
-          <el-tag v-else type="success" size="small" effect="plain">真实聚合</el-tag>
+          <el-tag v-else type="success" size="small" effect="plain">真实聚合 · usage/daily</el-tag>
         </div>
       </template>
-      <UsageChart :points="chartPoints" />
+      <UsageChart v-if="chartPoints.length" :points="chartPoints" />
+      <el-empty
+        v-else-if="!loading"
+        description="暂无近 7 日会话数据。可先 seed-demo 或等待真实进线。"
+        :image-size="72"
+      />
     </el-card>
   </div>
 </template>
@@ -27,7 +40,7 @@ import { onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import KpiCard from '@/components/KpiCard.vue'
 import UsageChart from '@/components/UsageChart.vue'
-import { getDashboard, getUsage } from '@/api/admin'
+import { getDashboard, getUsageDaily } from '@/api/admin'
 
 const loading = ref(false)
 const chartReady = ref(false)
@@ -46,10 +59,13 @@ function fmt(v: unknown) {
   return String(v)
 }
 
-onMounted(async () => {
+async function reload() {
   loading.value = true
   try {
-    const [dash, usage] = await Promise.all([getDashboard(), getUsage().catch(() => null)])
+    const [dash, daily] = await Promise.all([
+      getDashboard(),
+      getUsageDaily(7).catch(() => null),
+    ])
     kpis.value = [
       { label: '商家数', value: fmt(dash.merchantCount), hint: 'Sellers' },
       { label: '连接店铺', value: fmt(dash.connectedShops), hint: '活跃 PlatformConnection' },
@@ -58,23 +74,36 @@ onMounted(async () => {
       { label: '待人工会话', value: fmt(dash.handoffPending), hint: 'PendingHumanHandoff' },
       { label: 'SLA overdue', value: fmt(dash.slaOverdue), hint: '未结束会话粗计数' },
     ]
-    const daily = (usage?.dailySessions as { date: string; count: number }[]) || []
-    if (daily.length) {
-      chartPoints.value = daily.map((d) => ({
+
+    const items = daily?.items || []
+    if (items.length) {
+      chartPoints.value = items.map((d) => ({
         date: String(d.date).slice(0, 10),
-        count: Number(d.count) || 0,
+        count: Number(d.sessions ?? d.count) || 0,
       }))
-      chartReady.value = true
+      chartReady.value = !!(daily?.hasData || chartPoints.value.some((p) => p.count > 0))
+    } else {
+      chartPoints.value = []
+      chartReady.value = false
     }
   } catch {
     ElMessage.error('加载 Dashboard 失败（需 Admin JWT）')
   } finally {
     loading.value = false
   }
-})
+}
+
+onMounted(reload)
 </script>
 
 <style scoped lang="scss">
+.page-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 4px;
+}
 .chart-card {
   margin-top: 20px;
   border-radius: 12px;

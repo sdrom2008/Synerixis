@@ -68,8 +68,13 @@ Content-Type: application/json
 4. **收件箱**：看到 3 类会话；打开待审草稿可人审；侧栏有本地订单/物流单号
 5. **店铺绑定**：出现「模拟 Shopee 店」
 6. **团队**：出现演示坐席
-7. admin-console：`admin@test.com` / `Agent123!` → merchants / sessions / usage 非空  
-   （若尚无 Admin：再调一次 `seed-demo`，或 `POST /api/auth/init-agent`）
+7. **admin-console（平台运营台）**：
+   - 打开 `http://localhost:3000`，登录页可见演示账号；或点「加载演示数据」
+   - `admin@test.com` / `Agent123!` → 进入 **概览**（KPI + 近 7 日趋势非空）
+   - 商家：分页/搜索、详情侧栏（连接数/会话数）、启用禁用、改订阅
+   - 店铺连接 / 会话监控 / 用量 / 审计：有数据；用量与审计可导出 CSV
+   - 系统设置：改 MaintenanceMode 等并保存；Development 下可见「开发工具」调 seed-demo
+   - （若尚无 Admin：再调一次 `seed-demo`，或 `POST /api/auth/init-agent`）
 
 ---
 

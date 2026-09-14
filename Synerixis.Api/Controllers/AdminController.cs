@@ -9,7 +9,7 @@ using Synerixis.Api.Helpers;
 namespace Synerixis.Api.Controllers
 {
     /// <summary>
-    /// 运营 Admin 控制台只读 API（需 JWT Role=Admin）。
+    /// 平台运营 Admin API（需 JWT Role=Admin）：监控 + 安全写操作。
     /// </summary>
     [ApiController]
     [Route("api/admin")]
@@ -115,11 +115,69 @@ namespace Synerixis.Api.Controllers
                     isActive = s.IsActive,
                     createdAt = s.CreatedAt,
                     lastLoginAt = s.LastLoginAt,
-                    connectionCount = _db.PlatformConnections.Count(c => c.SellerId == s.Id && c.IsActive)
+                    connectionCount = _db.PlatformConnections.Count(c => c.SellerId == s.Id && c.IsActive),
+                    sessionCount = _db.ChatSessions.Count(cs => cs.ShopId == s.Id)
                 })
                 .ToListAsync();
 
             return Ok(new { page, pageSize, total, items });
+        }
+
+        /// <summary>商家详情（连接 / 会话摘要，供侧栏）</summary>
+        [HttpGet("merchants/{id:guid}")]
+        public async Task<IActionResult> GetMerchant(Guid id)
+        {
+            var s = await _db.Sellers.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id);
+            if (s == null) return NotFound(new { message = "商家不存在" });
+
+            var connections = await _db.PlatformConnections.AsNoTracking()
+                .Where(c => c.SellerId == id)
+                .OrderByDescending(c => c.UpdatedAt ?? c.CreatedAt)
+                .Select(c => new
+                {
+                    id = c.Id,
+                    platform = c.Platform,
+                    shopId = c.ShopId,
+                    nickname = c.Nickname,
+                    isActive = c.IsActive,
+                    tokenExpiresAt = c.TokenExpiresAt,
+                    updatedAt = c.UpdatedAt ?? c.CreatedAt
+                })
+                .Take(20)
+                .ToListAsync();
+
+            var sessionCount = await _db.ChatSessions.CountAsync(cs => cs.ShopId == id);
+            var openSessions = await _db.ChatSessions.CountAsync(cs =>
+                cs.ShopId == id
+                && cs.Status != SessionStatus.Closed
+                && cs.Status != SessionStatus.Resolved);
+            var handoffPending = await _db.ChatSessions.CountAsync(cs =>
+                cs.ShopId == id && cs.PendingHumanHandoff
+                && cs.Status != SessionStatus.Closed && cs.Status != SessionStatus.Resolved);
+            var pendingDrafts = await _db.DraftMessages.CountAsync(d =>
+                d.Status == DraftStatuses.Pending
+                && _db.ChatSessions.Any(cs => cs.Id == d.ChatSessionId && cs.ShopId == id));
+
+            return Ok(new
+            {
+                id = s.Id,
+                phone = s.Phone,
+                nickname = s.Nickname,
+                email = s.Email,
+                subscriptionLevel = s.SubscriptionLevel,
+                freeQuota = s.FreeQuota,
+                subscriptionEnd = s.SubscriptionEnd,
+                isActive = s.IsActive,
+                createdAt = s.CreatedAt,
+                lastLoginAt = s.LastLoginAt,
+                connectionCount = connections.Count(c => c.isActive),
+                connectionTotal = connections.Count,
+                sessionCount,
+                openSessions,
+                handoffPending,
+                pendingDrafts,
+                connections
+            });
         }
 
         /// <summary>店铺连接列表</summary>

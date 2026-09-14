@@ -1,9 +1,14 @@
 <template>
   <div>
-    <h2 class="page-title">会话监控</h2>
-    <p class="page-desc">最近会话只读 · <code>GET /api/admin/sessions</code></p>
+    <div class="page-head">
+      <div>
+        <h2 class="page-title">会话监控</h2>
+        <p class="page-desc">最近会话只读 · <code>GET /api/admin/sessions</code></p>
+      </div>
+      <el-button :loading="loading" @click="load">刷新</el-button>
+    </div>
 
-    <el-table :data="items" v-loading="loading" stripe empty-text="暂无数据">
+    <el-table :data="items" v-loading="loading" stripe>
       <el-table-column prop="platform" label="平台" width="90" />
       <el-table-column prop="customerName" label="买家" min-width="120">
         <template #default="{ row }">{{ row.customerName || row.customerId || '—' }}</template>
@@ -21,8 +26,16 @@
         <template #default="{ row }">{{ formatTime(row.lastBuyerMessageAt || row.lastActiveAt) }}</template>
       </el-table-column>
       <el-table-column prop="shopId" label="ShopId" min-width="120">
-        <template #default="{ row }">{{ String(row.shopId || '').slice(0, 8) }}…</template>
+        <template #default="{ row }">
+          {{ row.shopId ? String(row.shopId).slice(0, 8) + '…' : '—' }}
+        </template>
       </el-table-column>
+      <template #empty>
+        <el-empty
+          description="暂无会话。seed-demo 会注入待审 / 转人工 / 正常三类演示会话。"
+          :image-size="72"
+        />
+      </template>
     </el-table>
   </div>
 </template>
@@ -44,7 +57,7 @@ function formatTime(v: unknown) {
   }
 }
 
-onMounted(async () => {
+async function load() {
   loading.value = true
   try {
     const res = await getSessions(80)
@@ -55,5 +68,16 @@ onMounted(async () => {
   } finally {
     loading.value = false
   }
-})
+}
+
+onMounted(load)
 </script>
+
+<style scoped>
+.page-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+</style>

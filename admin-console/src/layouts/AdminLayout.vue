@@ -54,6 +54,7 @@
           <span class="header-title">{{ title }}</span>
         </div>
         <div class="right">
+          <span class="admin-name">{{ adminName }}</span>
           <el-switch
             v-model="theme.isDark"
             inline-prompt
@@ -79,12 +80,14 @@ const route = useRoute()
 const router = useRouter()
 const theme = useThemeStore()
 const collapsed = ref(false)
+const adminName = ref(localStorage.getItem('sx_admin_name') || 'Admin')
 
 const active = computed(() => route.path)
-const title = computed(() => (route.meta.title as string) || '运营后台')
+const title = computed(() => (route.meta.title as string) || '平台运营台')
 
 function logout() {
   localStorage.removeItem('sx_admin_token')
+  localStorage.removeItem('sx_admin_name')
   router.push({ name: 'login' })
 }
 </script>
@@ -140,6 +143,10 @@ function logout() {
 }
 .header-title {
   font-weight: 600;
+}
+.admin-name {
+  font-size: 13px;
+  color: var(--el-text-color-secondary);
 }
 .main {
   background: var(--sx-bg);

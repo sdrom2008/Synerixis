@@ -1,9 +1,14 @@
 <template>
   <div>
-    <h2 class="page-title">店铺连接</h2>
-    <p class="page-desc">平台连接健康 · <code>GET /api/admin/shops</code></p>
+    <div class="page-head">
+      <div>
+        <h2 class="page-title">店铺连接</h2>
+        <p class="page-desc">平台连接健康 · <code>GET /api/admin/shops</code></p>
+      </div>
+      <el-button :loading="loading" @click="load()">刷新</el-button>
+    </div>
 
-    <el-table :data="items" v-loading="loading" stripe empty-text="暂无数据">
+    <el-table :data="items" v-loading="loading" stripe>
       <el-table-column prop="platform" label="平台" width="100" />
       <el-table-column prop="nickname" label="店铺名" min-width="140">
         <template #default="{ row }">{{ row.nickname || '—' }}</template>
@@ -29,6 +34,12 @@
       <el-table-column prop="updatedAt" label="更新" min-width="160">
         <template #default="{ row }">{{ formatTime(row.updatedAt || row.createdAt) }}</template>
       </el-table-column>
+      <template #empty>
+        <el-empty
+          description="暂无店铺连接。本地演示可先 seed-demo（会出现「模拟 Shopee 店」）。"
+          :image-size="72"
+        />
+      </template>
     </el-table>
 
     <div class="pager">
@@ -84,6 +95,12 @@ onMounted(() => load(1))
 </script>
 
 <style scoped lang="scss">
+.page-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
 .pager {
   margin-top: 16px;
   display: flex;

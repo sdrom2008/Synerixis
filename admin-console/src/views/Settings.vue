@@ -19,19 +19,24 @@
 
     <el-card shadow="never" v-loading="loading" style="margin-bottom: 16px">
       <template #header>可写运营开关</template>
-      <el-form label-width="160px" style="max-width: 560px">
+      <el-form label-width="160px" style="max-width: 640px">
         <el-form-item label="维护模式">
-          <el-switch v-model="form.maintenanceMode" />
-          <span class="hint">开启后商家 API 返回 503 MAINTENANCE；Admin / health / Webhook 仍可用（Webhook 跳过 AI）</span>
+          <div class="switch-row">
+            <el-switch v-model="form.maintenanceMode" />
+            <span class="hint">开启后商家 API 返回 503 MAINTENANCE；Admin / health / Webhook 仍可用</span>
+          </div>
         </el-form-item>
         <el-form-item label="默认出站模式">
-          <el-select v-model="form.defaultOutboundMode" style="width: 220px">
-            <el-option label="DraftFirst（人审）" value="DraftFirst" />
+          <el-select v-model="form.defaultOutboundMode" style="width: 240px">
+            <el-option label="DraftFirst（人审，推荐）" value="DraftFirst" />
             <el-option label="AutoSend（慎用）" value="AutoSend" />
           </el-select>
         </el-form-item>
         <el-form-item label="允许新注册">
-          <el-switch v-model="form.allowNewRegistration" />
+          <div class="switch-row">
+            <el-switch v-model="form.allowNewRegistration" />
+            <span class="hint">关闭后新商家注册返回 REGISTRATION_CLOSED</span>
+          </div>
         </el-form-item>
         <el-form-item>
           <el-button type="primary" :loading="saving" @click="onSave">保存</el-button>
@@ -45,6 +50,27 @@
         title="不会通过本页读写 AppKey / AppSecret / Token 等密钥。"
         style="margin-top: 8px"
       />
+    </el-card>
+
+    <el-card
+      v-if="isDevEnv"
+      shadow="never"
+      class="dev-card"
+      style="margin-bottom: 16px"
+    >
+      <template #header>
+        <div class="dev-head">
+          <span>开发工具</span>
+          <el-tag type="warning" size="small" effect="dark">Development</el-tag>
+        </div>
+      </template>
+      <p class="dev-desc">
+        可调用 <code>POST /api/dev/seed-demo</code> 写入本地演示商家 / 模拟店 / 会话 / Admin 账号。
+        生产环境该接口返回 404。按钮会附带当前 Admin JWT（接口本身亦允许匿名）。
+      </p>
+      <el-button type="warning" :loading="seeding" @click="onSeed">运行 seed-demo</el-button>
+      <el-button plain @click="fillHint">查看演示账号</el-button>
+      <p v-if="seedResult" class="seed-result">{{ seedResult }}</p>
     </el-card>
 
     <el-card shadow="never" v-loading="loading">
@@ -72,20 +98,28 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
-import { ElMessage } from 'element-plus'
-import { getSettings, updateSettings } from '@/api/admin'
+import { computed, onMounted, reactive, ref } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { getSettings, updateSettings, seedDemo } from '@/api/admin'
 
 const loading = ref(false)
 const saving = ref(false)
+const seeding = ref(false)
 const healthLoading = ref(false)
 const data = ref<Record<string, unknown> | null>(null)
 const healthLive = ref('')
 const healthReady = ref('')
+const seedResult = ref('')
 const form = reactive({
   maintenanceMode: false,
   defaultOutboundMode: 'DraftFirst',
   allowNewRegistration: true,
+})
+
+const isDevEnv = computed(() => {
+  if (import.meta.env.DEV) return true
+  const env = String(data.value?.environment || '')
+  return env.toLowerCase() === 'development'
 })
 
 function applyForm(src: Record<string, unknown> | null) {
@@ -145,6 +179,45 @@ async function onSave() {
   }
 }
 
+async function onSeed() {
+  try {
+    await ElMessageBox.confirm(
+      '将写入/刷新本地演示数据（商家、模拟店、会话、Admin）。仅 Development 有效。',
+      '运行 seed-demo',
+      { type: 'warning' },
+    )
+  } catch {
+    return
+  }
+  seeding.value = true
+  seedResult.value = ''
+  try {
+    const res = await seedDemo()
+    const parts = [
+      res.message || 'seed-demo 完成',
+      res.created?.length ? `created=${res.created.join(',')}` : '',
+      res.updated?.length ? `updated=${res.updated.join(',')}` : '',
+      res.skipped?.length ? `skipped=${res.skipped.length}项` : '',
+    ].filter(Boolean)
+    seedResult.value = parts.join(' · ')
+    ElMessage.success('演示数据已就绪')
+  } catch (e: unknown) {
+    const data = (e as { response?: { data?: { message?: string } | string } })?.response?.data
+    const text =
+      typeof data === 'string'
+        ? data
+        : (data as { message?: string })?.message || (e as Error)?.message || 'seed 失败'
+    ElMessage.error(text)
+    seedResult.value = text
+  } finally {
+    seeding.value = false
+  }
+}
+
+function fillHint() {
+  ElMessage.info('Admin：admin@test.com / Agent123! · 商家手机 13800138000 / 码 123456')
+}
+
 onMounted(async () => {
   await reload()
   void fetchHealth()
@@ -161,5 +234,30 @@ onMounted(async () => {
   margin-left: 10px;
   font-size: 12px;
   color: var(--el-text-color-secondary);
+}
+.switch-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.dev-card {
+  border: 1px dashed #f59e0b;
+}
+.dev-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.dev-desc {
+  margin: 0 0 12px;
+  color: #64748b;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.seed-result {
+  margin-top: 12px;
+  font-size: 12px;
+  color: #94a3b8;
+  word-break: break-all;
 }
 </style>

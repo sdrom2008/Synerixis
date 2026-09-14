@@ -18,6 +18,22 @@ export function agentLogin(email: string, password: string) {
   })
 }
 
+/** Development only: POST /api/dev/seed-demo（可匿名；已登录时会带 Admin token） */
+export function seedDemo() {
+  return request<{
+    ok?: boolean
+    sellerId?: string
+    message?: string
+    created?: string[]
+    skipped?: string[]
+    updated?: string[]
+    accounts?: Record<string, unknown>
+  }>({
+    url: '/api/dev/seed-demo',
+    method: 'POST',
+  })
+}
+
 export function getDashboard() {
   return request<Record<string, unknown>>({ url: '/api/admin/dashboard' })
 }
@@ -27,6 +43,12 @@ export function getMerchants(page = 1, pageSize = 20, q?: string) {
   if (q) params.set('q', q)
   return request<{ page: number; pageSize: number; total: number; items: Record<string, unknown>[] }>({
     url: `/api/admin/merchants?${params}`,
+  })
+}
+
+export function getMerchant(id: string) {
+  return request<Record<string, unknown>>({
+    url: `/api/admin/merchants/${encodeURIComponent(id)}`,
   })
 }
 
@@ -49,7 +71,14 @@ export function getUsage() {
 export function getUsageDaily(days = 7) {
   return request<{
     days: number
-    items: { date: string; count: number; sessions?: number; messages?: number }[]
+    items: {
+      date: string
+      count: number
+      sessions?: number
+      messages?: number
+      aiCalls?: number
+      tokens?: number
+    }[]
     hasData?: boolean
   }>({ url: `/api/admin/usage/daily?days=${days}` })
 }
@@ -138,4 +167,3 @@ export async function exportUsageCsv(days = 30) {
   })
   triggerCsvDownload(res.data, `admin-usage-${new Date().toISOString().slice(0, 10)}.csv`)
 }
-
