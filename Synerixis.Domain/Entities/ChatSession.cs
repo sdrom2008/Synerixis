@@ -59,6 +59,15 @@ namespace Synerixis.Domain.Entities
         /// <summary>最近一条买家消息时间（UTC），用于超时唤醒 / 收件箱排序</summary>
         public DateTime? LastBuyerMessageAt { get; private set; }
 
+        /// <summary>
+        /// 人工接管闸：转人工后为 true。此时 Webhook 不再生成新 AI 草稿、不 AutoSend。
+        /// 与 Status=Pending 解耦：新建会话也是 Pending，但仍应走 draft-first。
+        /// </summary>
+        public bool PendingHumanHandoff { get; private set; }
+
+        /// <summary>转人工时间（UTC）</summary>
+        public DateTime? HandoffAt { get; private set; }
+
         // 导航属性
         public Seller? Shop { get; private set; }
         public Agent? AssignedAgent { get; private set; }
@@ -133,8 +142,21 @@ namespace Synerixis.Domain.Entities
 
             AssignedAgentId = null;
             Status = SessionStatus.Pending;
+            PendingHumanHandoff = true;
+            HandoffAt = DateTime.UtcNow;
             UpdatedAt = DateTime.UtcNow;
         }
+
+        /// <summary>解除人工闸，恢复 AI 草稿生成（Resolve/Close/显式恢复时调用）</summary>
+        public void ClearHumanHandoff()
+        {
+            PendingHumanHandoff = false;
+            HandoffAt = null;
+            UpdatedAt = DateTime.UtcNow;
+        }
+
+        /// <summary>Webhook 硬闸：转人工后禁止新草稿与 AutoSend</summary>
+        public bool BlocksAiDrafting => PendingHumanHandoff;
 
         public void AddUserMessage()
         {
@@ -201,6 +223,8 @@ namespace Synerixis.Domain.Entities
 
             ResolvedAt = DateTime.UtcNow;
             Status = SessionStatus.Resolved;
+            PendingHumanHandoff = false;
+            HandoffAt = null;
             if (satisfaction.HasValue)
             {
                 Satisfaction = satisfaction.Value;
@@ -233,6 +257,8 @@ namespace Synerixis.Domain.Entities
             if (Status == SessionStatus.Resolved || Status == SessionStatus.Active)
             {
                 Status = SessionStatus.Closed;
+                PendingHumanHandoff = false;
+                HandoffAt = null;
                 LastActiveAt = DateTime.UtcNow;
             }
         }
@@ -245,6 +271,8 @@ namespace Synerixis.Domain.Entities
             Status = SessionStatus.Active;
             AssignedAt = DateTime.UtcNow;
             ResolvedAt = null;
+            PendingHumanHandoff = false;
+            HandoffAt = null;
             LastActiveAt = DateTime.UtcNow;
         }
 
@@ -260,7 +288,7 @@ namespace Synerixis.Domain.Entities
 
     public enum SessionStatus
     {
-        Pending = 1,     // 待分配（AI转人工后）
+        Pending = 1,     // 待分配 / 转人工排队（新建会话亦为此；是否停 AI 看 PendingHumanHandoff）
         Active = 2,      // 进行中（客服已接管）
         Resolved = 3,    // 已解决（客服标记）
         Closed = 4       // 已关闭（归档）

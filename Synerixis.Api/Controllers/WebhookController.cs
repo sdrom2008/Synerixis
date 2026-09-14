@@ -492,9 +492,21 @@ namespace Synerixis.Api.Controllers
                     return;
                 }
 
-                // 转人工 Pending：不自动出站；仍可生成草稿供坐席发送
+                // 转人工硬闸：PendingHumanHandoff 时停止生成新草稿与 AutoSend（旧草稿保留可见）
+                // 注意：新建会话 Status 也是 Pending，不能单靠 Status 判断
+                if (session.BlocksAiDrafting)
+                {
+                    logger.LogInformation(
+                        "[Webhook] Handoff hard-gate: skip AI draft/AutoSend Session={SessionId} Shop={ShopId}",
+                        sessionId, session.ShopId);
+                    session.UpdatePlatformReplyContext(msg.ConversationId, msg.OpenId);
+                    await db.SaveChangesAsync();
+                    return;
+                }
+
                 var outboundMode = OutboundModes.Normalize(sellerConfig?.OutboundMode);
                 var allowAutoSend = OutboundModes.IsAutoSend(outboundMode)
+                    && !session.PendingHumanHandoff
                     && session.Status != SessionStatus.Pending;
 
                 var historyDtos = session.Messages

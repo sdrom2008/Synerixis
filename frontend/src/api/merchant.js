@@ -107,3 +107,10 @@ export function editAndSendDraft(id, content) {
 export function discardDraft(id) {
   return request({ url: `/api/merchant/sessions/${id}/draft/discard`, method: 'POST' });
 }
+
+/** SLA / timeout wake alerts (in-app; push TODO) */
+export function getMerchantAlerts(params = {}) {
+  const q = params.thresholds ? `?thresholds=${encodeURIComponent(params.thresholds)}` : '';
+  return request({ url: `/api/merchant/alerts${q}` });
+}
+

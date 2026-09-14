@@ -77,6 +77,33 @@ DEALLOCATE PREPARE stmt;
             await db.Database.ExecuteSqlRawAsync(sessionSql);
             logger?.LogInformation("[SchemaPatcher] chat_sessions draft-context columns ensured (MySQL)");
 
+            const string handoffSql = @"
+SET @db := DATABASE();
+SET @col := (
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = @db AND TABLE_NAME = 'chat_sessions' AND COLUMN_NAME = 'PendingHumanHandoff'
+);
+SET @ddl := IF(@col = 0,
+  'ALTER TABLE `chat_sessions` ADD COLUMN `PendingHumanHandoff` TINYINT(1) NOT NULL DEFAULT 0, ADD COLUMN `HandoffAt` DATETIME(6) NULL',
+  'SELECT 1');
+PREPARE stmt FROM @ddl;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @col2 := (
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = @db AND TABLE_NAME = 'seller_configs' AND COLUMN_NAME = 'ResponseSlaHours'
+);
+SET @ddl2 := IF(@col2 = 0,
+  'ALTER TABLE `seller_configs` ADD COLUMN `ResponseSlaHours` INT NOT NULL DEFAULT 12, ADD COLUMN `AlertThresholdHours` VARCHAR(64) NOT NULL DEFAULT ''1,3,12''',
+  'SELECT 1');
+PREPARE stmt2 FROM @ddl2;
+EXECUTE stmt2;
+DEALLOCATE PREPARE stmt2;
+";
+            await db.Database.ExecuteSqlRawAsync(handoffSql);
+            logger?.LogInformation("[SchemaPatcher] handoff + SLA columns ensured (MySQL)");
+
             const string draftSql = @"
 CREATE TABLE IF NOT EXISTS `draft_messages` (
   `Id` binary(16) NOT NULL,
@@ -105,9 +132,13 @@ CREATE TABLE IF NOT EXISTS `draft_messages` (
                 "ALTER TABLE seller_configs ADD COLUMN BusinessHoursStart TEXT NOT NULL DEFAULT '09:00'",
                 "ALTER TABLE seller_configs ADD COLUMN BusinessHoursEnd TEXT NOT NULL DEFAULT '22:00'",
                 "ALTER TABLE seller_configs ADD COLUMN OutboundMode TEXT NOT NULL DEFAULT 'DraftFirst'",
+                "ALTER TABLE seller_configs ADD COLUMN ResponseSlaHours INTEGER NOT NULL DEFAULT 12",
+                "ALTER TABLE seller_configs ADD COLUMN AlertThresholdHours TEXT NOT NULL DEFAULT '1,3,12'",
                 "ALTER TABLE chat_sessions ADD COLUMN PlatformConversationId TEXT NULL",
                 "ALTER TABLE chat_sessions ADD COLUMN PlatformShopOpenId TEXT NULL",
                 "ALTER TABLE chat_sessions ADD COLUMN LastBuyerMessageAt TEXT NULL",
+                "ALTER TABLE chat_sessions ADD COLUMN PendingHumanHandoff INTEGER NOT NULL DEFAULT 0",
+                "ALTER TABLE chat_sessions ADD COLUMN HandoffAt TEXT NULL",
                 @"CREATE TABLE IF NOT EXISTS draft_messages (
                     Id BLOB NOT NULL PRIMARY KEY,
                     ChatSessionId BLOB NOT NULL,

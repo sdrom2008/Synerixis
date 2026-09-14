@@ -4,12 +4,20 @@
       <view class="back" @tap="goBack">← 返回</view>
       <view class="title-wrap">
         <text class="title">会话详情</text>
-        <view v-if="handoff" class="sx-badge sx-badge-warning">待人工 / 已转接</view>
-        <view v-if="draft" class="sx-badge sx-badge-warning">待发送草稿</view>
+        <view v-if="handoff" class="sx-badge sx-badge-warning">待人工 / 已停 AI 草稿</view>
+        <view v-if="draft" class="sx-badge sx-badge-warning">
+          {{ draft.status === 'Superseded' || draft.Status === 'Superseded' ? '旧草稿可发送' : '待发送草稿' }}
+        </view>
+        <view v-if="slaUrgency === 'overdue'" class="sx-badge sx-badge-danger">已超时</view>
+        <view v-else-if="slaUrgency === 'soon'" class="sx-badge sx-badge-soon">即将超时</view>
+      </view>
+      <view v-if="handoff" class="handoff-hint">
+        已转人工：入站消息不再生成新 AI 草稿，也不 AutoSend；下方旧草稿仍可编辑后手动发送。
       </view>
       <view v-if="hoursSince != null" class="meta">
         买家等待约 {{ formatHours(hoursSince) }}
         <text v-if="needsResponseBy"> · 建议回复截止 {{ formatTime(needsResponseBy) }}</text>
+        <text v-if="responseSlaHours"> · SLA {{ responseSlaHours }}h</text>
       </view>
     </view>
 
@@ -73,15 +81,21 @@ export default {
       editContent: '',
       busy: false,
       hoursSince: null,
-      needsResponseBy: null
+      needsResponseBy: null,
+      pendingHumanHandoff: false,
+      slaUrgency: 'ok',
+      responseSlaHours: 12
     };
   },
   computed: {
     handoff() {
-      return this.sessionStatus === 'Pending';
+      return !!this.pendingHumanHandoff;
     },
     canTransfer() {
-      return this.sessionStatus === 'Pending' || this.sessionStatus === 'Active';
+      return (
+        !this.pendingHumanHandoff &&
+        (this.sessionStatus === 'Pending' || this.sessionStatus === 'Active')
+      );
     }
   },
   onLoad(query) {
@@ -100,9 +114,14 @@ export default {
         } else {
           this.messages = data?.items || [];
           this.sessionStatus = data?.sessionStatus || this.sessionStatus || 'Active';
+          this.pendingHumanHandoff = !!(
+            data?.pendingHumanHandoff ?? data?.PendingHumanHandoff
+          );
           this.draft = data?.pendingDraft || null;
           this.hoursSince = data?.hoursSinceLastBuyerMsg ?? null;
           this.needsResponseBy = data?.needsResponseBy || null;
+          this.slaUrgency = data?.slaUrgency || 'ok';
+          this.responseSlaHours = data?.responseSlaHours || 12;
         }
         if (this.draft) {
           this.editContent = this.draft.content || this.draft.Content || '';
@@ -152,8 +171,10 @@ export default {
       this.transferring = true;
       try {
         await transferSession(this.sessionId);
-        uni.showToast({ title: '已转人工', icon: 'success' });
+        uni.showToast({ title: '已转人工，AI 草稿已停', icon: 'success' });
         this.sessionStatus = 'Pending';
+        this.pendingHumanHandoff = true;
+        await this.loadMessages();
       } catch (e) {
         /* handled */
       } finally {
@@ -216,6 +237,26 @@ export default {
   margin-top: 12rpx;
   font-size: 22rpx;
   color: #64748B;
+}
+
+.handoff-hint {
+  margin-top: 12rpx;
+  font-size: 22rpx;
+  color: #92400E;
+  background: #FFFBEB;
+  padding: 12rpx 16rpx;
+  border-radius: 8rpx;
+  line-height: 1.45;
+}
+
+.sx-badge-danger {
+  background: #FEE2E2;
+  color: #B91C1C;
+}
+
+.sx-badge-soon {
+  background: #FFEDD5;
+  color: #C2410C;
 }
 
 .draft-panel {

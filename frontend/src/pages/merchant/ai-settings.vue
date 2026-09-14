@@ -75,6 +75,26 @@
       </view>
 
       <view class="sx-card section">
+        <view class="section-label">回复 SLA（小时）</view>
+        <text class="hint">用于收件箱「即将超时 / 已超时」与告警列表；默认 12 小时（非平台硬 SLA）</text>
+        <view class="segmented sla-seg">
+          <view
+            v-for="h in slaOptions"
+            :key="h"
+            class="segment"
+            :class="{ active: form.responseSlaHours === h }"
+            @tap="form.responseSlaHours = h"
+          >{{ h }}h</view>
+        </view>
+        <text class="hint">告警阈值（小时，逗号分隔）</text>
+        <input
+          class="threshold-input"
+          v-model="form.alertThresholdHours"
+          placeholder="1,3,12"
+        />
+      </view>
+
+      <view class="sx-card section">
         <view class="section-label">偏好语言</view>
         <view class="segmented">
           <view
@@ -112,8 +132,11 @@ export default {
         autoReplyEnabled: true,
         outboundMode: 'DraftFirst',
         businessStart: '09:00',
-        businessEnd: '22:00'
+        businessEnd: '22:00',
+        responseSlaHours: 12,
+        alertThresholdHours: '1,3,12'
       },
+      slaOptions: [3, 6, 12, 24],
       toneOptions: [
         { label: '专业', value: 'professional', desc: '正式、严谨，适合跨境售后与物流说明' },
         { label: '亲切', value: 'friendly', desc: '温暖友好，提升买家体验' },
@@ -178,6 +201,10 @@ export default {
         if (end) this.form.businessEnd = end;
         const mode = cfg.outboundMode || cfg.OutboundMode;
         if (mode) this.form.outboundMode = mode === 'AutoSend' ? 'AutoSend' : 'DraftFirst';
+        const sla = cfg.responseSlaHours ?? cfg.ResponseSlaHours;
+        if (sla) this.form.responseSlaHours = Number(sla);
+        const th = cfg.alertThresholdHours || cfg.AlertThresholdHours;
+        if (th) this.form.alertThresholdHours = th;
       } catch (e) {
         /* keep local fallback */
       }
@@ -200,7 +227,9 @@ export default {
         enableAutoReply: this.form.autoReplyEnabled,
         outboundMode: this.form.outboundMode,
         businessHoursStart: this.form.businessStart,
-        businessHoursEnd: this.form.businessEnd
+        businessHoursEnd: this.form.businessEnd,
+        responseSlaHours: this.form.responseSlaHours,
+        alertThresholdHours: this.form.alertThresholdHours
       };
       uni.setStorageSync(LOCAL_KEY, {
         autoReplyEnabled: this.form.autoReplyEnabled,
@@ -208,7 +237,9 @@ export default {
         businessStart: this.form.businessStart,
         businessEnd: this.form.businessEnd,
         defaultReplyTone: this.form.defaultReplyTone,
-        preferredLanguage: this.form.preferredLanguage
+        preferredLanguage: this.form.preferredLanguage,
+        responseSlaHours: this.form.responseSlaHours,
+        alertThresholdHours: this.form.alertThresholdHours
       });
       try {
         await updateSellerConfig(payload);
@@ -305,5 +336,19 @@ export default {
 
 .risk {
   color: #B91C1C !important;
+}
+
+.sla-seg {
+  margin-top: 16rpx;
+}
+
+.threshold-input {
+  margin-top: 16rpx;
+  padding: 16rpx 20rpx;
+  background: #F8FAFC;
+  border: 1rpx solid #E2E8F0;
+  border-radius: 12rpx;
+  font-size: 28rpx;
+  color: #0F172A;
 }
 </style>

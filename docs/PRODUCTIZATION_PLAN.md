@@ -75,6 +75,14 @@
 
 **不**替换移动端 `frontend/`。Handoff/SLA 可并行演进；桌面端已展示 SLA 相关字段。
 
+### P1d — Handoff 硬闸 + SLA 超时唤醒（2026-09-14）
+
+- [x] `ChatSession.PendingHumanHandoff`：转人工后停新 AI 草稿与 AutoSend（不破坏新建会话 draft-first）
+- [x] 转人工可将旧 Pending 草稿标为 `Superseded`，人审仍可发送
+- [x] `SellerConfig.ResponseSlaHours` / `AlertThresholdHours`；会话列表 `slaUrgency`
+- [x] `GET /api/merchant/alerts` 应用内告警列表（Push/声音 TODO stub）
+- [x] 商家端：转人工按钮生效闸；收件箱「即将超时 / 已超时」徽章；AI 设置可改 SLA 小时
+
 ### P1b — Admin 控制台从零搭建（admin-console）
 
 当前 `admin-console` 仅为依赖壳；本阶段交付可构建的专业壳：
@@ -93,9 +101,10 @@
 ### P2 — 可靠性与人工协同
 
 - Token 刷新（Shopee refresh）与过期告警
-- 人工接管（handoff）状态机与商家端入口
+- [x] 人工接管（handoff）硬闸与商家端入口（自动升级 / 置信度触发仍 TODO）
 - 幂等表（Webhook / 出站消息去重）
 - 基础审计日志
+- [~] SLA 超时唤醒 UI + alerts API 已落地；Push/声音仍 TODO
 
 ### P3 — 增长面
 

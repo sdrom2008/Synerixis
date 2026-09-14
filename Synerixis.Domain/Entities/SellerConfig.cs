@@ -36,6 +36,12 @@ namespace Synerixis.Domain.Entities
         /// <summary>营业结束时间 HH:mm</summary>
         public string BusinessHoursEnd { get; set; } = "22:00";
 
+        /// <summary>建议回复 SLA 小时数（needsResponseBy = 买家消息 + 该值；默认 12）</summary>
+        public int ResponseSlaHours { get; set; } = 12;
+
+        /// <summary>告警阈值小时数，逗号分隔，如 1,3,12（用于 /api/merchant/alerts）</summary>
+        public string AlertThresholdHours { get; set; } = "1,3,12";
+
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 

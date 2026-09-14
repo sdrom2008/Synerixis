@@ -24,7 +24,7 @@
 | 订单查询（平台 API） | ✅ | `GetCustomerOrderAsync(..., platformShopId)` | DB 未命中回源；`ChatContext.PlatformShopId` 来自 webhook `to_shop_id` |
 | AI 草稿（默认） | ✅ | `DraftMessage` + `OutboundMode=DraftFirst` | 默认不 `SendReply`；`AutoSend` 显式开启才出站 |
 | 人审出站 | ✅ | `POST .../draft/approve` 等 | 调用 `SendReplyAsync`（per-shop token） |
-| 转人工 handoff | ⚠️ | `MerchantController.TransferToAgent` | 商户手动；Webhook 无自动升级 / 无停止 AI 闸 |
+| 转人工 handoff | ✅ | `ChatSession.PendingHumanHandoff` + `TransferToAgent` | 转人工硬闸：停新 AI 草稿与 AutoSend；旧草稿可 Superseded 后仍人手发送；自动升级仍 TODO |
 | 配置 | ⚠️ | `Shopee:AppKey/AppSecret/AccessToken/ShopId/Endpoint` | 缺配置 Warning + skip；appsettings 已 gitignore |
 
 ## 分步说明
@@ -57,9 +57,10 @@
 
 ### 5. Handoff
 
-- ✅ 商户 API 转人工  
+- ✅ 商户 API 转人工（`PendingHumanHandoff=true`，与新建会话的 `Status=Pending` 解耦）  
 - ❌ 低置信度 / 敏感词自动 handoff  
-- ✅ 转人工 Pending 时禁止 AutoSend；仍可生成草稿供坐席发送  
+- ✅ **硬闸**：转人工后 Webhook **不再生成新 AI 草稿**，并跳过 AutoSend；旧草稿保留（可标 Superseded）仍可人审发送  
+- ✅ SLA 唤醒：`needsResponseBy` / `hoursSinceLastBuyerMsg` / `GET /api/merchant/alerts`；收件箱排序按超时升序  
 
 ## 建议验收用例（人工 · Win11 + VS2022）
 
@@ -68,7 +69,7 @@
 2b. **per-shop 出站**：仅 AutoSend 或人审 approve 时走 `SendReplyAsync`；优先 `PlatformConnection` token。  
 3. **config 回退**：删掉/空库连接，只配 `Shopee:AccessToken`+`ShopId` → 同上链路仍可发（演示单店）。  
 4. **查单**：买家问订单；`PlatformShopId` 传入后按该店 token 调 order API；无 token 仅 Warning +「暂无订单」友好话术。  
-5. 商户转人工后会话 Pending。
+5. 商户转人工后 `PendingHumanHandoff=true`：再推 webhook 日志出现 `Handoff hard-gate`，无新草稿；旧草稿仍可 approve。
 
 本地跑 API（VS2022）：
 

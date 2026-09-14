@@ -116,6 +116,10 @@ namespace Synerixis.Api.Controllers
                 config.BusinessHoursEnd = dto.BusinessHoursEnd.Trim();
             if (!string.IsNullOrWhiteSpace(dto.OutboundMode))
                 config.OutboundMode = OutboundModes.Normalize(dto.OutboundMode);
+            if (dto.ResponseSlaHours.HasValue && dto.ResponseSlaHours.Value > 0 && dto.ResponseSlaHours.Value <= 168)
+                config.ResponseSlaHours = dto.ResponseSlaHours.Value;
+            if (!string.IsNullOrWhiteSpace(dto.AlertThresholdHours))
+                config.AlertThresholdHours = dto.AlertThresholdHours.Trim();
             config.UpdatedAt = DateTime.UtcNow;
 
             await _db.SaveChangesAsync();
@@ -512,5 +516,7 @@ namespace Synerixis.Api.Controllers
         public string? BusinessHoursStart { get; set; }
         public string? BusinessHoursEnd { get; set; }
         public string? OutboundMode { get; set; }
+        public int? ResponseSlaHours { get; set; }
+        public string? AlertThresholdHours { get; set; }
     }
 }

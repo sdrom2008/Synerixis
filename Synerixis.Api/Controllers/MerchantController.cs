@@ -140,7 +140,12 @@ namespace Synerixis.Api.Controllers
                     }
                 }
 
-                // 待发草稿 / 未读买家消息优先；其次按买家最近消息时间
+                var sellerConfig = await _db.SellerConfigs
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(c => c.SellerId == shopId);
+                var slaHours = sellerConfig?.ResponseSlaHours > 0 ? sellerConfig.ResponseSlaHours : 12;
+
+                // 待发草稿 / 未读买家消息优先；其次按即将超时（needsResponseBy 升序）
                 var total = await query.CountAsync();
                 var raw = await query
                     .Select(s => new
@@ -151,6 +156,8 @@ namespace Synerixis.Api.Controllers
                         platform = s.Platform,
                         status = ((SessionStatus)s.Status).ToString(),
                         priority = ((SessionPriority)s.Priority).ToString(),
+                        pendingHumanHandoff = s.PendingHumanHandoff,
+                        handoffAt = s.HandoffAt,
                         assignedAgent = s.AssignedAgent != null ? new
                         {
                             s.AssignedAgent.Id,
@@ -164,7 +171,8 @@ namespace Synerixis.Api.Controllers
                         aiMessageCount = s.AiMessageCount,
                         agentMessageCount = s.AgentMessageCount,
                         hasPendingDraft = _db.DraftMessages.Any(d =>
-                            d.ChatSessionId == s.Id && d.Status == DraftStatuses.Pending),
+                            d.ChatSessionId == s.Id
+                            && (d.Status == DraftStatuses.Pending || d.Status == DraftStatuses.Superseded)),
                         unreadBuyerCount = _db.ChatMessages.Count(m =>
                             m.ChatSessionId == s.Id && m.SenderType == 1 && !m.IsRead)
                     })
@@ -176,6 +184,12 @@ namespace Synerixis.Api.Controllers
                     {
                         var anchor = s.lastBuyerMessageAt ?? s.lastActiveAt ?? s.createdAt;
                         var hours = Math.Max(0, (now - anchor).TotalHours);
+                        var needsBy = anchor.AddHours(slaHours);
+                        // overdue = 已过 SLA；soon = 剩余不足 25% SLA（至少 0.5h）
+                        string slaUrgency;
+                        if (now >= needsBy) slaUrgency = "overdue";
+                        else if ((needsBy - now).TotalHours <= Math.Max(0.5, slaHours * 0.25)) slaUrgency = "soon";
+                        else slaUrgency = "ok";
                         return new
                         {
                             s.id,
@@ -184,6 +198,8 @@ namespace Synerixis.Api.Controllers
                             s.platform,
                             s.status,
                             s.priority,
+                            s.pendingHumanHandoff,
+                            s.handoffAt,
                             s.assignedAgent,
                             s.assignedAt,
                             s.createdAt,
@@ -194,8 +210,10 @@ namespace Synerixis.Api.Controllers
                             s.agentMessageCount,
                             s.hasPendingDraft,
                             s.unreadBuyerCount,
+                            responseSlaHours = slaHours,
                             hoursSinceLastBuyerMsg = Math.Round(hours, 2),
-                            needsResponseBy = anchor.AddHours(12)
+                            needsResponseBy = needsBy,
+                            slaUrgency
                         };
                     })
                     .OrderByDescending(s => s.hasPendingDraft)
@@ -204,7 +222,7 @@ namespace Synerixis.Api.Controllers
                     .ToList();
 
                 var pendingDraftCount = items.Count(i => i.hasPendingDraft);
-                return Ok(new { items, total, pendingDraftCount });
+                return Ok(new { items, total, pendingDraftCount, responseSlaHours = slaHours });
             }
             catch (Exception ex)
             {
@@ -242,23 +260,37 @@ namespace Synerixis.Api.Controllers
                     .ToListAsync();
 
                 var draft = await _db.DraftMessages
-                    .Where(d => d.ChatSessionId == id && d.Status == DraftStatuses.Pending)
-                    .OrderByDescending(d => d.CreatedAt)
+                    .Where(d => d.ChatSessionId == id
+                        && (d.Status == DraftStatuses.Pending || d.Status == DraftStatuses.Superseded))
+                    .OrderByDescending(d => d.Status == DraftStatuses.Pending)
+                    .ThenByDescending(d => d.CreatedAt)
                     .Select(d => new { d.Id, d.Content, d.Status, d.CreatedAt, d.UpdatedAt })
                     .FirstOrDefaultAsync();
 
+                var sellerConfig = await _db.SellerConfigs
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(c => c.SellerId == shopId);
+                var slaHours = sellerConfig?.ResponseSlaHours > 0 ? sellerConfig.ResponseSlaHours : 12;
                 var anchor = session.LastBuyerMessageAt ?? session.LastActiveAt ?? session.CreatedAt;
                 var now = DateTime.UtcNow;
+                var needsBy = anchor.AddHours(slaHours);
+                string slaUrgency;
+                if (now >= needsBy) slaUrgency = "overdue";
+                else if ((needsBy - now).TotalHours <= Math.Max(0.5, slaHours * 0.25)) slaUrgency = "soon";
+                else slaUrgency = "ok";
 
                 return Ok(new
                 {
                     sessionStatus = session.Status.ToString(),
+                    pendingHumanHandoff = session.PendingHumanHandoff,
+                    handoffAt = session.HandoffAt,
                     lastBuyerMessageAt = session.LastBuyerMessageAt,
+                    responseSlaHours = slaHours,
                     hoursSinceLastBuyerMsg = Math.Round(Math.Max(0, (now - anchor).TotalHours), 2),
-                    needsResponseBy = anchor.AddHours(12),
+                    needsResponseBy = needsBy,
+                    slaUrgency,
                     pendingDraft = draft,
                     items = messages,
-                    // 兼容旧前端：根级也可当数组用时请改读 items
                 });
             }
             catch (Exception ex)
@@ -287,9 +319,25 @@ namespace Synerixis.Api.Controllers
                     return BadRequest(new { message = "已关闭的会话不能转人工" });
 
                 session.TransferToAgent();
+
+                // 可选：旧 Pending 草稿标记 Superseded（仍可人工发送，停止被当作「最新 AI 待审」）
+                var pendingDrafts = await _db.DraftMessages
+                    .Where(d => d.ChatSessionId == session.Id && d.Status == DraftStatuses.Pending)
+                    .ToListAsync();
+                foreach (var d in pendingDrafts)
+                {
+                    d.Status = DraftStatuses.Superseded;
+                    d.UpdatedAt = DateTime.UtcNow;
+                }
+
                 await _db.SaveChangesAsync();
 
-                return Ok(new { message = "已转人工，等待客服接入" });
+                return Ok(new
+                {
+                    message = "已转人工：已停止 AI 新草稿与 AutoSend，旧草稿仍可手动发送",
+                    pendingHumanHandoff = true,
+                    supersededDrafts = pendingDrafts.Count
+                });
             }
             catch (Exception ex)
             {
@@ -316,7 +364,7 @@ namespace Synerixis.Api.Controllers
                     .CountAsync(s => s.ShopId == shopId && s.CreatedAt >= todayStart);
 
                 var pendingHandoff = await _db.ChatSessions
-                    .CountAsync(s => s.ShopId == shopId && s.Status == SessionStatus.Pending);
+                    .CountAsync(s => s.ShopId == shopId && s.PendingHumanHandoff);
 
                 var pendingDrafts = await (
                     from d in _db.DraftMessages
@@ -406,6 +454,98 @@ namespace Synerixis.Api.Controllers
 
 
         /// <summary>
+        /// SLA 超时唤醒告警列表。阈值默认读 SellerConfig.AlertThresholdHours（如 1,3,12）。
+        /// Push/声音 TODO；本接口供收件箱角标与简单告警面板使用。
+        /// </summary>
+        [HttpGet("alerts")]
+        public async Task<IActionResult> GetAlerts([FromQuery] string? thresholds = null)
+        {
+            try
+            {
+                var shopId = GetCurrentSellerShopId();
+                var config = await _db.SellerConfigs
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(c => c.SellerId == shopId);
+                var slaHours = config?.ResponseSlaHours > 0 ? config.ResponseSlaHours : 12;
+                var rawThresholds = !string.IsNullOrWhiteSpace(thresholds)
+                    ? thresholds
+                    : (config?.AlertThresholdHours ?? "1,3,12");
+                var hoursList = rawThresholds
+                    .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                    .Select(s => double.TryParse(s, out var h) ? h : (double?)null)
+                    .Where(h => h.HasValue && h.Value > 0)
+                    .Select(h => h!.Value)
+                    .Distinct()
+                    .OrderBy(h => h)
+                    .ToList();
+                if (hoursList.Count == 0)
+                    hoursList = new List<double> { 1, 3, 12 };
+
+                var now = DateTime.UtcNow;
+                var openStatuses = new[] { SessionStatus.Pending, SessionStatus.Active };
+                var sessions = await _db.ChatSessions
+                    .AsNoTracking()
+                    .Where(s => s.ShopId == shopId && openStatuses.Contains(s.Status))
+                    .Select(s => new
+                    {
+                        s.Id,
+                        s.SessionId,
+                        s.CustomerName,
+                        s.Platform,
+                        status = s.Status.ToString(),
+                        s.PendingHumanHandoff,
+                        s.LastBuyerMessageAt,
+                        s.LastActiveAt,
+                        s.CreatedAt
+                    })
+                    .ToListAsync();
+
+                var alertItems = sessions
+                    .Select(s =>
+                    {
+                        var msgAnchor = s.LastBuyerMessageAt ?? s.LastActiveAt ?? s.CreatedAt;
+                        var hours = Math.Max(0, (now - msgAnchor).TotalHours);
+                        var crossed = hoursList.Where(t => hours >= t).ToList();
+                        if (crossed.Count == 0) return null;
+                        var highest = crossed.Max();
+                        var needsBy = msgAnchor.AddHours(slaHours);
+                        return new
+                        {
+                            sessionId = s.Id,
+                            sessionBizId = s.SessionId,
+                            customerName = s.CustomerName,
+                            platform = s.Platform,
+                            status = s.status,
+                            pendingHumanHandoff = s.PendingHumanHandoff,
+                            hoursSinceLastBuyerMsg = Math.Round(hours, 2),
+                            thresholdHours = highest,
+                            needsResponseBy = needsBy,
+                            slaUrgency = now >= needsBy ? "overdue" : "soon",
+                            // TODO: push / sound notification channel
+                            channel = "in-app"
+                        };
+                    })
+                    .Where(a => a != null)
+                    .OrderByDescending(a => a!.hoursSinceLastBuyerMsg)
+                    .ToList();
+
+                return Ok(new
+                {
+                    items = alertItems,
+                    total = alertItems.Count,
+                    responseSlaHours = slaHours,
+                    thresholds = hoursList,
+                    // TODO: WebPush / 桌面声音
+                    pushStub = true
+                });
+            }
+            catch (Exception ex)
+            {
+                return HandleError(ex);
+            }
+        }
+
+        /// <summary>
         /// 列出具有待发送草稿的会话（收件箱「待发送草稿」）
         /// </summary>
         [HttpGet("drafts")]
@@ -418,17 +558,20 @@ namespace Synerixis.Api.Controllers
                 var rows = await (
                     from d in _db.DraftMessages
                     join s in _db.ChatSessions on d.ChatSessionId equals s.Id
-                    where s.ShopId == shopId && d.Status == DraftStatuses.Pending
+                    where s.ShopId == shopId
+                        && (d.Status == DraftStatuses.Pending || d.Status == DraftStatuses.Superseded)
                     orderby d.CreatedAt descending
                     select new
                     {
                         draftId = d.Id,
                         content = d.Content,
+                        status = d.Status,
                         createdAt = d.CreatedAt,
                         sessionId = s.Id,
                         sessionBizId = s.SessionId,
                         customerName = s.CustomerName,
                         platform = s.Platform,
+                        pendingHumanHandoff = s.PendingHumanHandoff,
                         lastBuyerMessageAt = s.LastBuyerMessageAt,
                         hoursSinceLastBuyerMsg = s.LastBuyerMessageAt.HasValue
                             ? (double?)Math.Round((now - s.LastBuyerMessageAt.Value).TotalHours, 2)
@@ -459,12 +602,18 @@ namespace Synerixis.Api.Controllers
                     return NotFound(new { message = "会话不存在" });
 
                 var draft = await _db.DraftMessages
-                    .Where(d => d.ChatSessionId == id && d.Status == DraftStatuses.Pending)
-                    .OrderByDescending(d => d.CreatedAt)
+                    .Where(d => d.ChatSessionId == id
+                        && (d.Status == DraftStatuses.Pending || d.Status == DraftStatuses.Superseded))
+                    .OrderByDescending(d => d.Status == DraftStatuses.Pending)
+                    .ThenByDescending(d => d.CreatedAt)
                     .FirstOrDefaultAsync();
 
                 if (draft == null)
                     return Ok(new { draft = (object?)null, message = "无待发送草稿" });
+
+                var cfg = await _db.SellerConfigs.AsNoTracking()
+                    .FirstOrDefaultAsync(c => c.SellerId == shopId);
+                var sla = cfg?.ResponseSlaHours > 0 ? cfg.ResponseSlaHours : 12;
 
                 return Ok(new
                 {
@@ -476,8 +625,10 @@ namespace Synerixis.Api.Controllers
                         draft.CreatedAt,
                         draft.UpdatedAt
                     },
+                    pendingHumanHandoff = session.PendingHumanHandoff,
                     hoursSinceLastBuyerMsg = Math.Round(session.HoursSinceLastBuyerMessage(), 2),
-                    needsResponseBy = session.NeedsResponseBy()
+                    needsResponseBy = session.NeedsResponseBy(sla),
+                    responseSlaHours = sla
                 });
             }
             catch (Exception ex)
@@ -523,8 +674,10 @@ namespace Synerixis.Api.Controllers
                     return NotFound(new { message = "会话不存在" });
 
                 var draft = await _db.DraftMessages
-                    .Where(d => d.ChatSessionId == id && d.Status == DraftStatuses.Pending)
-                    .OrderByDescending(d => d.CreatedAt)
+                    .Where(d => d.ChatSessionId == id
+                        && (d.Status == DraftStatuses.Pending || d.Status == DraftStatuses.Superseded))
+                    .OrderByDescending(d => d.Status == DraftStatuses.Pending)
+                    .ThenByDescending(d => d.CreatedAt)
                     .FirstOrDefaultAsync();
                 if (draft == null)
                     return NotFound(new { message = "无待发送草稿" });
@@ -554,7 +707,8 @@ namespace Synerixis.Api.Controllers
                     return NotFound(new { message = "会话不存在" });
 
                 var drafts = await _db.DraftMessages
-                    .Where(d => d.ChatSessionId == id && d.Status == DraftStatuses.Pending)
+                    .Where(d => d.ChatSessionId == id
+                        && (d.Status == DraftStatuses.Pending || d.Status == DraftStatuses.Superseded))
                     .ToListAsync();
                 if (drafts.Count == 0)
                     return Ok(new { message = "无待发送草稿" });
@@ -584,8 +738,10 @@ namespace Synerixis.Api.Controllers
                     return NotFound(new { message = "会话不存在" });
 
                 var draft = await _db.DraftMessages
-                    .Where(d => d.ChatSessionId == sessionId && d.Status == DraftStatuses.Pending)
-                    .OrderByDescending(d => d.CreatedAt)
+                    .Where(d => d.ChatSessionId == sessionId
+                        && (d.Status == DraftStatuses.Pending || d.Status == DraftStatuses.Superseded))
+                    .OrderByDescending(d => d.Status == DraftStatuses.Pending)
+                    .ThenByDescending(d => d.CreatedAt)
                     .FirstOrDefaultAsync();
                 if (draft == null)
                     return NotFound(new { message = "无待发送草稿" });

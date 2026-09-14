@@ -28,6 +28,10 @@
         <text class="draft-banner-text">待发送草稿 {{ pendingDraftCount }} 条 — 请尽快审核发送，以免超时影响店铺响应表现</text>
       </view>
 
+      <view v-if="alertCount > 0" class="alert-banner" @tap="setFilter('alerts')">
+        <text class="alert-banner-text">超时告警 {{ alertCount }} 条 — 点击查看即将超时 / 已超时会话（Push/声音待接入）</text>
+      </view>
+
       <view v-if="loading" class="loading">加载中…</view>
 
       <EmptyState
@@ -57,7 +61,8 @@
             </view>
             <view v-if="conv.hasPendingDraft" class="sx-badge sx-badge-warning">待发送草稿</view>
             <view v-if="isHandoff(conv)" class="sx-badge sx-badge-warning">待人工</view>
-            <view v-if="isOverdue(conv)" class="sx-badge sx-badge-danger">即将超时</view>
+            <view v-if="slaLabel(conv) === '已超时'" class="sx-badge sx-badge-danger">已超时</view>
+            <view v-else-if="slaLabel(conv) === '即将超时'" class="sx-badge sx-badge-soon">即将超时</view>
           </view>
           <view class="row-bottom">
             <text class="agent">
@@ -76,7 +81,7 @@
 <script>
 import AppShell from '@/components/merchant/AppShell.vue';
 import EmptyState from '@/components/merchant/EmptyState.vue';
-import { getSessions } from '@/api/merchant.js';
+import { getSessions, getMerchantAlerts } from '@/api/merchant.js';
 
 export default {
   components: { AppShell, EmptyState },
@@ -84,12 +89,15 @@ export default {
     return {
       sessions: [],
       pendingDraftCount: 0,
+      alertCount: 0,
+      responseSlaHours: 12,
       loading: false,
       statusFilter: '',
       filters: [
         { label: '全部', value: '' },
         { label: '待发送草稿', value: 'draft' },
-        { label: '待人工', value: 'Pending' },
+        { label: '超时告警', value: 'alerts' },
+        { label: '待人工', value: 'handoff' },
         { label: '进行中', value: 'Active' },
         { label: '已解决', value: 'Resolved' }
       ]
@@ -99,6 +107,15 @@ export default {
     displaySessions() {
       if (this.statusFilter === 'draft') {
         return this.sessions.filter((s) => s.hasPendingDraft);
+      }
+      if (this.statusFilter === 'handoff') {
+        return this.sessions.filter((s) => this.isHandoff(s));
+      }
+      if (this.statusFilter === 'alerts') {
+        return this.sessions.filter((s) => {
+          const u = s.slaUrgency || this.computeUrgency(s);
+          return u === 'soon' || u === 'overdue';
+        });
       }
       return this.sessions;
     }
@@ -120,15 +137,24 @@ export default {
       }
       this.loading = true;
       try {
+        const clientOnly = ['draft', 'alerts', 'handoff'];
         const apiStatus =
-          this.statusFilter && this.statusFilter !== 'draft' ? this.statusFilter : undefined;
-        const data = await getSessions({ status: apiStatus });
+          this.statusFilter && !clientOnly.includes(this.statusFilter)
+            ? this.statusFilter
+            : undefined;
+        const [data, alerts] = await Promise.all([
+          getSessions({ status: apiStatus }),
+          getMerchantAlerts().catch(() => null)
+        ]);
         this.sessions = data?.items || [];
         this.pendingDraftCount =
           data?.pendingDraftCount ?? this.sessions.filter((s) => s.hasPendingDraft).length;
+        this.responseSlaHours = data?.responseSlaHours || 12;
+        this.alertCount = alerts?.total ?? alerts?.items?.length ?? 0;
       } catch (e) {
         this.sessions = [];
         this.pendingDraftCount = 0;
+        this.alertCount = 0;
       } finally {
         this.loading = false;
       }
@@ -168,11 +194,22 @@ export default {
       return 'sx-badge-muted';
     },
     isHandoff(conv) {
-      return conv.status === 'Pending' || (!conv.assignedAgent && conv.status === 'Active');
+      return !!(conv.pendingHumanHandoff || conv.PendingHumanHandoff);
     },
-    isOverdue(conv) {
+    computeUrgency(conv) {
+      if (conv.slaUrgency) return conv.slaUrgency;
       const h = Number(conv.hoursSinceLastBuyerMsg);
-      return !Number.isNaN(h) && h >= 8;
+      const sla = Number(conv.responseSlaHours || this.responseSlaHours || 12);
+      if (Number.isNaN(h)) return 'ok';
+      if (h >= sla) return 'overdue';
+      if (h >= Math.max(sla * 0.75, sla - 0.5)) return 'soon';
+      return 'ok';
+    },
+    slaLabel(conv) {
+      const u = this.computeUrgency(conv);
+      if (u === 'overdue') return '已超时';
+      if (u === 'soon') return '即将超时';
+      return '';
     }
   }
 };
@@ -301,5 +338,24 @@ export default {
 .sx-badge-danger {
   background: #FEE2E2;
   color: #B91C1C;
+}
+
+.sx-badge-soon {
+  background: #FFEDD5;
+  color: #C2410C;
+}
+
+.alert-banner {
+  margin-bottom: 20rpx;
+  padding: 20rpx 24rpx;
+  background: #FEF2F2;
+  border: 1rpx solid #FECACA;
+  border-radius: 12rpx;
+}
+
+.alert-banner-text {
+  font-size: 24rpx;
+  color: #991B1B;
+  line-height: 1.5;
 }
 </style>
