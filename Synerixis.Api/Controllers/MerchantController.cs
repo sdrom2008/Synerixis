@@ -7,6 +7,9 @@ using Synerixis.Domain.Entities;
 using Synerixis.Application.Interfaces;
 using Synerixis.Infrastructure.Data;
 using Synerixis.Infrastructure.Repositories;
+using Synerixis.Infrastructure.Services;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -27,17 +30,29 @@ namespace Synerixis.Api.Controllers
         private readonly IRepository<ChatSession> _sessionRepo;
         private readonly IMerchantPlatformService _platformService;
         private readonly IPlatformConnectionRepository _connectionRepo;
+        private readonly IOAuthBindStateStore _oauthStateStore;
+        private readonly IConfiguration _config;
+        private readonly IPlatformClientRouter _platformRouter;
+        private readonly ILogger<MerchantController> _logger;
 
         public MerchantController(
             AppDbContext db, 
             IRepository<ChatSession> sessionRepo,
             IMerchantPlatformService platformService,
-            IPlatformConnectionRepository connectionRepo)
+            IPlatformConnectionRepository connectionRepo,
+            IOAuthBindStateStore oauthStateStore,
+            IConfiguration config,
+            IPlatformClientRouter platformRouter,
+            ILogger<MerchantController> logger)
         {
             _db = db;
             _sessionRepo = sessionRepo;
             _platformService = platformService;
             _connectionRepo = connectionRepo;
+            _oauthStateStore = oauthStateStore;
+            _config = config;
+            _platformRouter = platformRouter;
+            _logger = logger;
         }
 
         /// <summary>
@@ -85,8 +100,9 @@ namespace Synerixis.Api.Controllers
                 return Forbid();
             try
             {
-                _ = GetShopOwnerSellerId();
+                var sellerId = GetShopOwnerSellerId();
                 var state = GenerateState();
+                _oauthStateStore.Put(state, sellerId, platform);
                 var url = await _platformService.GetAuthorizationUrlAsync(platform, state);
                 return Ok(new { url, state });
             }
@@ -116,6 +132,63 @@ namespace Synerixis.Api.Controllers
             catch (UnauthorizedAccessException ex)
             {
                 return Unauthorized(new { message = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// 平台 OAuth RedirectUri 落地（匿名）：收 code/state/platform，尽量完成 BindShop，再跳转 merchant-web /shops?bound=1。
+        /// 开发可用 query platform；state 命中内存短存则带 sellerId。
+        /// </summary>
+        [AllowAnonymous]
+        [HttpGet("bind/callback")]
+        [HttpGet("/api/oauth/{platformRoute}/callback")]
+        public async Task<IActionResult> OAuthBindRedirectCallback(
+            [FromQuery] string? code,
+            [FromQuery] string? state,
+            [FromQuery] string? platform,
+            [FromRoute] string? platformRoute = null)
+        {
+            var frontendBase = (_config["Frontends:MerchantWebBaseUrl"]
+                ?? _config["MerchantWeb:BaseUrl"]
+                ?? "http://localhost:5173").TrimEnd('/');
+            var successUrl = $"{frontendBase}/shops?bound=1";
+            var failUrl = $"{frontendBase}/shops?bound=0&error=";
+
+            var plat = !string.IsNullOrWhiteSpace(platform)
+                ? platform!
+                : (platformRoute ?? string.Empty);
+            plat = plat.Trim();
+
+            Guid sellerId = default;
+            string statePlatform = string.Empty;
+            var hasState = !string.IsNullOrWhiteSpace(state)
+                && _oauthStateStore.TryTake(state!, out sellerId, out statePlatform);
+            if (hasState && string.IsNullOrWhiteSpace(plat))
+                plat = statePlatform;
+
+            if (string.IsNullOrWhiteSpace(code))
+                return Redirect(failUrl + Uri.EscapeDataString("missing_code"));
+            if (string.IsNullOrWhiteSpace(plat))
+                return Redirect(failUrl + Uri.EscapeDataString("missing_platform"));
+
+            if (!hasState)
+            {
+                // 开发兜底：无 state 时无法知 seller；拒绝以免绑错店
+                _logger.LogWarning("[OAuth] GET callback missing/expired state; platform={Platform}", plat);
+                return Redirect(failUrl + Uri.EscapeDataString("invalid_or_expired_state"));
+            }
+
+            try
+            {
+                var result = await _platformService.BindShopAsync(plat, code!, sellerId);
+                if (result.Success)
+                    return Redirect(successUrl);
+                return Redirect(failUrl + Uri.EscapeDataString(result.Error ?? "bind_failed"));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[OAuth] GET callback BindShop failed");
+                return Redirect(failUrl + Uri.EscapeDataString("server_error"));
             }
         }
 
@@ -509,7 +582,8 @@ namespace Synerixis.Api.Controllers
         }
 
         /// <summary>
-        /// 会话关联订单（本地 Orders 优先；失败返回空列表不炸）。
+        /// 会话关联订单：本地 Orders 优先；空则用会话 platform + customerId + PlatformShopOpenId 回源平台查单。
+        /// 平台失败返回 items=[] + warning，不 500。
         /// </summary>
         [HttpGet("sessions/{id:guid}/orders")]
         public async Task<IActionResult> GetSessionOrders(Guid id, [FromQuery] int limit = 10)
@@ -523,60 +597,121 @@ namespace Synerixis.Api.Controllers
                     return NotFound(new { message = "会话不存在" });
 
                 var take = Math.Clamp(limit, 1, 50);
-                var orders = await _db.Orders
+                var local = await _db.Orders
                     .AsNoTracking()
                     .Where(o => o.ShopId == shopId && o.CustomerId == session.CustomerId)
                     .OrderByDescending(o => o.OrderTime)
                     .Take(take)
                     .Select(o => new
                     {
-                        id = o.Id,
+                        id = (Guid?)o.Id,
                         orderNo = o.OrderNo,
                         status = o.Status,
-                        totalAmount = o.TotalAmount,
-                        paymentAmount = o.PaymentAmount,
+                        totalAmount = (decimal?)o.TotalAmount,
+                        paymentAmount = (decimal?)o.PaymentAmount,
                         platform = o.Platform ?? session.Platform,
-                        orderTime = o.OrderTime,
+                        orderTime = (DateTime?)o.OrderTime,
                         paidAt = o.PaidAt,
                         shippedAt = o.ShippedAt,
                         logisticsNo = o.LogisticsNo,
-                        logisticsCompany = o.LogisticsCompany
+                        logisticsCompany = o.LogisticsCompany,
+                        source = "local",
+                        summary = (string?)null
                     })
                     .ToListAsync();
 
-                // 本地为空时尝试平台客户端（若已有能力）；失败吞掉返回空
-                if (orders.Count == 0)
+                string? warning = null;
+                object items = local;
+                var source = "local";
+
+                if (local.Count == 0)
                 {
+                    source = "platform";
                     try
                     {
-                        var router = HttpContext.RequestServices.GetService<IPlatformClientRouter>();
-                        if (router != null && !string.IsNullOrEmpty(session.Platform)
-                            && !string.IsNullOrEmpty(session.CustomerId))
+                        if (!string.IsNullOrEmpty(session.Platform)
+                            && !string.IsNullOrEmpty(session.CustomerId)
+                            && _platformRouter.IsSupported(session.Platform))
                         {
-                            var client = router.GetClient(session.Platform);
-                            // 平台查单能力因客户端而异；无接口则跳过
-                            _ = client;
+                            var client = _platformRouter.GetClient(session.Platform);
+                            var summary = await client.GetCustomerOrderAsync(
+                                session.Platform,
+                                session.CustomerId!,
+                                session.PlatformShopOpenId);
+
+                            if (!string.IsNullOrWhiteSpace(summary))
+                            {
+                                var parsed = ParsePlatformOrderSummary(summary!, session.Platform);
+                                items = new[] { parsed };
+                            }
+                            else
+                            {
+                                items = Array.Empty<object>();
+                                warning = "platform_empty";
+                            }
+                        }
+                        else
+                        {
+                            items = Array.Empty<object>();
+                            warning = "platform_unsupported_or_missing_customer";
                         }
                     }
-                    catch
+                    catch (Exception ex)
                     {
-                        // ignore platform lookup failures
+                        _logger.LogWarning(ex, "[Orders] Platform lookup failed for session {SessionId}", id);
+                        items = Array.Empty<object>();
+                        warning = "platform_lookup_failed";
                     }
                 }
+
+                var itemList = items as System.Collections.ICollection;
+                var total = itemList?.Count ?? 0;
 
                 return Ok(new
                 {
                     sessionId = session.Id,
                     customerId = session.CustomerId,
-                    items = orders,
-                    total = orders.Count,
-                    empty = orders.Count == 0
+                    source,
+                    warning,
+                    items,
+                    total,
+                    empty = total == 0
                 });
             }
             catch (Exception ex)
             {
                 return HandleError(ex);
             }
+        }
+
+        private static object ParsePlatformOrderSummary(string summary, string? platform)
+        {
+            // FormatOrderSummary: "order_sn=X, status=Y" or "... tracking=Z"
+            string? orderNo = null, status = null, tracking = null;
+            foreach (var part in summary.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
+            {
+                var kv = part.Split('=', 2, StringSplitOptions.TrimEntries);
+                if (kv.Length != 2) continue;
+                if (kv[0].Equals("order_sn", StringComparison.OrdinalIgnoreCase)) orderNo = kv[1];
+                else if (kv[0].Equals("status", StringComparison.OrdinalIgnoreCase)) status = kv[1];
+                else if (kv[0].Equals("tracking", StringComparison.OrdinalIgnoreCase)) tracking = kv[1];
+            }
+            return new
+            {
+                id = (Guid?)null,
+                orderNo = orderNo ?? summary,
+                status = status ?? "unknown",
+                totalAmount = (decimal?)null,
+                paymentAmount = (decimal?)null,
+                platform,
+                orderTime = (DateTime?)null,
+                paidAt = (DateTime?)null,
+                shippedAt = (DateTime?)null,
+                logisticsNo = tracking,
+                logisticsCompany = (string?)null,
+                source = "platform",
+                summary
+            };
         }
 
         /// <summary>
@@ -696,7 +831,7 @@ namespace Synerixis.Api.Controllers
         }
 
         /// <summary>
-        /// 本月用量摘要（计费页诚实计数）
+        /// 用量摘要（计费页诚实计数）：今日草稿/会话、已连店铺、订阅档位与额度。
         /// </summary>
         [HttpGet("usage")]
         public async Task<IActionResult> GetUsage()
@@ -706,6 +841,7 @@ namespace Synerixis.Api.Controllers
                 var shopId = GetMerchantShopId();
                 var now = DateTime.UtcNow;
                 var monthStart = new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+                var dayStart = new DateTime(now.Year, now.Month, now.Day, 0, 0, 0, DateTimeKind.Utc);
 
                 var messagesThisMonth = await (
                     from m in _db.ChatMessages
@@ -717,12 +853,36 @@ namespace Synerixis.Api.Controllers
                 var sessionsThisMonth = await _db.ChatSessions
                     .CountAsync(s => s.ShopId == shopId && s.CreatedAt >= monthStart);
 
+                var sessionsToday = await _db.ChatSessions
+                    .CountAsync(s => s.ShopId == shopId && s.CreatedAt >= dayStart);
+
+                var draftsToday = await (
+                    from d in _db.DraftMessages
+                    join s in _db.ChatSessions on d.ChatSessionId equals s.Id
+                    where s.ShopId == shopId && d.CreatedAt >= dayStart
+                    select d.Id
+                ).CountAsync();
+
+                var connectedShops = await _db.PlatformConnections
+                    .CountAsync(c => c.SellerId == shopId && c.IsActive);
+
+                var seller = await _db.Sellers.AsNoTracking()
+                    .FirstOrDefaultAsync(s => s.Id == shopId);
+
                 return Ok(new
                 {
                     periodStart = monthStart,
                     periodEnd = now,
                     messagesThisMonth,
-                    sessionsThisMonth
+                    sessionsThisMonth,
+                    sessionsToday,
+                    draftsToday,
+                    connectedShops,
+                    quota = seller?.FreeQuota,
+                    freeQuota = seller?.FreeQuota,
+                    subscription = seller?.SubscriptionLevel,
+                    subscriptionLevel = seller?.SubscriptionLevel,
+                    subscriptionEnd = seller?.SubscriptionEnd
                 });
             }
             catch (Exception ex)

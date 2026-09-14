@@ -87,12 +87,15 @@
 
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import EmptyState from '@/components/EmptyState.vue'
 import { useAuthStore } from '@/stores/auth'
 import { getBindUrl, getConnections, refreshConnection, unbindPlatform } from '@/api/merchant'
 
 const auth = useAuthStore()
+const route = useRoute()
+const router = useRouter()
 const canManage = computed(() => !!auth.permissions.canManageShops)
 
 const loading = ref(false)
@@ -188,8 +191,27 @@ async function onUnbind(platform?: string) {
   }
 }
 
+async function handleBoundQuery() {
+  if (route.query.bound === '1') {
+    ElMessage.success('店铺绑定成功')
+    await load()
+    const q = { ...route.query }
+    delete q.bound
+    delete q.error
+    router.replace({ path: '/shops', query: q })
+  } else if (route.query.bound === '0') {
+    const err = String(route.query.error || '绑定失败')
+    ElMessage.error(`绑定未完成：${err}`)
+    const q = { ...route.query }
+    delete q.bound
+    delete q.error
+    router.replace({ path: '/shops', query: q })
+  }
+}
+
 onMounted(() => {
   load()
+  handleBoundQuery()
   focusHandler = () => {
     if (document.visibilityState === 'visible' && canManage.value) load()
   }

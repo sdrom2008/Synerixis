@@ -10,14 +10,14 @@
 
 | 环节 | 状态 | 主要位置 | 备注 |
 |------|------|----------|------|
-| OAuth / Token | ⚠️ | `MerchantController` + `MerchantPlatformService.BindShopAsync` + `ShopeePlatformClient` | 成功回调会 **upsert** `PlatformConnection`（ShopId/Access/Refresh/Platform=SHOPEE）；`GetShopInfo` 仍偏占位；无 GET 重定向回调与 state 落库 |
+| OAuth / Token | ✅ | `MerchantController` + `MerchantPlatformService.BindShopAsync` + `ShopeePlatformClient` | 成功回调会 **upsert** `PlatformConnection`；**匿名 GET** `/api/merchant/bind/callback`（及 `/api/oauth/{platform}/callback`）收 code/state 完成绑店并 redirect `merchant-web/shops?bound=1`；state 进程内短存；`GetShopInfo` 仍偏占位 |
 | Token 读取 | ✅ | `ShopeePlatformClient.ResolveShopCredentialsAsync` | 回复 / 查单：优先按 shop 读 `PlatformConnection`，库空或异常回退 `Shopee:AccessToken`/`ShopId` |
-| Token 过期字段 | ❌ | — | `expire_in` 未落库（避免无迁移改表）；`RefreshToken` 已存，自动按过期调度刷新仍 TODO |
+| Token 过期字段 | ✅ | `PlatformConnection.TokenExpiresAt` + `PlatformTokenRefreshHostedService` | SchemaPatcher 补列；绑店写过期时间；HostedService 约每 45 分钟扫即将过期并刷新 |
 | Webhook 入口 | ✅ | `WebhookController` `POST /api/webhook/{platform}` | 路由、签名校验、解析、会话落库、异步 AI；**默认落草稿** |
 | Webhook 签名 | ✅ | `VerifySignatureAsync` | HMAC；缺 `AppSecret` 直接失败 |
 | Webhook 解析 | ✅ | `ParseWebhookAsync` | `type=message` 抽 CustomerId / ConversationId / Content；`OpenId=to_shop_id` |
 | 多店会话归属 | ✅ | `FindOrCreateSessionAsync` | 按 `ShopId` **或** `OpenId` 匹配 `PlatformConnection` |
-| 幂等 | ⚠️ | `IsDuplicateAsync` | 已存在 MsgId 才忽略；空 MsgId 仍放行；无分布式锁 |
+| 幂等 | ✅ | `ProcessedWebhookEvent` + `TryClaimWebhookEventAsync` | Platform+EventKey 唯一 try-insert；EventKey=MsgId，空则弱键 hash 并 Warning；冲突返回 duplicate，成功后再落消息 |
 | 意图识别 | ✅ | `IntentClassifier` ← `ProcessInboundAiReplyAsync` | classify → AgentRouter / GeneralChat；缺 AI Key 降级 |
 | Intent ↔ Agent | ✅ | `OrderAgent.SupportedIntent = OrderQuery` | |
 | 订单查询（DB） | ✅ | `OrderAgent` → `IOrderRepository` | |
@@ -31,16 +31,17 @@
 
 ### 1. OAuth → 店铺绑定
 
-- ✅ `GET /api/merchant/bind/{platform}` 取授权 URL  
+- ✅ `GET /api/merchant/bind/{platform}` 取授权 URL（state 写入进程短存）  
 - ✅ `POST /api/merchant/bind/callback` → `BindShopAsync`：换 token → 店铺信息 → **按 ShopId+Platform upsert** `PlatformConnection`  
-- ⚠️ 前端需把平台 Redirect 带回的 `code` POST 到回调；服务端 **无匿名 GET RedirectUri 落地页**，`state` 未服务端校验  
-- ❌ `TokenExpiresAt` / 定时刷新 Job  
+- ✅ **匿名 GET** `/api/merchant/bind/callback` / `/api/oauth/{platform}/callback`：收 code/state → BindShop → redirect `Frontends:MerchantWebBaseUrl/shops?bound=1`  
+- ✅ `TokenExpiresAt` + `PlatformTokenRefreshHostedService`  
 - ❌ 多站点 partner（TW/VN/…）切换  
 - ⚠️ `GetShopInfoAsync` 仍简化，真实环境可能需先 get_shop_list
 
 ### 2. Webhook → 会话
 
-- ✅ 验签、解析、建 `ChatSession`、写 `ChatMessage`  
+- ✅ 验签、解析、建 `ChatSession`、写 `ChatMessage`
+- ✅ 幂等表 `processed_webhook_events`（SchemaPatcher Ensure）  
 - ✅ 创建会话时用 `PlatformConnection.ShopId/OpenId == msg.OpenId(to_shop_id)` 找 Seller  
 - ✅ AI 上下文带 `PlatformShopId = msg.OpenId`，供查单 / 回复选店  
 
@@ -64,7 +65,8 @@
 
 ## 建议验收用例（人工 · Win11 + VS2022）
 
-1. **绑店写库**：登录商户 JWT → `GET /api/merchant/bind/SHOPEE` → 浏览器授权 → 前端把 `code` `POST /api/merchant/bind/callback` `{ "platform":"SHOPEE","code":"..." }` → DB `platform_connections` 有 AccessToken/ShopId；再授权一次应 **更新同行** 而非插入重复。  
+1. **绑店写库**：登录商户 JWT → `GET /api/merchant/bind/SHOPEE` → 浏览器授权 → 平台回调 **GET** `/api/merchant/bind/callback?code=&state=` → 自动 BindShop 并跳转 `/shops?bound=1`；亦可手 POST code。DB `platform_connections` 有 AccessToken/ShopId；再授权一次应 **更新同行** 而非插入重复。  
+1b. **Webhook 幂等**：同一 MsgId 第二次 webhook 返回 `duplicate` 且不双写消息。  
 2. **草稿优先**：推一条 webhook → 日志 `Draft saved ... (no SendReply)`；商户 `GET /api/merchant/sessions/{id}/draft` → `POST .../draft/approve` 才 `send_message`。
 2b. **per-shop 出站**：仅 AutoSend 或人审 approve 时走 `SendReplyAsync`；优先 `PlatformConnection` token。  
 3. **config 回退**：删掉/空库连接，只配 `Shopee:AccessToken`+`ShopId` → 同上链路仍可发（演示单店）。  

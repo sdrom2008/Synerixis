@@ -93,8 +93,8 @@ namespace Synerixis.Api.Controllers
                 _logger.LogInformation("[Webhook] Parsed message: Platform={Platform}, Event={Event}, MsgId={MsgId}, Content={Content}",
                     platformMsg.Platform, eventType, platformMsg.MsgId, platformMsg.Content);
 
-                // 4. 幂等性检查：通过 MsgId 去重（已存在则忽略）
-                if (await IsDuplicateAsync(platformMsg))
+                // 4. 幂等：ProcessedWebhookEvent 唯一键 try-insert，冲突即 duplicate
+                if (!await TryClaimWebhookEventAsync(platformMsg))
                 {
                     _logger.LogWarning("[Webhook] Duplicate webhook ignored: MsgId={MsgId}", platformMsg.MsgId);
                     return Ok(new { code = 0, message = "duplicate" });
@@ -377,26 +377,80 @@ namespace Synerixis.Api.Controllers
         #region === 私有辅助方法 ===
 
         /// <summary>
-        /// 幂等性检查：通过 MsgId 去重
-        /// 检查数据库中是否已处理过相同 MsgId 的消息
+        /// 幂等认领：EventKey=MsgId；空 MsgId 则弱键 hash(platform+customerId+content+timestamp bucket) 并记日志。
+        /// try-insert 唯一键成功返回 true（可继续处理）；冲突返回 false（duplicate）。
         /// </summary>
-        private async Task<bool> IsDuplicateAsync(PlatformMessage msg)
+        private async Task<bool> TryClaimWebhookEventAsync(PlatformMessage msg)
         {
-            if (string.IsNullOrEmpty(msg.MsgId))
-                return false; // 无 MsgId 无法去重，直接放行
+            var platform = (msg.Platform ?? string.Empty).Trim().ToUpperInvariant();
+            if (string.IsNullOrEmpty(platform))
+                platform = "UNKNOWN";
+
+            string eventKey;
+            var isWeak = false;
+            if (!string.IsNullOrWhiteSpace(msg.MsgId))
+            {
+                eventKey = msg.MsgId.Trim();
+            }
+            else
+            {
+                isWeak = true;
+                // 60 秒时间桶，弱防抖；空 MsgId 仍可能漏检，仅作兜底
+                var bucket = DateTimeOffset.UtcNow.ToUnixTimeSeconds() / 60;
+                var raw = $"{platform}|{msg.CustomerId}|{msg.Content}|{bucket}";
+                using var sha = SHA256.Create();
+                var hash = sha.ComputeHash(Encoding.UTF8.GetBytes(raw));
+                eventKey = "weak:" + Convert.ToHexString(hash).ToLowerInvariant();
+                _logger.LogWarning(
+                    "[Webhook] Empty MsgId — using weak EventKey for platform={Platform} customer={Customer}",
+                    platform, msg.CustomerId);
+            }
+
+            if (eventKey.Length > 191)
+                eventKey = eventKey[..191];
 
             try
             {
-                // 检查 ChatMessage 表中是否已有相同 MsgId
-                var existed = await _db.Set<ChatMessage>()
-                    .AnyAsync(m => m.PlatformMsgId == msg.MsgId);
-                return existed;
+                _db.ProcessedWebhookEvents.Add(new ProcessedWebhookEvent
+                {
+                    Id = Guid.NewGuid(),
+                    Platform = platform.Length > 32 ? platform[..32] : platform,
+                    EventKey = eventKey,
+                    ProcessedAt = DateTime.UtcNow,
+                    IsWeakKey = isWeak
+                });
+                await _db.SaveChangesAsync();
+                return true;
             }
-            catch
+            catch (DbUpdateException)
             {
-                // 数据库异常时放行（宁可重复处理也不丢消息）
-                _logger.LogWarning("[Webhook] Idempotency check failed, allowing duplicate");
+                _logger.LogInformation(
+                    "[Webhook] Idempotent claim conflict Platform={Platform} EventKey={EventKey}",
+                    platform, eventKey);
+                // 清掉跟踪失败的实体，避免污染后续 SaveChanges
+                foreach (var entry in _db.ChangeTracker.Entries<ProcessedWebhookEvent>()
+                             .Where(e => e.State == EntityState.Added || e.State == EntityState.Modified)
+                             .ToList())
+                {
+                    entry.State = EntityState.Detached;
+                }
                 return false;
+            }
+            catch (Exception ex)
+            {
+                // 表未就绪等：回退到 ChatMessage.PlatformMsgId（尽力），仍放行以免丢消息
+                _logger.LogWarning(ex, "[Webhook] Idempotency claim failed; falling back to PlatformMsgId check");
+                if (!string.IsNullOrEmpty(msg.MsgId))
+                {
+                    try
+                    {
+                        var existed = await _db.Set<ChatMessage>()
+                            .AnyAsync(m => m.PlatformMsgId == msg.MsgId);
+                        if (existed) return false;
+                    }
+                    catch { /* ignore */ }
+                }
+                return true;
             }
         }
 

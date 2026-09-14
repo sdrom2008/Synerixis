@@ -139,6 +139,20 @@ DEALLOCATE PREPARE stmt;
             await db.Database.ExecuteSqlRawAsync(tokenExpSql);
             logger?.LogInformation("[SchemaPatcher] platform_connections.TokenExpiresAt ensured (MySQL)");
 
+            const string webhookEventSql = @"
+CREATE TABLE IF NOT EXISTS `processed_webhook_events` (
+  `Id` binary(16) NOT NULL,
+  `Platform` varchar(32) NOT NULL,
+  `EventKey` varchar(191) NOT NULL,
+  `ProcessedAt` datetime(6) NOT NULL,
+  `IsWeakKey` tinyint(1) NOT NULL DEFAULT 0,
+  PRIMARY KEY (`Id`),
+  UNIQUE KEY `IX_processed_webhook_events_Platform_EventKey` (`Platform`, `EventKey`)
+) CHARACTER SET utf8mb4;
+";
+            await db.Database.ExecuteSqlRawAsync(webhookEventSql);
+            logger?.LogInformation("[SchemaPatcher] processed_webhook_events table ensured (MySQL)");
+
         }
 
         private static async Task TrySqliteAsync(AppDbContext db, ILogger? logger)
@@ -166,7 +180,15 @@ DEALLOCATE PREPARE stmt;
                     UpdatedAt TEXT NULL,
                     SentAt TEXT NULL,
                     SentMessageId BLOB NULL
-                )"
+                )",
+                @"CREATE TABLE IF NOT EXISTS processed_webhook_events (
+                    Id BLOB NOT NULL PRIMARY KEY,
+                    Platform TEXT NOT NULL,
+                    EventKey TEXT NOT NULL,
+                    ProcessedAt TEXT NOT NULL,
+                    IsWeakKey INTEGER NOT NULL DEFAULT 0
+                )",
+                @"CREATE UNIQUE INDEX IF NOT EXISTS IX_processed_webhook_events_Platform_EventKey ON processed_webhook_events (Platform, EventKey)"
             })
             {
                 try

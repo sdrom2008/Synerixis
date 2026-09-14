@@ -182,6 +182,7 @@ builder.Services.AddCors(options =>
 
 // 全局异常处理中间件（在 UseRouting 后添加）
 builder.Services.AddSingleton<HttpContextFactory, HttpContextFactory>();
+builder.Services.AddSingleton<Synerixis.Infrastructure.Services.IOAuthBindStateStore, Synerixis.Infrastructure.Services.OAuthBindStateStore>();
 var jwtKey = builder.Configuration["Jwt:Key"] ?? "dev-secret-key-please-change-in-production";
 var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "Synerixis.Dev";
 var jwtAudience = builder.Configuration["Jwt:Audience"] ?? "Synerixis.Client";

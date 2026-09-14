@@ -14,7 +14,20 @@
         待发送草稿 {{ pendingDraftCount }} 条 — 请尽快审发，以免超时影响店铺响应表现
       </div>
       <div v-if="alertCount > 0" class="alert-banner" @click="setFilter('alerts')">
-        超时告警 {{ alertCount }} 条 — 点击查看即将超时 / 已超时会话（Push/声音待接入）
+        超时告警 {{ alertCount }} 条（已超时 {{ overdueCount }}）— 点击筛选
+      </div>
+      <div class="sla-notify-bar">
+        <el-switch
+          v-model="soundEnabled"
+          size="small"
+          inline-prompt
+          active-text="声音"
+          inactive-text="静音"
+          @change="persistNotifyPrefs"
+        />
+        <el-button size="small" text type="primary" @click="enableBrowserNotify">
+          {{ notifyPermission === 'granted' ? '浏览器提醒已开' : '开启提醒' }}
+        </el-button>
       </div>
 
       <div class="filters">
@@ -220,18 +233,36 @@
         </el-descriptions>
 
         <div class="orders-block">
-          <div class="orders-title">关联订单</div>
+          <div class="orders-title">
+            关联订单
+            <el-tag v-if="ordersSource" size="small" effect="plain" type="info" style="margin-left: 6px">
+              {{ ordersSource === 'platform' ? '平台' : '本地' }}
+            </el-tag>
+          </div>
           <div v-loading="ordersLoading">
+            <el-alert
+              v-if="ordersWarning"
+              type="warning"
+              :closable="false"
+              show-icon
+              :title="ordersWarningLabel"
+              style="margin-bottom: 8px"
+            />
             <EmptyState
               v-if="!ordersLoading && orders.length === 0"
               title="暂无订单"
-              desc="本地订单库暂无该买家记录；平台查单失败时也会显示为空。"
+              desc="本地与平台均未查到该买家订单，或平台回源失败。"
               icon="Document"
             />
-            <div v-for="o in orders" :key="o.id || o.orderNo" class="order-card">
+            <div v-for="o in orders" :key="o.id || o.orderNo || o.summary" class="order-card">
               <div class="order-row">
                 <strong>{{ o.orderNo || '—' }}</strong>
-                <el-tag size="small" effect="plain">{{ o.status || '—' }}</el-tag>
+                <div class="order-tags">
+                  <el-tag size="small" effect="plain">{{ o.status || '—' }}</el-tag>
+                  <el-tag size="small" :type="(o.source || ordersSource) === 'platform' ? 'warning' : 'success'" effect="plain">
+                    {{ (o.source || ordersSource) === 'platform' ? '平台' : '本地' }}
+                  </el-tag>
+                </div>
               </div>
               <div class="order-meta">
                 <span>金额 {{ formatAmount(o.totalAmount ?? o.paymentAmount) }}</span>
@@ -239,6 +270,9 @@
               </div>
               <div v-if="o.logisticsNo" class="order-meta">
                 {{ o.logisticsCompany || '物流' }} {{ o.logisticsNo }}
+              </div>
+              <div v-if="o.summary && (o.source || ordersSource) === 'platform'" class="order-meta">
+                {{ o.summary }}
               </div>
             </div>
           </div>
@@ -249,7 +283,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { Refresh } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import EmptyState from '@/components/EmptyState.vue'
@@ -283,9 +317,18 @@ const shopFilter = ref('')
 const shopOptions = ref<ShopOption[]>([])
 const orders = ref<SessionOrderItem[]>([])
 const ordersLoading = ref(false)
+const ordersSource = ref<string>('')
+const ordersWarning = ref<string | null>(null)
 const sessions = ref<SessionItem[]>([])
 const pendingDraftCount = ref(0)
 const alertCount = ref(0)
+const overdueCount = ref(0)
+const prevOverdueCount = ref(0)
+const soundEnabled = ref(localStorage.getItem('sx.sla.sound') !== '0')
+const notifyPermission = ref<NotificationPermission>(
+  typeof Notification !== 'undefined' ? Notification.permission : 'denied',
+)
+let alertPollTimer: ReturnType<typeof setInterval> | null = null
 const responseSlaHours = ref(12)
 const selectedId = ref<string | null>(null)
 const messages = ref<MessageItem[]>([])
@@ -443,12 +486,84 @@ async function refreshAll() {
   if (selectedId.value) await selectSession(selectedId.value)
 }
 
+const ordersWarningLabel = computed(() => {
+  const w = ordersWarning.value
+  if (w === 'platform_lookup_failed') return '平台查单失败，已返回空列表'
+  if (w === 'platform_empty') return '平台未查到订单'
+  if (w === 'platform_unsupported_or_missing_customer') return '无法回源平台（缺平台或买家 ID）'
+  return w || ''
+})
+
+function persistNotifyPrefs() {
+  localStorage.setItem('sx.sla.sound', soundEnabled.value ? '1' : '0')
+}
+
+async function enableBrowserNotify() {
+  if (typeof Notification === 'undefined') {
+    ElMessage.warning('当前浏览器不支持通知')
+    return
+  }
+  const perm = await Notification.requestPermission()
+  notifyPermission.value = perm
+  localStorage.setItem('sx.sla.notify', perm === 'granted' ? '1' : '0')
+  if (perm === 'granted') ElMessage.success('浏览器提醒已开启')
+  else ElMessage.info('未授予通知权限')
+}
+
+function playSlaBeep() {
+  try {
+    const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
+    if (!Ctx) return
+    const ctx = new Ctx()
+    const osc = ctx.createOscillator()
+    const gain = ctx.createGain()
+    osc.type = 'sine'
+    osc.frequency.value = 880
+    gain.gain.value = 0.08
+    osc.connect(gain)
+    gain.connect(ctx.destination)
+    osc.start()
+    setTimeout(() => {
+      osc.stop()
+      ctx.close()
+    }, 180)
+  } catch {
+    /* ignore */
+  }
+}
+
+function maybeNotifySla(newOverdue: number) {
+  if (newOverdue > prevOverdueCount.value && prevOverdueCount.value >= 0) {
+    if (soundEnabled.value) playSlaBeep()
+    if (
+      notifyPermission.value === 'granted' &&
+      localStorage.getItem('sx.sla.notify') === '1' &&
+      typeof Notification !== 'undefined'
+    ) {
+      try {
+        new Notification('Synerixis SLA', {
+          body: `已超时会话增至 ${newOverdue} 条，请尽快处理`,
+          silent: true,
+        })
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+  prevOverdueCount.value = newOverdue
+}
+
 async function loadAlerts() {
   try {
     const alerts = await getMerchantAlerts()
     alertCount.value = alerts?.total ?? alerts?.items?.length ?? 0
+    const items = alerts?.items || []
+    const overdue = items.filter((a) => a.slaUrgency === 'overdue').length
+    overdueCount.value = overdue
+    maybeNotifySla(overdue)
   } catch {
     alertCount.value = 0
+    overdueCount.value = 0
   }
 }
 
@@ -466,8 +581,12 @@ async function loadOrders(sessionId: string) {
   try {
     const res = await getSessionOrders(sessionId)
     orders.value = res.items || []
+    ordersSource.value = res.source || (orders.value[0]?.source ?? '')
+    ordersWarning.value = res.warning ?? null
   } catch {
     orders.value = []
+    ordersSource.value = ''
+    ordersWarning.value = null
   } finally {
     ordersLoading.value = false
   }
@@ -640,7 +759,17 @@ async function onDiscard() {
   }
 }
 
-onMounted(() => { loadShopOptions(); refreshAll() })
+onMounted(() => {
+  loadShopOptions()
+  refreshAll()
+  alertPollTimer = setInterval(() => {
+    loadAlerts()
+  }, 45000)
+})
+
+onUnmounted(() => {
+  if (alertPollTimer) clearInterval(alertPollTimer)
+})
 </script>
 
 <style scoped lang="scss">
@@ -717,6 +846,17 @@ onMounted(() => { loadShopOptions(); refreshAll() })
 }
 .orders-block {
   margin: 0 12px 16px;
+}
+.sla-notify-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px 8px;
+}
+.order-tags {
+  display: flex;
+  gap: 4px;
+  align-items: center;
 }
 .orders-title {
   font-weight: 600;

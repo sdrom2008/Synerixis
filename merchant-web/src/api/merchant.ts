@@ -138,10 +138,19 @@ export interface SessionOrderItem {
   shippedAt?: string
   logisticsNo?: string
   logisticsCompany?: string
+  /** local | platform */
+  source?: string
+  summary?: string
 }
 
 export function getSessionOrders(sessionId: string) {
-  return request<{ items: SessionOrderItem[]; total?: number; empty?: boolean }>({
+  return request<{
+    items: SessionOrderItem[]
+    total?: number
+    empty?: boolean
+    source?: string
+    warning?: string | null
+  }>({
     url: `/api/merchant/sessions/${sessionId}/orders`,
   })
 }

@@ -67,9 +67,12 @@ POST /api/auth/init-agent
 - `GET|POST /api/seller/team`，`PATCH /api/seller/team/{id}`，`POST .../reset-password`
 - `GET /api/merchant/sessions`（query：`status`、`platform`、`connectionId`、`platformShopId`）、`/drafts`、`/alerts` — Seller 与同店坐席 JWT 均可（按 `shopId`）
 - `GET /api/merchant/shop-options` — 收件箱多店下拉（全角色）
-- `GET /api/merchant/sessions/{id}/orders` — 会话关联订单（本地优先，空列表不炸）
-- `GET /api/merchant/connections`、`POST .../bind/callback`、`POST .../unbind/{platform}`、`POST .../connections/{id}/refresh`
+- `GET /api/merchant/sessions/{id}/orders` — 会话关联订单（本地优先；空则平台回源，失败 `items=[]` + `warning`，带来源 `source`）
+- `GET /api/merchant/usage` — 计费用量：`draftsToday` / `sessionsToday` / `connectedShops` / `quota` / `subscription*`
+- `GET /api/merchant/connections`、`POST .../bind/callback`、**匿名 GET** `.../bind/callback`（及 `/api/oauth/{platform}/callback`）→ redirect `/shops?bound=1`
+- `POST .../unbind/{platform}`、`POST .../connections/{id}/refresh`
 - 后台：`PlatformTokenRefreshHostedService` 约每 45 分钟扫描即将过期连接并刷新
+- Webhook 幂等：`ProcessedWebhookEvent`（Platform+EventKey 唯一 try-insert）
 
 ## MVP 验收清单
 
@@ -79,10 +82,13 @@ POST /api/auth/init-agent
 - [ ] **Agent 禁绑店**：Agent 进 `/shops` 见友好无权限提示；API 返回 403
 - [ ] **收件箱**：会话列表 + 待发草稿审发 + 转人工 + SLA 徽章
 - [ ] **多店筛选**：顶栏「全部店铺 / 各已连接平台店铺」；列表项显示平台与店铺昵称
-- [ ] **订单侧栏**：选中会话后「详情」区显示订单卡片（单号/状态/金额/时间）或明确空态
+- [ ] **订单侧栏**：选中会话后「详情」区显示订单卡片（本地/平台来源标签）或明确空态 + warning
 - [ ] **Token 刷新**：连接列表有过期提示；可手动「刷新 Token」；后台 HostedService 自动扫刷新
 - [ ] **AI 设置（Supervisor）**：可读写本店语气 / OutboundMode / SLA
+- [ ] **OAuth GET 回调**：授权完成后落到 `/shops?bound=1` 并 toast 刷新
+- [ ] **SLA 声音/通知**：收件箱可开声音蜂鸣 + 浏览器 Notification（需点一次开启）
+- [ ] **计费页**：真实 usage + 订阅档位/额度；套餐说明对齐 PRICING_DRAFT
 
 ### 遗留（非本次 MVP）
 
-- Admin-console 深化、计费深化、Webhook 幂等存储、Push/声音告警、RegimeTrader、全自动回复
+- Admin-console 深化、支付网关、RegimeTrader、全自动回复

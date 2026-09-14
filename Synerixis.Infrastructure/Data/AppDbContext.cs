@@ -25,6 +25,7 @@ namespace Synerixis.Infrastructure.Data
         public DbSet<AgentStat> AgentStats { get; set; }
         public DbSet<PlatformConnection> PlatformConnections { get; set; }
         public DbSet<DraftMessage> DraftMessages { get; set; }
+        public DbSet<ProcessedWebhookEvent> ProcessedWebhookEvents { get; set; }
 
 
 
@@ -353,6 +354,26 @@ namespace Synerixis.Infrastructure.Data
                       .HasForeignKey(d => d.ChatSessionId)
                       .OnDelete(DeleteBehavior.Cascade);
             });
+            modelBuilder.Entity<ProcessedWebhookEvent>(entity =>
+            {
+                entity.ToTable("processed_webhook_events");
+                entity.HasKey(e => e.Id);
+
+                entity.Property(e => e.Platform)
+                      .HasColumnType("varchar(32)")
+                      .HasMaxLength(32)
+                      .IsRequired();
+
+                entity.Property(e => e.EventKey)
+                      .HasColumnType("varchar(191)")
+                      .HasMaxLength(191)
+                      .IsRequired();
+
+                entity.HasIndex(e => new { e.Platform, e.EventKey })
+                      .IsUnique()
+                      .HasDatabaseName("IX_processed_webhook_events_Platform_EventKey");
+            });
+
 
             modelBuilder.Entity<PlatformConnection>(entity =>
             {
