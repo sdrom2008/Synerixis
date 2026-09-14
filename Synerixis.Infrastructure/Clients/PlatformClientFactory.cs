@@ -29,7 +29,7 @@ namespace Synerixis.Infrastructure.Clients
         }
 
         /// <summary>
-        /// 获取指定平台的客户端（每次创建新实例，使用 Scoped 生命周期）
+        /// 获取指定平台的客户端（复用当前 Scope，避免 CreateScope 后立即 Dispose 导致客户端失效）
         /// </summary>
         public IPlatformClient GetClient(string platform)
         {
@@ -41,11 +41,10 @@ namespace Synerixis.Infrastructure.Clients
                 throw new NotSupportedException($"Platform '{platform}' is not supported in Phase 1. Supported: SHOPEE, TIKTOK");
             }
 
-            using var scope = _serviceProvider.CreateScope();
             return normalized switch
             {
-                "SHOPEE" => scope.ServiceProvider.GetRequiredService<ShopeePlatformClient>(),
-                "TIKTOK" => scope.ServiceProvider.GetRequiredService<TikTokShopPlatformClient>(),
+                "SHOPEE" => _serviceProvider.GetRequiredService<ShopeePlatformClient>(),
+                "TIKTOK" => _serviceProvider.GetRequiredService<TikTokShopPlatformClient>(),
                 _ => throw new NotSupportedException($"Platform '{platform}' is not supported")
             };
         }

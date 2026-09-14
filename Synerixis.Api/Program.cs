@@ -105,9 +105,11 @@ builder.Services.AddScoped<IAgent, CompetitorAnalysisAgent>();
 // 如果有其他 Agent，在这里继续加
 builder.Services.AddScoped<AliyunSmsService>();
 
-// --- PLATFORM CLIENTS (Shopee, Taobao, Douyin) ---
+// --- PLATFORM CLIENTS (Shopee, TikTok Shop) ---
 builder.Services.AddScoped<ShopeePlatformClient>();
+builder.Services.AddScoped<TikTokShopPlatformClient>();
 builder.Services.AddScoped<PlatformClientRouter>();
+// OrderAgent 经 IPlatformClientRouter 回源查单；未配置平台密钥时客户端内部 skip/null
 // --- END PLATFORM CLIENTS ---
 
 // 微信支付（生产环境才启用，开发环境暂时注释）

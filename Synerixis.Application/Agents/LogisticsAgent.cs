@@ -12,7 +12,7 @@ namespace Synerixis.Application.Agents
     /// </summary>
     public class LogisticsAgent : IAgent
     {
-        public ChatIntent SupportedIntent => ChatIntent.QueryLogistics;
+        public ChatIntent SupportedIntent => ChatIntent.LogisticsQuery;
 
         private readonly IECommercePlatformClient _platformClient;
 
