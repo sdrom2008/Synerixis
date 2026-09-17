@@ -1,4 +1,5 @@
 ﻿using Synerixis.Domain.Common;
+using System.ComponentModel.DataAnnotations.Schema;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -11,6 +12,11 @@ namespace Synerixis.Domain.Entities
     public class Conversation : AggregateRoot<Guid>
     {
         public string Title { get; private set; } = "新对话";
+        /// <summary>
+        /// In-memory only. Persisted messages belong to <see cref="ChatSession"/> via ChatSessionId.
+        /// Not mapped — avoids EF shadow FK ConversationId on chat_messages.
+        /// </summary>
+        [NotMapped]
         public List<ChatMessage> Messages { get; private set; } = new();
         public DateTime CreatedAt { get; private set; } = DateTime.UtcNow;
         public DateTime? LastActiveAt { get; private set; }

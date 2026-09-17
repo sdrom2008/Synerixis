@@ -304,6 +304,11 @@ namespace Synerixis.Infrastructure.Data
                 entity.ToTable("conversations");
                 entity.HasKey(c => c.Id);
 
+                // Messages live on ChatSession (CS path) via ChatSessionId only.
+                // Ignoring this collection prevents EF from creating a shadow FK
+                // ConversationId on chat_messages (FullReset has no such column).
+                entity.Ignore(c => c.Messages);
+
                 entity.HasOne(c => c.Seller)
                       .WithMany(s => s.Conversations)
                       .HasForeignKey(c => c.SellerId)
@@ -315,6 +320,7 @@ namespace Synerixis.Infrastructure.Data
                 entity.ToTable("chat_messages");
                 entity.HasKey(m => m.Id);
 
+                // Single owner: ChatSession. Do not map ConversationId.
                 entity.HasOne(m => m.ChatSession)
                       .WithMany(c => c.Messages)
                       .HasForeignKey(m => m.ChatSessionId)

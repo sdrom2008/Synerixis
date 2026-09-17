@@ -225,8 +225,6 @@ namespace Synerixis.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("longtext");
 
-                    b.Property<byte[]>("ConversationId")
-                        .HasColumnType("binary(16)");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime(6)");
@@ -253,7 +251,6 @@ namespace Synerixis.Infrastructure.Migrations
 
                     b.HasIndex("ChatSessionId");
 
-                    b.HasIndex("ConversationId");
 
                     b.ToTable("chat_messages", (string)null);
                 });
@@ -888,9 +885,6 @@ namespace Synerixis.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("Synerixis.Domain.Entities.Conversation", null)
-                        .WithMany("Messages")
-                        .HasForeignKey("ConversationId");
 
                     b.Navigation("ChatSession");
                 });
@@ -1029,10 +1023,6 @@ namespace Synerixis.Infrastructure.Migrations
                     b.Navigation("Messages");
                 });
 
-            modelBuilder.Entity("Synerixis.Domain.Entities.Conversation", b =>
-                {
-                    b.Navigation("Messages");
-                });
 
             modelBuilder.Entity("Synerixis.Domain.Entities.Product", b =>
                 {

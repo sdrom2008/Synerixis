@@ -46,6 +46,7 @@ dotnet run --project Synerixis.Api
 ```
 
 `EnsureCreated` 在表已存在时不会改结构；本脚本已含全部列，一般无需再跑增量 SQL。  
+若出现 `Unknown column '…ConversationId'`（FullReset 后 Admin/demo），先拉最新代码（模型已去掉该影子 FK）；若仍跑旧二进制，再执行 `Migrations/Fix_ConversationId_after_fullreset.sql`（无需重跑 FullReset）。  
 Development 下仍可调用 `POST /api/dev/seed-demo` 幂等补齐（若你改掉了固定 Guid 种子）。
 
 ### 4. 演示账号

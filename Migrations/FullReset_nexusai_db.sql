@@ -328,6 +328,8 @@ CREATE TABLE `chat_sessions` (
     FOREIGN KEY (`AssignedAgentId`) REFERENCES `agents` (`Id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- chat_messages: owned solely by chat_sessions (ChatSessionId).
+-- No ConversationId column — legacy Conversation.Messages is NotMapped; CS path uses ChatSession only.
 CREATE TABLE `chat_messages` (
   `Id` binary(16) NOT NULL,
   `ChatSessionId` binary(16) NOT NULL,

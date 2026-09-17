@@ -135,11 +135,12 @@ namespace Synerixis.Api.Controllers
                 .Take(pageSize)
                 .ToListAsync();
 
+            // Messages are NotMapped (owned by ChatSession); legacy Conversation list has no DB messages.
             var result = conversations.Select(c => new
             {
                 id = c.Id,
                 title = c.Title,
-                lastMessage = c.Messages.OrderByDescending(m => m.CreatedAt).FirstOrDefault()?.Content ?? "暂无消息",
+                lastMessage = "暂无消息",
                 lastActiveAt = c.LastActiveAt?.ToString("yyyy-MM-dd HH:mm")
             });
 
@@ -171,31 +172,19 @@ namespace Synerixis.Api.Controllers
             }
 
             var conversation = await _conversationRepository.FirstOrDefaultAsync(
-                c => c.Id == id && c.SellerId == sellerId,
-                include: q => q.Include(c => c.Messages));
+                c => c.Id == id && c.SellerId == sellerId);
 
             if (conversation == null)
             {
                 return NotFound(new { message = "会话不存在" });
             }
 
-            var messages = conversation.Messages
-                .OrderBy(m => m.CreatedAt)
-                .Select(m => new
-                {
-                    isFromUser = m.SenderType == 1,
-                    content = m.Content,
-                    messageType = m.MessageType == 1 ? "text" : "other",
-                    data = m.Metadata != null
-                        ? JsonSerializer.Deserialize<object>(m.Metadata)
-                        : null
-                });
-
+            // Persisted chat history is on ChatSession/chat_messages (CS path), not Conversation.
             return Ok(new
             {
                 conversationId = conversation.Id.ToString(),
                 title = conversation.Title,
-                messages
+                messages = Array.Empty<object>()
             });
         }
 
