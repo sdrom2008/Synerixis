@@ -30,13 +30,19 @@ namespace Synerixis.Api.Controllers
             if (userIdClaim == null || userTypeClaim == null)
                 throw new UnauthorizedAccessException("Token 无效");
 
+            var supportClaim = User.FindFirst("support") ?? User.FindFirst("impersonation");
+            var isSupport = supportClaim != null
+                && (string.Equals(supportClaim.Value, "true", StringComparison.OrdinalIgnoreCase)
+                    || supportClaim.Value == "1");
+
             return new CurrentUser
             {
                 UserId = Guid.Parse(userIdClaim.Value),
                 UserType = userTypeClaim.Value,
                 ShopId = shopIdClaim != null && Guid.TryParse(shopIdClaim.Value, out var sid)
                     ? sid
-                    : null
+                    : null,
+                IsSupport = isSupport
             };
         }
 
@@ -103,6 +109,7 @@ namespace Synerixis.Api.Controllers
         protected bool CanManageShopOwnerResources()
         {
             var current = GetCurrentUser();
+            if (current.IsSupport) return false;
             return current.IsSeller || current.IsSupervisor || current.IsAdmin;
         }
 
@@ -113,6 +120,9 @@ namespace Synerixis.Api.Controllers
         protected Guid GetTeamManagedShopId()
         {
             var current = GetCurrentUser();
+            if (current.IsSupport)
+                throw new UnauthorizedAccessException("支持会话不可管理团队");
+
             if (current.IsSeller)
                 return current.ShopId ?? current.UserId;
 

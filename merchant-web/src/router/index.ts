@@ -42,7 +42,7 @@ const routes: RouteRecordRaw[] = [
         path: 'billing',
         name: 'billing',
         component: () => import('@/views/Billing.vue'),
-        meta: { title: '计费', roles: ['Seller', 'Supervisor', 'Admin'] },
+        meta: { title: '计费', roles: ['Seller', 'Supervisor'] },
       },
       {
         path: 'quick-replies',
@@ -78,8 +78,24 @@ const router = createRouter({
 })
 
 router.beforeEach((to) => {
-  if (to.meta.public) return true
   const auth = useAuthStore()
+
+  // Admin enter-merchant：静默消费 supportToken，不 toast「系统账号进入店铺」
+  const rawSupport =
+    (to.query.supportToken as string | undefined) ||
+    (typeof to.query.token === 'string' && String(to.query.token).split('.').length === 3
+      ? (to.query.token as string)
+      : undefined)
+  if (rawSupport && rawSupport.split('.').length === 3) {
+    auth.setSession(rawSupport)
+    const q = { ...to.query }
+    delete q.supportToken
+    delete q.token
+    const path = to.name === 'login' || to.path === '/login' ? '/inbox' : to.path
+    return { path, query: q, replace: true }
+  }
+
+  if (to.meta.public) return true
   if (!auth.token) {
     return { name: 'login', query: { redirect: to.fullPath } }
   }
@@ -87,7 +103,7 @@ router.beforeEach((to) => {
   const allowed = (to.meta.roles as string[] | undefined) || null
   if (allowed && allowed.length > 0) {
     const ut = auth.userType
-    if (!allowed.includes(ut)) {
+    if (!allowed.includes(ut) || !auth.canAccessRoute(to.name)) {
       ElMessage.warning('无权限访问该页面，已返回收件箱')
       return { name: 'inbox' }
     }

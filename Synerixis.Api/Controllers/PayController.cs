@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Synerixis.Application.DTOs;
@@ -6,16 +6,15 @@ using Synerixis.Application.Interfaces;
 using Synerixis.Domain.Entities;
 using Synerixis.Infrastructure.Data;
 using System;
-using System.IO;
 using System.Security.Claims;
-using System.Security.Cryptography;
-using System.Security.Cryptography.X509Certificates;
-using System.Text;
-using System.Text.Json;
 using System.Threading.Tasks;
 
 namespace Synerixis.Api.Controllers
 {
+    /// <summary>
+    /// 充值/订阅：Seller 与 Supervisor 可发起；Agent 不可。
+    /// Supervisor 经 JWT shopId / Agents.ShopId 解析所属商户，勿用 Agent.Id 当 Seller.Id。
+    /// </summary>
     [ApiController]
     [Route("api/pay")]
     [Authorize]
@@ -32,30 +31,21 @@ namespace Synerixis.Api.Controllers
             _factory = factory ?? throw new ArgumentNullException(nameof(factory));
         }
 
-        // 统一创建支付接口（支持微信/支付宝）
         [HttpPost("create")]
-        [IgnoreAntiforgeryToken]  // 加这一行，忽略防伪
+        [IgnoreAntiforgeryToken]
         public async Task<IActionResult> Create([FromBody] PaymentCreateRequest request)
         {
             if (string.IsNullOrEmpty(request.Channel))
                 return BadRequest("缺少支付渠道 (wechat/alipay)");
 
-            var sellerIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (!Guid.TryParse(sellerIdStr, out var sellerId))
-                return Unauthorized("无效身份");
+            var (seller, err) = await ResolvePayingSellerAsync();
+            if (err != null) return err;
+            var sellerId = seller!.Id;
 
-            var seller = await _db.Sellers.FirstOrDefaultAsync(s => s.Id == sellerId);
-            if (seller == null)
-                return NotFound("商户不存在");
-
-            //获取openid 微信用的
-            // 微信支付：必须有 OpenId，从数据库读
             if (request.Channel == "wechat")
             {
                 if (string.IsNullOrEmpty(seller.OpenId))
                     return BadRequest("请先绑定微信账号");
-
-                // 直接写到 request 里（或传给 provider 的另一个参数，随你喜欢）
                 request.OpenId = seller.OpenId;
             }
 
@@ -63,7 +53,6 @@ namespace Synerixis.Api.Controllers
             if (provider == null)
                 return BadRequest($"不支持渠道: {request.Channel}");
 
-            // 微信需要 OpenId
             if (request.Channel == "wechat" && string.IsNullOrEmpty(seller.OpenId))
                 return BadRequest("请先绑定微信");
 
@@ -87,7 +76,6 @@ namespace Synerixis.Api.Controllers
                     return Content("fail");
                 }
 
-                // 步骤1: 让 provider 处理回调，获取结果
                 var notifyResult = await provider.HandleNotifyAsync(Request);
 
                 if (!notifyResult.Success)
@@ -95,11 +83,10 @@ namespace Synerixis.Api.Controllers
                     return Content(channel == "wechat" ? "<xml><return_code><![CDATA[FAIL]]></return_code><return_msg><![CDATA[验证失败]]></return_msg></xml>" : "fail");
                 }
 
-                // 步骤2: 查找订单（OutTradeNo 必须唯一）
                 var order = await _db.PayOrders.FirstOrDefaultAsync(o => o.OutTradeNo == notifyResult.OutTradeNo);
                 if (order == null)
                 {
-                    return Content(channel == "wechat" ? "<xml><return_code><![CDATA[SUCCESS]]></return_code><return_msg><![CDATA[OK]]></return_msg></xml>" : "success");  // 微信要求返回 SUCCESS
+                    return Content(channel == "wechat" ? "<xml><return_code><![CDATA[SUCCESS]]></return_code><return_msg><![CDATA[OK]]></return_msg></xml>" : "success");
                 }
 
                 if (order.Status == "paid")
@@ -107,13 +94,11 @@ namespace Synerixis.Api.Controllers
                     return Content(channel == "wechat" ? "<xml><return_code><![CDATA[SUCCESS]]></return_code><return_msg><![CDATA[OK]]></return_msg></xml>" : "success");
                 }
 
-                // 步骤3: 更新订单状态
                 order.Status = "paid";
                 order.TransactionId = notifyResult.TransactionId;
                 order.PaidAt = DateTime.UtcNow;
-                order.Channel = channel;  // 记录渠道（可选）
+                order.Channel = channel;
 
-                // 步骤4: 升级订阅（统一处理）
                 var seller = await _db.Sellers.FirstOrDefaultAsync(s => s.Id == order.SellerId);
                 if (seller != null)
                 {
@@ -122,14 +107,13 @@ namespace Synerixis.Api.Controllers
 
                 await _db.SaveChangesAsync();
 
-                // 步骤5: 返回微信/支付宝要求的响应格式
                 if (channel == "wechat")
                 {
                     return Content("<xml><return_code><![CDATA[SUCCESS]]></return_code><return_msg><![CDATA[OK]]></return_msg></xml>", "text/xml");
                 }
                 else
                 {
-                    return Content("success");  // 支付宝回调返回 success
+                    return Content("success");
                 }
             }
             catch (Exception)
@@ -149,9 +133,9 @@ namespace Synerixis.Api.Controllers
             if (order == null)
                 return NotFound("订单不存在");
 
-            // 可选：校验当前用户是否是订单拥有者
-            var sellerIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (sellerIdStr != order.SellerId.ToString())
+            var (seller, err) = await ResolvePayingSellerAsync();
+            if (err != null) return err;
+            if (seller!.Id != order.SellerId)
                 return Unauthorized("无权查看此订单");
 
             return Ok(new
@@ -162,7 +146,54 @@ namespace Synerixis.Api.Controllers
                 transactionId = order.TransactionId
             });
         }
-    }
 
- 
+        /// <summary>
+        /// Seller → UserId；Supervisor → shopId claim 或 Agents.ShopId；Agent/其他 → 403。
+        /// support/impersonation token 不可发起支付。
+        /// </summary>
+        private async Task<(Seller? seller, IActionResult? error)> ResolvePayingSellerAsync()
+        {
+            var userType = User.FindFirst("userType")?.Value
+                ?? User.FindFirst(ClaimTypes.Role)?.Value
+                ?? User.FindFirst("role")?.Value
+                ?? "";
+            var userIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                ?? User.FindFirst("userId")?.Value
+                ?? User.FindFirst("uid")?.Value;
+            if (!Guid.TryParse(userIdStr, out var userId))
+                return (null, Unauthorized("无效身份"));
+
+            var support = User.FindFirst("support")?.Value ?? User.FindFirst("impersonation")?.Value;
+            if (string.Equals(support, "true", StringComparison.OrdinalIgnoreCase) || support == "1")
+                return (null, StatusCode(403, new { message = "支持会话不可发起支付" }));
+
+            if (string.Equals(userType, "Seller", StringComparison.OrdinalIgnoreCase))
+            {
+                var seller = await _db.Sellers.FirstOrDefaultAsync(s => s.Id == userId);
+                if (seller == null)
+                    return (null, NotFound("商户不存在"));
+                return (seller, null);
+            }
+
+            if (string.Equals(userType, "Supervisor", StringComparison.OrdinalIgnoreCase))
+            {
+                Guid shopId;
+                var shopClaim = User.FindFirst("shopId")?.Value;
+                if (!Guid.TryParse(shopClaim, out shopId))
+                {
+                    var agent = await _db.Agents.AsNoTracking().FirstOrDefaultAsync(a => a.Id == userId);
+                    if (agent == null)
+                        return (null, NotFound("坐席不存在"));
+                    shopId = agent.ShopId;
+                }
+
+                var seller = await _db.Sellers.FirstOrDefaultAsync(s => s.Id == shopId);
+                if (seller == null)
+                    return (null, NotFound("商户不存在"));
+                return (seller, null);
+            }
+
+            return (null, StatusCode(403, new { message = "仅商家或主管可充值/购买订阅" }));
+        }
+    }
 }

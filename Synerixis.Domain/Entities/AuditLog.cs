@@ -59,5 +59,6 @@ namespace Synerixis.Domain.Entities
         public const string AdminMerchantDisable = "admin.merchant.disable";
         public const string AdminMerchantEnable = "admin.merchant.enable";
         public const string AdminSubscriptionUpdate = "admin.subscription.update";
+        public const string AdminEnterMerchant = "admin.enter_merchant";
     }
 }

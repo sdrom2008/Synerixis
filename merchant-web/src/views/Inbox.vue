@@ -88,7 +88,7 @@
         <el-radio-group v-model="assignmentFilter" size="small" @change="onFilterChange" class="assign-filter">
           <el-radio-button label="">全部分配</el-radio-button>
           <el-radio-button label="unassigned">未分配</el-radio-button>
-          <el-radio-button label="mine">分给我</el-radio-button>
+          <el-radio-button label="mine">我的</el-radio-button>
         </el-radio-group>
       </div>
 
@@ -496,8 +496,9 @@ const claiming = ref(false)
 const agentsLoading = ref(false)
 const shopAgents = ref<ShopAgentItem[]>([])
 const assignAgentId = ref<string>('')
-const assignmentFilter = ref('')
 const auth = useAuthStore()
+/** Agent 默认「我的」；Seller/Supervisor/Admin/support 默认全店 */
+const assignmentFilter = ref(auth.userType === 'Agent' && !auth.isSupport ? 'mine' : '')
 const statusFilter = ref('')
 const shopFilter = ref('')
 const shopOptions = ref<ShopOption[]>([])
@@ -651,10 +652,14 @@ const listEmptyDesc = computed(() => {
   return '绑定店铺并有买家消息后，会话会出现在这里。AI 会生成草稿，需人工确认后才会发到平台。'
 })
 
+function defaultAssignmentFilter() {
+  return auth.userType === 'Agent' && !auth.isSupport ? 'mine' : ''
+}
+
 function clearFilters() {
   statusFilter.value = ''
   shopFilter.value = ''
-  assignmentFilter.value = ''
+  assignmentFilter.value = defaultAssignmentFilter()
   onFilterChange()
 }
 

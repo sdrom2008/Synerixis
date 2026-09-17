@@ -30,7 +30,7 @@
 | 页面 | 能力 |
 |------|------|
 | 概览 | 真 KPI（商家/连接/今日会话/待审草稿/转人工/SLA）；近 7 日趋势接 `usage/daily` |
-| 商家 | 分页/搜索；启用禁用、改订阅（PATCH）；侧栏详情看连接数/会话数 |
+| 商家 | 分页/搜索；启用禁用、改订阅（PATCH）；侧栏详情；**进入商户后台**（support token） |
 | 店铺连接 | 分页列表；空态提示 seed-demo |
 | 会话监控 | 最近会话只读；空态友好 |
 | 用量计费 | 汇总 + 日趋势；导出 CSV（`/usage/export`） |
@@ -47,6 +47,7 @@
 | GET | `/api/admin/merchants/{id}` | 商家详情 + 连接列表 + 会话/草稿摘要 |
 | PATCH | `/api/admin/merchants/{id}/active` | 启用/禁用 |
 | PATCH | `/api/admin/merchants/{id}/subscription` | 改订阅 Free/Basic/Pro |
+| POST | `/api/admin/merchants/{id}/enter` | 签发短时 support JWT + merchantWebUrl（审计 `admin.enter_merchant`） |
 | GET | `/api/admin/shops` 或 `/connections` | 店铺连接列表 |
 | GET | `/api/admin/sessions?take=` | 最近会话只读 |
 | GET | `/api/admin/usage` | 全站用量汇总（含 AI token / exact·estimated） |

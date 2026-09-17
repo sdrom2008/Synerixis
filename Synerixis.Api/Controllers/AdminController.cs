@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.Extensions.Configuration;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Synerixis.Application.Interfaces;
@@ -22,13 +23,23 @@ namespace Synerixis.Api.Controllers
         private readonly IAuditLogger _audit;
         private readonly ISystemSettingsService _ops;
         private readonly LlmRuntime _llm;
+        private readonly IAuthService _auth;
+        private readonly IConfiguration _config;
 
-        public AdminController(AppDbContext db, IAuditLogger audit, ISystemSettingsService ops, LlmRuntime llm)
+        public AdminController(
+            AppDbContext db,
+            IAuditLogger audit,
+            ISystemSettingsService ops,
+            LlmRuntime llm,
+            IAuthService auth,
+            IConfiguration config)
         {
             _db = db;
             _audit = audit ?? throw new ArgumentNullException(nameof(audit));
             _ops = ops ?? throw new ArgumentNullException(nameof(ops));
             _llm = llm ?? throw new ArgumentNullException(nameof(llm));
+            _auth = auth ?? throw new ArgumentNullException(nameof(auth));
+            _config = config ?? throw new ArgumentNullException(nameof(config));
         }
 
         /// <summary>Dashboard KPI：商家数、连接店铺、今日会话、待手审草稿、SLA overdue 粗计数</summary>
@@ -181,6 +192,51 @@ namespace Synerixis.Api.Controllers
                 handoffPending,
                 pendingDrafts,
                 connections
+            });
+        }
+
+
+        /// <summary>
+        /// 平台运营进入商户后台：签发短时 support token（Seller 范围 + support/impersonation），
+        /// 仅记 Admin 审计 admin.enter_merchant；不写商家侧可见坐席登录。
+        /// </summary>
+        [HttpPost("merchants/{id:guid}/enter")]
+        public async Task<IActionResult> EnterMerchant(Guid id)
+        {
+            var seller = await _db.Sellers.AsNoTracking().FirstOrDefaultAsync(s => s.Id == id);
+            if (seller == null) return NotFound(new { message = "商家不存在" });
+
+            var actorId = TryGetActorId();
+            if (!actorId.HasValue)
+                return Unauthorized(new { message = "无效 Admin 身份" });
+
+            const int expiryMinutes = 60;
+            var token = _auth.GenerateSupportJwt(seller.Id, actorId.Value, expiryMinutes);
+            var expiresAt = DateTime.UtcNow.AddMinutes(expiryMinutes);
+
+            await _audit.LogAsync(
+                actorId,
+                "Admin",
+                AuditActions.AdminEnterMerchant,
+                "Seller",
+                seller.Id.ToString(),
+                new { merchantId = seller.Id, nickname = seller.Nickname, expiresAt, support = true },
+                seller.Id);
+
+            var baseUrl = (_config["Frontends:MerchantWebBaseUrl"]
+                ?? _config["MerchantWeb:BaseUrl"]
+                ?? "http://localhost:5174").TrimEnd('/');
+            var merchantWebUrl = $"{baseUrl}/inbox?supportToken={Uri.EscapeDataString(token)}";
+
+            return Ok(new
+            {
+                token,
+                expiresAt,
+                expiryMinutes,
+                merchantId = seller.Id,
+                nickname = seller.Nickname,
+                merchantWebUrl,
+                note = "support token：全店收件箱；商家侧不展示平台进入提示"
             });
         }
 

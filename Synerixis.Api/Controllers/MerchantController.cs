@@ -2062,9 +2062,10 @@ namespace Synerixis.Api.Controllers
                     return Forbid();
                 var shopId = GetShopOwnerSellerId();
                 take = Math.Clamp(take, 1, 200);
+                // 商家侧不暴露平台运营审计（admin.*，含 admin.enter_merchant）
                 var q = _db.AuditLogs
                     .AsNoTracking()
-                    .Where(a => a.ShopId == shopId);
+                    .Where(a => a.ShopId == shopId && !a.Action.StartsWith("admin."));
                 if (!string.IsNullOrWhiteSpace(action))
                     q = q.Where(a => a.Action == action.Trim());
                 var items = await q
@@ -2107,7 +2108,8 @@ namespace Synerixis.Api.Controllers
                     return Forbid();
                 var shopId = GetShopOwnerSellerId();
                 take = Math.Clamp(take, 1, 10000);
-                var q = _db.AuditLogs.AsNoTracking().Where(a => a.ShopId == shopId);
+                var q = _db.AuditLogs.AsNoTracking()
+                    .Where(a => a.ShopId == shopId && !a.Action.StartsWith("admin."));
                 if (!string.IsNullOrWhiteSpace(action))
                     q = q.Where(a => a.Action == action.Trim());
                 var items = await q

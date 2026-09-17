@@ -1,14 +1,15 @@
 using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Synerixis.Application.Interfaces
 {
     public interface IAuthService
     {
         string GenerateJwt(Guid userId, string userType, Guid? shopId = null);
-        // 未来可扩展：RefreshToken、ValidateToken 等
+
+        /// <summary>
+        /// Platform Admin enter-merchant support token: acts as Seller for target shop,
+        /// short-lived, claims support/impersonation=true. Does not create a merchant Agent seat.
+        /// </summary>
+        string GenerateSupportJwt(Guid sellerShopId, Guid adminActorId, int expiryMinutes = 60);
     }
 }

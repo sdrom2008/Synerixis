@@ -43,13 +43,16 @@
       <el-table-column prop="createdAt" label="注册时间" min-width="160">
         <template #default="{ row }">{{ formatTime(row.createdAt) }}</template>
       </el-table-column>
-      <el-table-column label="操作" width="240" fixed="right">
+      <el-table-column label="操作" width="320" fixed="right">
         <template #default="{ row }">
           <el-button text type="primary" size="small" @click="openDetail(row)">详情</el-button>
           <el-button text type="primary" size="small" @click="onToggleActive(row)">
             {{ row.isActive ? '禁用' : '启用' }}
           </el-button>
           <el-button text type="warning" size="small" @click="onChangeSub(row)">改订阅</el-button>
+          <el-button text type="success" size="small" :loading="enterLoadingId === String(row.id)" @click="onEnterMerchant(row)">
+            进入商户后台
+          </el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -133,6 +136,9 @@
           <el-empty v-else description="该商家暂无店铺连接" :image-size="56" />
 
           <div class="drawer-actions">
+            <el-button type="success" :loading="enterLoadingId === String(detail.id)" @click="onEnterMerchant(detail)">
+              进入商户后台
+            </el-button>
             <el-button type="primary" plain @click="onToggleActive(detail)">
               {{ detail.isActive ? '禁用商家' : '启用商家' }}
             </el-button>
@@ -165,6 +171,7 @@ import {
   getMerchant,
   setMerchantActive,
   setMerchantSubscription,
+  enterMerchant,
 } from '@/api/admin'
 
 const loading = ref(false)
@@ -183,6 +190,7 @@ const subDialog = ref(false)
 const subLevel = ref('Free')
 const subSaving = ref(false)
 const subTargetId = ref('')
+const enterLoadingId = ref('')
 
 function formatTime(v: unknown) {
   if (!v) return '—'
@@ -271,6 +279,26 @@ async function confirmSub() {
     ElMessage.error('更新失败')
   } finally {
     subSaving.value = false
+  }
+}
+
+
+async function onEnterMerchant(row: Record<string, unknown>) {
+  const id = String(row.id || '')
+  if (!id) return
+  enterLoadingId.value = id
+  try {
+    const res = await enterMerchant(id)
+    const url = res.merchantWebUrl
+    if (!url) {
+      ElMessage.error('未返回商户后台地址')
+      return
+    }
+    window.open(url, '_blank', 'noopener,noreferrer')
+  } catch {
+    ElMessage.error('进入商户后台失败')
+  } finally {
+    enterLoadingId.value = ''
   }
 }
 

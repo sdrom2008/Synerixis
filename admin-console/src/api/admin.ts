@@ -138,6 +138,21 @@ export function setMerchantSubscription(id: string, level: string) {
   })
 }
 
+export function enterMerchant(id: string) {
+  return request<{
+    token: string
+    expiresAt?: string
+    expiryMinutes?: number
+    merchantId?: string
+    nickname?: string
+    merchantWebUrl?: string
+    note?: string
+  }>({
+    url: `/api/admin/merchants/${encodeURIComponent(id)}/enter`,
+    method: 'POST',
+  })
+}
+
 function triggerCsvDownload(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')

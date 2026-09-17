@@ -14,12 +14,14 @@ export interface MerchantProfile {
   role?: string
   shopId?: string
   subscriptionLevel?: string
+  /** Platform Admin enter-merchant support/impersonation */
+  support?: boolean
 }
 
-/** 全菜单角色 */
+/** 全菜单角色（support token 除外） */
 const FULL_MENU_ROLES = new Set(['Seller', 'Supervisor', 'Admin'])
 
-/** 普通坐席可访问 */
+/** 普通坐席可访问；support 会话同此范围（全店 inbox，无团队/计费写） */
 const AGENT_ROUTES = new Set(['inbox', 'overview', 'onboarding'])
 
 export const useAuthStore = defineStore('auth', () => {
@@ -30,11 +32,14 @@ export const useAuthStore = defineStore('auth', () => {
 
   const userType = computed(() => (profile.value?.userType || 'Seller') as string)
 
+  const isSupport = computed(() => !!profile.value?.support)
+
   const displayName = computed(
     () => profile.value?.name || profile.value?.nickname || profile.value?.userId || '未命名',
   )
 
   const identityLabel = computed(() => {
+    if (isSupport.value) return '平台支持'
     const t = userType.value
     if (t === 'Seller') return '商家'
     if (t === 'Supervisor') return '坐席 · Supervisor'
@@ -45,16 +50,19 @@ export const useAuthStore = defineStore('auth', () => {
 
   const permissions = computed(() => {
     const t = userType.value
-    const full = FULL_MENU_ROLES.has(t)
+    const support = isSupport.value
+    const full = FULL_MENU_ROLES.has(t) && !support
     return {
       canManageTeam: full,
       canManageShops: full,
       canManageAi: full,
-      canViewBilling: full,
+      // C: Seller + Supervisor 可看计费/充值；Agent / support 不可
+      canViewBilling: (t === 'Seller' || t === 'Supervisor') && !support,
       canViewOverview: true,
       canViewInbox: true,
       fullMenu: full,
-      isAgentOnly: t === 'Agent',
+      isAgentOnly: t === 'Agent' && !support,
+      isSupport: support,
     }
   })
 
@@ -67,35 +75,43 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
+  function claimTruthy(v: unknown): boolean {
+    return v === true || v === 'true' || v === '1'
+  }
+
   function setSession(newToken: string, p?: MerchantProfile) {
     token.value = newToken
     localStorage.setItem(TOKEN_KEY, newToken)
-    if (p) {
-      const normalized: MerchantProfile = {
-        ...p,
-        name: p.name || p.nickname,
-        nickname: p.nickname || p.name,
-        role: p.role || p.userType,
-        userType: p.userType || p.role || 'Seller',
-      }
-      // 粘贴 Token 时尝试从 JWT payload 解析
-      if (!normalized.userType || normalized.userType === 'Seller') {
-        const fromJwt = decodeJwtClaims(newToken)
-        if (fromJwt) {
-          normalized.userType = (fromJwt.userType || fromJwt.role || normalized.userType) as string
-          normalized.role = (fromJwt.role || fromJwt.userType || normalized.role) as string
-          normalized.shopId = (fromJwt.shopId as string) || normalized.shopId
-          normalized.userId = (fromJwt.userId || fromJwt.sub || fromJwt.uid || normalized.userId) as string
-        }
-      }
-      profile.value = normalized
-      localStorage.setItem(PROFILE_KEY, JSON.stringify(normalized))
+    const fromJwt = decodeJwtClaims(newToken)
+    const normalized: MerchantProfile = {
+      ...(p || {}),
+      name: p?.name || p?.nickname,
+      nickname: p?.nickname || p?.name,
+      role: p?.role || p?.userType,
+      userType: p?.userType || p?.role || 'Seller',
+      support: !!p?.support,
     }
+    if (fromJwt) {
+      normalized.userType = (fromJwt.userType || fromJwt.role || normalized.userType) as string
+      normalized.role = (fromJwt.role || fromJwt.userType || normalized.role) as string
+      normalized.shopId = (fromJwt.shopId as string) || normalized.shopId
+      normalized.userId = (fromJwt.userId || fromJwt.sub || fromJwt.uid || normalized.userId) as string
+      normalized.support =
+        claimTruthy(fromJwt.support) || claimTruthy(fromJwt.impersonation) || !!normalized.support
+      if (!normalized.name && !normalized.nickname && normalized.support) {
+        normalized.name = '平台支持'
+        normalized.nickname = '平台支持'
+      }
+    }
+    profile.value = normalized
+    localStorage.setItem(PROFILE_KEY, JSON.stringify(normalized))
   }
 
   function canAccessRoute(routeName: string | symbol | null | undefined): boolean {
     if (!routeName || typeof routeName !== 'string') return true
+    if (isSupport.value) return AGENT_ROUTES.has(routeName)
     if (permissions.value.fullMenu) return true
+    if (routeName === 'billing') return permissions.value.canViewBilling
     return AGENT_ROUTES.has(routeName)
   }
 
@@ -111,6 +127,7 @@ export const useAuthStore = defineStore('auth', () => {
     profile,
     isAuthenticated,
     userType,
+    isSupport,
     displayName,
     identityLabel,
     permissions,

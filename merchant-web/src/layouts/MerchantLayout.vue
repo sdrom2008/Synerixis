@@ -42,7 +42,7 @@
             <el-icon><ChatLineSquare /></el-icon>
             <span>快捷回复</span>
           </el-menu-item>
-          <el-menu-item index="/billing">
+          <el-menu-item v-if="perms.canViewBilling" index="/billing">
             <el-icon><Coin /></el-icon>
             <span>计费</span>
           </el-menu-item>

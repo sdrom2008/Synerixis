@@ -56,7 +56,7 @@ POST /api/auth/init-agent
 | /overview | ✓ | ✓ | ✓ | ✓（只读 KPI） |
 | /shops | ✓ | ✓ | ✓ | ✗（友好提示） |
 | /ai-settings | ✓ | ✓ | ✓ | ✗ |
-| /billing | ✓ | ✓ | ✓ | ✗（计费 API 仍可仅 Seller） |
+| /billing | ✓ | ✓ | ✗（平台 Admin 非店角色；support 亦隐藏） | ✗ |
 | /quick-replies | ✓ | ✓ | ✓ | ✗（列表 GET 坐席可读，供 Inbox 插入） |
 | /team | ✓ | ✓ | ✓ | ✗ |
 | /audit | ✓ | ✓ | ✓ | ✗ |
@@ -70,7 +70,9 @@ POST /api/auth/init-agent
 
 - `POST /api/auth/phone-login` / `POST /api/auth/agent-login`
 - `GET|POST /api/seller/team`，`PATCH /api/seller/team/{id}`，`POST .../reset-password`
-- `GET /api/merchant/sessions`（query：`status`、`platform`、`connectionId`、`platformShopId`）、`/drafts`、`/alerts` — Seller 与同店坐席 JWT 均可（按 `shopId`）
+- `GET /api/merchant/sessions`（query：`status`、`platform`、`connectionId`、`platformShopId`、`assignment=unassigned|mine`）— Seller/Supervisor 默认全店；**Agent 默认 mine**；support 全店
+- `POST /api/pay/create` — **Seller + Supervisor**（Supervisor 经 ShopId）；Agent 403
+- Admin 进入：URL `?supportToken=` 静默入会话（无「系统账号进入」toast）
 - `GET /api/merchant/shop-options` — 收件箱多店下拉（全角色）
 - `GET /api/merchant/sessions/{id}/orders` — 会话关联订单（本地优先；空则平台回源，失败 `items=[]` + `warning`，带来源 `source`）
 - `GET /api/merchant/usage` — 计费用量：`draftsToday` / `sessionsToday` / `connectedShops` / `quota` / `subscription*` + **AI token**（`totalTokens*` / `exactTokens*` / `estimatedTokens*` / `estimatedCostUsd*`，`IsEstimated` 时 chars/4 粗估）
