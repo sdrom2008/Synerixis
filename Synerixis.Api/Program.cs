@@ -68,16 +68,17 @@ builder.Services.AddControllers()
 //        c.IncludeXmlComments(xmlPath);
 //});
 
-// 2 Semantic Kernel 配置
+// 2 LLM / Semantic Kernel（无 Key 不阻断启动；起草路径自行降级）
+builder.Services.AddSingleton<LlmRuntime>();
 builder.Services.AddSingleton<SemanticKernelConfig>();
-
-builder.Services.AddSingleton<Kernel>(sp => sp.GetRequiredService<SemanticKernelConfig>().Kernel);
+builder.Services.AddSingleton<SemanticKernelService>();
 
 builder.Services.AddScoped<IChatCompletionService>(sp =>
-    sp.GetRequiredService<Kernel>().GetRequiredService<IChatCompletionService>());
-
-// 注册 SemanticKernelService（AliyunLlmClient 依赖它）
-builder.Services.AddSingleton<SemanticKernelService>();
+{
+    var runtime = sp.GetRequiredService<LlmRuntime>();
+    // 无 Key 时仍返回可解析实例会在调用时报「未配置 AI」，由 Agent/Inbound 捕获降级
+    return runtime.GetChatServiceOrPlaceholder();
+});
 
 
 // 4. 业务服务（顺序：先基础，后依赖）

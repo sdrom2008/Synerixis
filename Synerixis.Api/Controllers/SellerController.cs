@@ -7,6 +7,7 @@ using Synerixis.Application.DTOs;
 using Synerixis.Application.Interfaces;
 using Synerixis.Application.Services;
 using Synerixis.Domain.Entities;
+using Synerixis.Infrastructure.AI;
 using Synerixis.Infrastructure.Data;
 using Synerixis.Infrastructure.Services;
 using System.Linq;
@@ -25,14 +26,16 @@ namespace Synerixis.Api.Controllers
         private readonly ProductService _productService;
         private readonly IAuditLogger _audit;
         private readonly ISystemSettingsService _ops;
+        private readonly LlmRuntime _llm;
 
-        public SellerController(AppDbContext db, IAuthService authService, ProductService productService, IAuditLogger audit, ISystemSettingsService ops)
+        public SellerController(AppDbContext db, IAuthService authService, ProductService productService, IAuditLogger audit, ISystemSettingsService ops, LlmRuntime llm)
         {
             _db = db;
             _authService = authService;
             _productService = productService;
             _audit = audit;
             _ops = ops;
+            _llm = llm;
         }
 
         [HttpGet("profile")]
@@ -74,23 +77,71 @@ namespace Synerixis.Api.Controllers
                 var activeAgentCount = await _db.Agents
                     .CountAsync(a => a.ShopId == sellerId && a.IsActive);
 
-                return Ok(new
+                var sellerKey = seller.Config?.LlmApiKey;
+                var sellerKeySet = !string.IsNullOrWhiteSpace(sellerKey);
+                using (_llm.UseSellerKey(sellerKey))
                 {
-                    seller.Id,
-                    seller.Nickname,
-                    seller.AvatarUrl,
-                    seller.Phone,
-                    seller.FreeQuota,
-                    seller.SubscriptionLevel,
-                    seller.SubscriptionEnd,
-                    Config = seller.Config,
-                    TeamStats = new
+                    var llmConfigured = _llm.IsConfigured;
+                    var cfg = seller.Config!;
+                    // 勿把明文 Key 回传前端
+                    var configPayload = new
                     {
-                        TotalAgents = agentCount,
-                        OnlineAgents = onlineAgentCount,
-                        ActiveAgents = activeAgentCount
-                    }
-                });
+                        cfg.Id,
+                        cfg.SellerId,
+                        cfg.ShopName,
+                        cfg.ShopLogo,
+                        cfg.MainCategory,
+                        cfg.TargetCustomerDesc,
+                        cfg.DefaultReplyTone,
+                        cfg.PreferredLanguage,
+                        cfg.EnableAutoMarketingReminder,
+                        cfg.MemoryRetentionDays,
+                        cfg.EnableAutoReply,
+                        cfg.OutboundMode,
+                        cfg.BusinessHoursStart,
+                        cfg.BusinessHoursEnd,
+                        cfg.ResponseSlaHours,
+                        cfg.AlertThresholdHours,
+                        cfg.AutoHandoffOnLowConfidence,
+                        cfg.HandoffConfidenceThreshold,
+                        cfg.SensitiveKeywords,
+                        cfg.HandoffOutsideBusinessHours,
+                        cfg.TimeZoneId,
+                        cfg.CreatedAt,
+                        cfg.UpdatedAt,
+                        LlmApiKeyConfigured = sellerKeySet,
+                        LlmKeyHint = LlmKeyResolver.MaskHint(sellerKey)
+                    };
+
+                    return Ok(new
+                    {
+                        seller.Id,
+                        seller.Nickname,
+                        seller.AvatarUrl,
+                        seller.Phone,
+                        seller.FreeQuota,
+                        seller.SubscriptionLevel,
+                        seller.SubscriptionEnd,
+                        Config = configPayload,
+                        Llm = new
+                        {
+                            configured = llmConfigured,
+                            sellerKeyConfigured = sellerKeySet,
+                            platformKeyConfigured = _llm.PlatformConfigured,
+                            keyHint = _llm.KeyHint,
+                            source = _llm.Source,
+                            degradeHint = llmConfigured
+                                ? null
+                                : "未配置 AI：入站将生成「未配置 AI·规则草稿」，演示 seed / 人审发送不受影响"
+                        },
+                        TeamStats = new
+                        {
+                            TotalAgents = agentCount,
+                            OnlineAgents = onlineAgentCount,
+                            ActiveAgents = activeAgentCount
+                        }
+                    });
+                }
             }
             catch (Exception ex)
             {
@@ -151,6 +202,15 @@ namespace Synerixis.Api.Controllers
                 config.HandoffOutsideBusinessHours = dto.HandoffOutsideBusinessHours.Value;
             if (!string.IsNullOrWhiteSpace(dto.TimeZoneId))
                 config.TimeZoneId = dto.TimeZoneId.Trim();
+            // LlmApiKey：null=不改；空串=清除商家 Key；非空且非掩码=更新
+            if (dto.LlmApiKey != null)
+            {
+                var raw = dto.LlmApiKey.Trim();
+                if (raw.Length == 0)
+                    config.LlmApiKey = null;
+                else if (!raw.StartsWith("****", StringComparison.Ordinal))
+                    config.LlmApiKey = raw;
+            }
             config.UpdatedAt = DateTime.UtcNow;
 
             await _db.SaveChangesAsync();
@@ -160,7 +220,7 @@ namespace Synerixis.Api.Controllers
                 var actor = GetCurrentUser();
                 await _audit.LogAsync(actor.UserId, actor.UserType, AuditActions.AiSettingsUpdate,
                     "SellerConfig", sellerId.ToString(),
-                    new { outboundMode = config.OutboundMode, enableAutoReply = config.EnableAutoReply },
+                    new { outboundMode = config.OutboundMode, enableAutoReply = config.EnableAutoReply, llmKeyConfigured = !string.IsNullOrWhiteSpace(config.LlmApiKey) },
                     sellerId);
             }
             catch { }
@@ -668,5 +728,7 @@ namespace Synerixis.Api.Controllers
         public string? SensitiveKeywords { get; set; }
         public bool? HandoffOutsideBusinessHours { get; set; }
         public string? TimeZoneId { get; set; }
+        /// <summary>null=不改；""=清除；明文=更新（勿传 **** 掩码）</summary>
+        public string? LlmApiKey { get; set; }
     }
 }

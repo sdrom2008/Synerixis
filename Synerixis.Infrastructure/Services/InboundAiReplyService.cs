@@ -7,6 +7,7 @@ using Synerixis.Application.Interfaces;
 using Synerixis.Domain.Entities;
 using Synerixis.Domain.Enums;
 using ChatMessageEntity = Synerixis.Domain.Entities.ChatMessage;
+using Synerixis.Infrastructure.AI;
 using Synerixis.Infrastructure.Data;
 
 namespace Synerixis.Infrastructure.Services
@@ -18,13 +19,16 @@ namespace Synerixis.Infrastructure.Services
     {
         private readonly IServiceScopeFactory _scopeFactory;
         private readonly ILogger<InboundAiReplyService> _logger;
+        private readonly LlmRuntime _llm;
 
         public InboundAiReplyService(
             IServiceScopeFactory scopeFactory,
-            ILogger<InboundAiReplyService> logger)
+            ILogger<InboundAiReplyService> logger,
+            LlmRuntime llm)
         {
             _scopeFactory = scopeFactory;
             _logger = logger;
+            _llm = llm;
         }
 
         public async Task ProcessAfterBuyerMessageAsync(
@@ -157,63 +161,77 @@ namespace Synerixis.Infrastructure.Services
                     Messages = historyDtos
                 };
 
-                ChatIntent intent = ChatIntent.Unknown;
-                double confidence = 0.15;
-                try
-                {
-                    var classifier = sp.GetRequiredService<IIntentClassifier>();
-                    var classified = await classifier.ClassifyWithConfidenceAsync(
-                        userContent, historyDtos, session.ShopId, session.Id);
-                    intent = classified.Intent;
-                    confidence = classified.Confidence;
-                    logger.LogInformation(
-                        "[InboundAi] Intent={Intent} Confidence={Confidence:F2} Session={SessionId} Platform={Platform}",
-                        intent, confidence, sessionId, session.Platform);
-                }
-                catch (Exception ex)
-                {
-                    logger.LogWarning(ex, "[InboundAi] Intent classify failed (missing AI key?); fallback Unknown");
-                    intent = ChatIntent.Unknown;
-                    confidence = 0.15;
-                }
-
-                var autoLow = sellerConfig?.AutoHandoffOnLowConfidence ?? true;
-                var threshold = sellerConfig?.HandoffConfidenceThreshold ?? 0.45;
-                if (threshold < 0) threshold = 0;
-                if (threshold > 1) threshold = 1;
-                if (autoLow && confidence < threshold)
-                {
-                    session.TransferToAgent();
-                    await SupersedePendingDraftsAsync(db, session.Id, cancellationToken);
-                    await db.SaveChangesAsync(cancellationToken);
-                    logger.LogWarning(
-                        "[InboundAi] Auto-handoff by low confidence {Confidence:F2}<{Threshold:F2} Intent={Intent} Session={SessionId} Shop={ShopId}",
-                        confidence, threshold, intent, sessionId, session.ShopId);
-                    return;
-                }
-
                 string replyContent;
-                try
+                // 商家 Key 优先；无任何 Key → 规则草稿（不 500、不因低置信误转人工）
+                using (_llm.UseSellerKey(sellerConfig?.LlmApiKey))
                 {
-                    var agentRouter = sp.GetRequiredService<IAgentRouter>();
-                    var agent = agentRouter.GetAgent(intent);
-
-                    if (agent != null && intent is not (ChatIntent.GeneralChat or ChatIntent.Unknown))
+                    if (!_llm.IsConfigured)
                     {
-                        var agentResult = await agent.ProcessAsync(userContent, chatContext);
-                        replyContent = agentResult.Messages.LastOrDefault()?.Content
-                            ?? "抱歉，我暂时无法处理您的问题。";
+                        logger.LogWarning(
+                            "[InboundAi] 未配置 AI Key；规则草稿降级 Session={SessionId} Shop={ShopId}",
+                            sessionId, session.ShopId);
+                        replyContent = RuleBasedDraftHelper.Build(userContent);
                     }
                     else
                     {
-                        var generalChat = sp.GetRequiredService<IGeneralChatAgent>();
-                        replyContent = await generalChat.GenerateReplyAsync(userContent, chatContext);
+                        ChatIntent intent = ChatIntent.Unknown;
+                        double confidence = 0.15;
+                        try
+                        {
+                            var classifier = sp.GetRequiredService<IIntentClassifier>();
+                            var classified = await classifier.ClassifyWithConfidenceAsync(
+                                userContent, historyDtos, session.ShopId, session.Id);
+                            intent = classified.Intent;
+                            confidence = classified.Confidence;
+                            logger.LogInformation(
+                                "[InboundAi] Intent={Intent} Confidence={Confidence:F2} Session={SessionId} Platform={Platform}",
+                                intent, confidence, sessionId, session.Platform);
+                        }
+                        catch (Exception ex)
+                        {
+                            logger.LogWarning(ex, "[InboundAi] Intent classify failed; rule fallback GeneralChat");
+                            intent = ChatIntent.GeneralChat;
+                            confidence = 0.72;
+                        }
+
+                        var autoLow = sellerConfig?.AutoHandoffOnLowConfidence ?? true;
+                        var threshold = sellerConfig?.HandoffConfidenceThreshold ?? 0.45;
+                        if (threshold < 0) threshold = 0;
+                        if (threshold > 1) threshold = 1;
+                        if (autoLow && confidence < threshold)
+                        {
+                            session.TransferToAgent();
+                            await SupersedePendingDraftsAsync(db, session.Id, cancellationToken);
+                            await db.SaveChangesAsync(cancellationToken);
+                            logger.LogWarning(
+                                "[InboundAi] Auto-handoff by low confidence {Confidence:F2}<{Threshold:F2} Intent={Intent} Session={SessionId} Shop={ShopId}",
+                                confidence, threshold, intent, sessionId, session.ShopId);
+                            return;
+                        }
+
+                        try
+                        {
+                            var agentRouter = sp.GetRequiredService<IAgentRouter>();
+                            var agent = agentRouter.GetAgent(intent);
+
+                            if (agent != null && intent is not (ChatIntent.GeneralChat or ChatIntent.Unknown))
+                            {
+                                var agentResult = await agent.ProcessAsync(userContent, chatContext);
+                                replyContent = agentResult.Messages.LastOrDefault()?.Content
+                                    ?? "抱歉，我暂时无法处理您的问题。";
+                            }
+                            else
+                            {
+                                var generalChat = sp.GetRequiredService<IGeneralChatAgent>();
+                                replyContent = await generalChat.GenerateReplyAsync(userContent, chatContext);
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            logger.LogWarning(ex, "[InboundAi] Agent/LLM reply failed; using rule-based fallback");
+                            replyContent = RuleBasedDraftHelper.Build(userContent);
+                        }
                     }
-                }
-                catch (Exception ex)
-                {
-                    logger.LogWarning(ex, "[InboundAi] Agent/LLM reply failed; using local fallback");
-                    replyContent = "您好！您的消息已收到，我们会尽快为您处理。";
                 }
 
                 if (!withinHours)

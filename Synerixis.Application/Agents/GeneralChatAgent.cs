@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.SemanticKernel.ChatCompletion;
 using Microsoft.SemanticKernel.Connectors.OpenAI;
 using Synerixis.Application.DTOs;
+using Synerixis.Application.Helpers;
 using Synerixis.Application.Interfaces;
 using Synerixis.Domain.Entities;
 using System;
@@ -98,7 +99,7 @@ namespace Synerixis.Application.Agents
             if (lower.Contains("价格") || lower.Contains("多少钱")) return "我们的服务有免费试用版和付费版，具体价格请咨询销售人员。";
             if (lower.Contains("功能") || lower.Contains("服务")) return "我们提供 AI 营销文案、智能客服、商品优化等服务。";
             if (lower.Contains("再见") || lower.Contains("拜拜")) return "再见！祝您生活愉快～";
-            return "抱歉，我现在无法连接 AI 服务，您的问题已记录，稍后会有客服联系您。";
+            return RuleBasedDraftHelper.LocalReply(input);
         }
     }
 }

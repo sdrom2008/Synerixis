@@ -14,21 +14,22 @@ namespace Synerixis.Infrastructure.AIServices
     public class AliyunLlmClient : ILlmClient
     {
         private const string DefaultModel = "qwen-max";
-        private readonly IChatCompletionService _chatCompletionService;
+        private readonly LlmRuntime _runtime;
         private readonly IAiUsageRecorder? _usageRecorder;
 
-        public AliyunLlmClient(SemanticKernelService semanticKernelService, IAiUsageRecorder? usageRecorder = null)
+        public AliyunLlmClient(LlmRuntime runtime, IAiUsageRecorder? usageRecorder = null)
         {
-            _chatCompletionService = semanticKernelService.GetChatService();
+            _runtime = runtime;
             _usageRecorder = usageRecorder;
         }
 
         public async Task<string> GenerateTextAsync(string prompt, LlmCallContext? usage = null)
         {
+            var chat = _runtime.GetChatService();
             var chatHistory = new ChatHistory();
             chatHistory.AddUserMessage(prompt);
 
-            var result = await _chatCompletionService.GetChatMessageContentAsync(chatHistory);
+            var result = await chat.GetChatMessageContentAsync(chatHistory);
             var content = result.Content ?? string.Empty;
 
             if (_usageRecorder != null && usage != null && usage.SellerId != Guid.Empty)

@@ -125,11 +125,12 @@ MarketingFollowup    - 复购引导、商品推荐、催评价、感谢、促销
         }
         catch
         {
+            // LLM 失败时不要用超低置信误触发 AutoHandoff；走 GeneralChat 规则草稿路径
             return new IntentClassificationResult
             {
-                Intent = ChatIntent.Unknown,
-                Confidence = 0.15,
-                RawLabel = null
+                Intent = ChatIntent.GeneralChat,
+                Confidence = 0.72,
+                RawLabel = "GeneralChat(llm-failed)"
             };
         }
     }

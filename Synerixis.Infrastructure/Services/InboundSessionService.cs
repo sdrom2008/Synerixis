@@ -85,13 +85,35 @@ namespace Synerixis.Infrastructure.Services
         public async Task<ChatMessage> AppendBuyerMessageAsync(
             ChatSession session, PlatformMessage msg, CancellationToken cancellationToken = default)
         {
-            session.UpdatePlatformReplyContext(msg.ConversationId, msg.OpenId);
+            // 重新按 Id 加载，避免 Dev/Webhook 路径上 ChangeTracker 脏实体导致 UPDATE 0 行
+            var tracked = await _db.ChatSessions
+                .Include(s => s.Messages)
+                .FirstOrDefaultAsync(s => s.Id == session.Id, cancellationToken);
+            if (tracked == null)
+                throw new InvalidOperationException($"ChatSession {session.Id} not found for AppendBuyerMessage");
 
-            var userMsg = ChatMessage.FromUser(msg.Content ?? string.Empty, session.Id);
+            tracked.UpdatePlatformReplyContext(msg.ConversationId, msg.OpenId);
+
+            var userMsg = ChatMessage.FromUser(msg.Content ?? string.Empty, tracked.Id);
             userMsg.PlatformMsgId = msg.MsgId;
-            session.Messages.Add(userMsg);
-            session.AddUserMessage();
-            await _db.SaveChangesAsync(cancellationToken);
+            _db.ChatMessages.Add(userMsg);
+            tracked.AddUserMessage();
+            try
+            {
+                await _db.SaveChangesAsync(cancellationToken);
+            }
+            catch (DbUpdateConcurrencyException ex)
+            {
+                _logger.LogWarning(ex, "[Inbound] AppendBuyer concurrency; retry once Session={SessionId}", tracked.Id);
+                _db.ChangeTracker.Clear();
+                tracked = await _db.ChatSessions.FirstAsync(s => s.Id == session.Id, cancellationToken);
+                tracked.UpdatePlatformReplyContext(msg.ConversationId, msg.OpenId);
+                userMsg = ChatMessage.FromUser(msg.Content ?? string.Empty, tracked.Id);
+                userMsg.PlatformMsgId = msg.MsgId;
+                _db.ChatMessages.Add(userMsg);
+                tracked.AddUserMessage();
+                await _db.SaveChangesAsync(cancellationToken);
+            }
             return userMsg;
         }
     }

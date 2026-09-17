@@ -1,35 +1,24 @@
-﻿using Microsoft.Extensions.Configuration;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
-using Microsoft.SemanticKernel.Connectors.OpenAI;
 
 namespace Synerixis.Infrastructure.AI
 {
+    /// <summary>
+    /// 兼容旧 DI：经 <see cref="LlmRuntime"/> 取 Chat。无 Key 时 GetChatService 抛「未配置 AI」。
+    /// </summary>
     public class SemanticKernelService
     {
-        private readonly Kernel _kernel;
+        private readonly LlmRuntime _runtime;
 
-        public SemanticKernelService(IConfiguration config)
+        public SemanticKernelService(LlmRuntime runtime)
         {
-            var builder = Kernel.CreateBuilder();
-
-            // 通义千问兼容 OpenAI 格式
-            var endpoint = new Uri("https://dashscope.aliyuncs.com/compatible-mode/v1");
-            var apiKey = config["Tongyi:Qianwen:ApiKey"] ?? throw new InvalidOperationException("缺少通义 Key");
-
-            builder.AddOpenAIChatCompletion(
-                modelId: "qwen-max",           // 或 qwen-turbo、qwen-plus
-                apiKey: apiKey,
-                endpoint: endpoint);
-
-            // 未来可加其他模型
-            // builder.AddOpenAIChatCompletion("gpt-4o", "...");
-
-            _kernel = builder.Build();
+            _runtime = runtime;
         }
 
-        public Kernel GetKernel() => _kernel;
+        public bool IsConfigured => _runtime.IsConfigured;
 
-        public IChatCompletionService GetChatService() => _kernel.GetRequiredService<IChatCompletionService>();
+        public Kernel GetKernel() => _runtime.GetKernel();
+
+        public IChatCompletionService GetChatService() => _runtime.GetChatService();
     }
 }

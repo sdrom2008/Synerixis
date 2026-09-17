@@ -100,8 +100,9 @@ namespace Synerixis.Api.Controllers
                     PreferredLanguage = "zh",
                     EnableAutoReply = true,
                     OutboundMode = OutboundModes.DraftFirst,
-                    BusinessHoursStart = "09:00",
-                    BusinessHoursEnd = "22:00",
+                    BusinessHoursStart = "00:00",
+                    BusinessHoursEnd = "23:59",
+                    HandoffOutsideBusinessHours = false,
                     ResponseSlaHours = 12,
                     AlertThresholdHours = "1,3,12",
                     CreatedAt = DateTime.UtcNow,
@@ -112,17 +113,28 @@ namespace Synerixis.Api.Controllers
             }
             else
             {
+                var cfgChanged = false;
                 // 演示默认 draft-first：若曾改成 AutoSend，seed 拉回 DraftFirst
                 if (!string.Equals(config.OutboundMode, OutboundModes.DraftFirst, StringComparison.OrdinalIgnoreCase))
                 {
                     config.OutboundMode = OutboundModes.DraftFirst;
-                    config.UpdatedAt = DateTime.UtcNow;
+                    cfgChanged = true;
                     updated.Add("sellerConfig.outboundMode");
                 }
-                else
+                // 全天营业，避免晚间演示被「营业外转人工」打断
+                if (config.BusinessHoursStart != "00:00" || config.BusinessHoursEnd != "23:59"
+                    || config.HandoffOutsideBusinessHours)
                 {
-                    skipped.Add("sellerConfig");
+                    config.BusinessHoursStart = "00:00";
+                    config.BusinessHoursEnd = "23:59";
+                    config.HandoffOutsideBusinessHours = false;
+                    cfgChanged = true;
+                    updated.Add("sellerConfig.demoHours");
                 }
+                if (cfgChanged)
+                    config.UpdatedAt = DateTime.UtcNow;
+                else
+                    skipped.Add("sellerConfig");
             }
 
             // 3) 模拟 Shopee + TikTok PlatformConnection（多店筛选）
@@ -445,24 +457,25 @@ namespace Synerixis.Api.Controllers
 
                 if (session == null)
                 {
-                    session = await _inbound.FindOrCreateSessionAsync(msg, cancellationToken);
-                    if (session != null && session.ShopId != sellerId)
-                    {
-                        _logger.LogWarning(
-                            "[Dev] Existing session {SessionId} belongs to other shop {Other}; creating for seller {Seller}",
-                            session.Id, session.ShopId, sellerId);
-                        session = ChatSession.Create(
-                            shopId: sellerId,
-                            platform: platform,
-                            customerId: customerId,
-                            customerName: customerName);
-                        _db.ChatSessions.Add(session);
-                        await _db.SaveChangesAsync(cancellationToken);
-                    }
+                    session = ChatSession.Create(
+                        shopId: sellerId,
+                        platform: platform,
+                        customerId: customerId,
+                        customerName: customerName);
+                    session.UpdatePlatformReplyContext(msg.ConversationId, shopKey);
+                    _db.ChatSessions.Add(session);
+                    await _db.SaveChangesAsync(cancellationToken);
                 }
 
                 if (session == null)
                     return StatusCode(500, new { code = 500, message = "session_create_failed" });
+
+                // 清掉 Find/Ensure 路径可能留下的脏跟踪，再 append
+                var sessionId = session.Id;
+                _db.ChangeTracker.Clear();
+                session = await _db.ChatSessions
+                    .Include(s => s.Messages)
+                    .FirstAsync(s => s.Id == sessionId, cancellationToken);
 
                 await _inbound.AppendBuyerMessageAsync(session, msg, cancellationToken);
 

@@ -120,6 +120,22 @@ DEALLOCATE PREPARE stmt;
             await db.Database.ExecuteSqlRawAsync(autoHandoffSql);
             logger?.LogInformation("[SchemaPatcher] auto-handoff + business-hours policy columns ensured (MySQL)");
 
+            const string llmKeySql = @"
+SET @db := DATABASE();
+SET @col := (
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = @db AND TABLE_NAME = 'seller_configs' AND COLUMN_NAME = 'LlmApiKey'
+);
+SET @ddl := IF(@col = 0,
+  'ALTER TABLE `seller_configs` ADD COLUMN `LlmApiKey` VARCHAR(512) NULL',
+  'SELECT 1');
+PREPARE stmt FROM @ddl;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+";
+            await db.Database.ExecuteSqlRawAsync(llmKeySql);
+            logger?.LogInformation("[SchemaPatcher] seller_configs.LlmApiKey ensured (MySQL)");
+
 
             const string draftSql = @"
 CREATE TABLE IF NOT EXISTS `draft_messages` (
@@ -297,6 +313,7 @@ CREATE TABLE IF NOT EXISTS `system_settings` (
                 "ALTER TABLE seller_configs ADD COLUMN SensitiveKeywords TEXT NOT NULL DEFAULT '退款,律师,投诉,police,lawyer,refund,lawsuit,举报,报警,法院,诉讼'",
                 "ALTER TABLE seller_configs ADD COLUMN HandoffOutsideBusinessHours INTEGER NOT NULL DEFAULT 1",
                 "ALTER TABLE seller_configs ADD COLUMN TimeZoneId TEXT NOT NULL DEFAULT 'Asia/Shanghai'",
+                "ALTER TABLE seller_configs ADD COLUMN LlmApiKey TEXT NULL",
                 "ALTER TABLE chat_sessions ADD COLUMN PlatformConversationId TEXT NULL",
                 "ALTER TABLE chat_sessions ADD COLUMN PlatformShopOpenId TEXT NULL",
                 "ALTER TABLE chat_sessions ADD COLUMN LastBuyerMessageAt TEXT NULL",

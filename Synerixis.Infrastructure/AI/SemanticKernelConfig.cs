@@ -1,28 +1,26 @@
-﻿using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Configuration;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
 
 namespace Synerixis.Infrastructure.AI
 {
+    /// <summary>
+    /// 兼容旧 DI：委托 <see cref="LlmRuntime"/>。无 Key 时不在构造期抛错。
+    /// </summary>
     public class SemanticKernelConfig
     {
-        public Kernel Kernel { get; }
+        private readonly LlmRuntime _runtime;
 
-        public SemanticKernelConfig(IConfiguration config)
+        public SemanticKernelConfig(LlmRuntime runtime)
         {
-            var builder = Kernel.CreateBuilder();
-
-            var apiKey = config["Tongyi:Qianwen:ApiKey"]
-                         ?? Environment.GetEnvironmentVariable("TONGYI_API_KEY")
-                         ?? throw new InvalidOperationException("缺少通义千问 API Key");
-
-            // 通义千问兼容 OpenAI 格式
-            builder.AddOpenAIChatCompletion(
-                modelId: "qwen-max",
-                apiKey: apiKey,
-                endpoint: new Uri("https://dashscope.aliyuncs.com/compatible-mode/v1"));
-
-            Kernel = builder.Build();
+            _runtime = runtime;
         }
+
+        public bool IsConfigured => _runtime.IsConfigured;
+
+        public Kernel Kernel =>
+            _runtime.IsConfigured
+                ? _runtime.GetKernel()
+                : Kernel.CreateBuilder().Build();
     }
 }

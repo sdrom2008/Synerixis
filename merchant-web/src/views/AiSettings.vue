@@ -2,7 +2,7 @@
   <div>
     <h2 class="page-title">AI 设置</h2>
     <p class="page-desc">
-      语气、营业时段、自动 handoff、出站模式与回复 SLA。默认 DraftFirst：AI 只写草稿，人工批准后发送。
+      语气、LLM Key、营业时段、handoff、出站模式与 SLA。默认 DraftFirst：AI/规则只写草稿，人工「人审发送」。无 Key 时规则降级，演示不依赖真实模型。
     </p>
 
     <el-card shadow="never" class="sx-card" v-loading="loading">
@@ -75,6 +75,40 @@
           <div class="field-hint">逗号分隔；命中则转人工，不生成新 AI 草稿</div>
         </el-form-item>
 
+        <el-divider content-position="left">LLM API Key</el-divider>
+
+        <el-alert
+          :type="llm.configured ? 'success' : 'warning'"
+          :closable="false"
+          show-icon
+          style="margin-bottom: 16px"
+        >
+          <template #title>
+            <span v-if="llm.configured">
+              AI 已配置（来源：{{ sourceLabel }}<span v-if="llm.keyHint">，{{ llm.keyHint }}</span>）
+            </span>
+            <span v-else>
+              未配置 AI — 入站将生成「未配置 AI·规则草稿」，seed / 人审发送 / SIM mock 仍可演示，不会 500
+            </span>
+          </template>
+        </el-alert>
+
+        <el-form-item label="API Key">
+          <el-input
+            v-model="form.llmApiKey"
+            type="password"
+            @input="llmKeyTouched = true"
+            show-password
+            clearable
+            placeholder="DashScope / 通义兼容 Key；留空保存可清除商家 Key"
+            autocomplete="off"
+          />
+          <div class="field-hint">
+            优先使用本店 Key；未填则回退平台 <code>Llm:ApiKey</code> / 环境变量 <code>LLM_API_KEY</code>。
+            不需要真实 Key 也能演示：规则草稿 + 人审发送。
+          </div>
+        </el-form-item>
+
         <el-divider content-position="left">回复 SLA</el-divider>
 
         <el-form-item label="回复 SLA（小时）">
@@ -106,7 +140,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { getSellerProfile, updateSellerConfig } from '@/api/seller'
 
@@ -125,7 +159,26 @@ const form = reactive({
   sensitiveKeywords: '退款,律师,投诉,police,lawyer,refund,lawsuit,举报,报警,法院,诉讼',
   responseSlaHours: 12 as number,
   alertThresholdHours: '1,3,12',
+  llmApiKey: '',
 })
+
+const llm = reactive({
+  configured: false,
+  sellerKeyConfigured: false,
+  platformKeyConfigured: false,
+  keyHint: '' as string | null,
+  source: 'none',
+  degradeHint: '' as string | null,
+})
+
+const sourceLabel = computed(() => {
+  if (llm.source === 'seller') return '本店 Key'
+  if (llm.source === 'platform') return '平台配置'
+  return '无'
+})
+
+/** 加载时若已有 Key，用掩码占位；用户未改则保存时不覆盖 */
+const llmKeyTouched = ref(false)
 
 function pick(cfg: Record<string, unknown>, ...keys: string[]) {
   for (const k of keys) {
@@ -163,6 +216,22 @@ onMounted(async () => {
     if (sla != null) form.responseSlaHours = Number(sla) || 12
     const th = pick(cfg, 'AlertThresholdHours', 'alertThresholdHours')
     if (th) form.alertThresholdHours = String(th)
+
+    const llmInfo = (profile.Llm || profile.llm || {}) as Record<string, unknown>
+    llm.configured = !!llmInfo.configured
+    llm.sellerKeyConfigured = !!llmInfo.sellerKeyConfigured
+    llm.platformKeyConfigured = !!llmInfo.platformKeyConfigured
+    llm.keyHint = (llmInfo.keyHint as string) || null
+    llm.source = String(llmInfo.source || 'none')
+    llm.degradeHint = (llmInfo.degradeHint as string) || null
+    const hint = pick(cfg, 'LlmKeyHint', 'llmKeyHint')
+    if (llm.sellerKeyConfigured) {
+      form.llmApiKey = hint ? String(hint) : (llm.keyHint || '********')
+      llmKeyTouched.value = false
+    } else {
+      form.llmApiKey = ''
+      llmKeyTouched.value = false
+    }
   } catch {
     ElMessage.warning('加载配置失败，显示默认值')
   } finally {
@@ -173,7 +242,7 @@ onMounted(async () => {
 async function save() {
   saving.value = true
   try {
-    await updateSellerConfig({
+    const payload: Record<string, unknown> = {
       DefaultReplyTone: form.defaultReplyTone,
       defaultReplyTone: form.defaultReplyTone,
       OutboundMode: form.outboundMode,
@@ -198,8 +267,32 @@ async function save() {
       responseSlaHours: form.responseSlaHours,
       AlertThresholdHours: form.alertThresholdHours,
       alertThresholdHours: form.alertThresholdHours,
-    })
+    }
+    const keyVal = form.llmApiKey.trim()
+    if (llmKeyTouched.value || keyVal === '') {
+      // 空串 = 清除商家 Key；明文 = 更新；掩码未触碰则不传
+      if (!keyVal.startsWith('****')) {
+        payload.LlmApiKey = keyVal
+        payload.llmApiKey = keyVal
+      }
+    } else if (keyVal && !keyVal.startsWith('****')) {
+      payload.LlmApiKey = keyVal
+      payload.llmApiKey = keyVal
+    }
+    await updateSellerConfig(payload)
     ElMessage.success('已保存')
+    // 重新拉状态
+    const profile = await getSellerProfile()
+    const llmInfo = (profile.Llm || profile.llm || {}) as Record<string, unknown>
+    llm.configured = !!llmInfo.configured
+    llm.sellerKeyConfigured = !!llmInfo.sellerKeyConfigured
+    llm.platformKeyConfigured = !!llmInfo.platformKeyConfigured
+    llm.keyHint = (llmInfo.keyHint as string) || null
+    llm.source = String(llmInfo.source || 'none')
+    if (llm.sellerKeyConfigured && llm.keyHint) {
+      form.llmApiKey = String(llm.keyHint)
+      llmKeyTouched.value = false
+    }
   } catch {
     ElMessage.error('保存失败')
   } finally {

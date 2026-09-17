@@ -5,9 +5,10 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![.NET Version](https://img.shields.io/badge/.NET-8.0-blue)](https://dotnet.microsoft.com/)
 
-## 明日本地演示
+## 明日本地演示（唯一点击路径）
 
-见 [`docs/DEMO.md`](docs/DEMO.md)：seed → merchant-web 登录 → 收件箱草稿人审（SIM mock 出站）。
+见 **[`docs/DEMO.md`](docs/DEMO.md)**：账号 / 端口 / seed / 收件箱人审发送 / 注入 / Admin。  
+无 LLM Key 也可演示（规则草稿 + SIM mock）；Key 在「AI 设置」或 `Llm:ApiKey`。
 
 ## 定位（一句话）
 

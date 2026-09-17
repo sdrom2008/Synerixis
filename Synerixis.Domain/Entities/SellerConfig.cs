@@ -58,6 +58,12 @@ namespace Synerixis.Domain.Entities
         /// <summary>店铺本地时区（IANA，默认 Asia/Shanghai）</summary>
         public string TimeZoneId { get; set; } = "Asia/Shanghai";
 
+        /// <summary>
+        /// 商家级 LLM API Key（DashScope / 通义兼容）。优先于平台 Llm:ApiKey。
+        /// 空 = 使用平台配置；未配置任何 Key 时入站走规则草稿降级。
+        /// </summary>
+        public string? LlmApiKey { get; set; }
+
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 

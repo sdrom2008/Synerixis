@@ -31,7 +31,7 @@
 | Shopee 多站点实机 | 各区独立 partner 应用或同 App 多区 Host | 配置与绑店 region 已支持；需真实 key 填 `Partners` |
 | TikTok Shop Open API | ClientKey/Secret、shop_cipher、履约 scope | 轨迹路径已接；无凭证或无权限时诚实降级 |
 | TikTok 客服消息 scope | Partner 审批 `seller.customer_service` | 客户端具备；**ISV 门槛高**，见 `TIKTOK_SHOP_PITFALLS.md` / `ISV_APPLICATION_CHECKLIST.md` |
-| LLM 真实起草 | DashScope / OpenAI 等 API Key | 未配 key 时意图/起草会降级或跳过 |
+| LLM 真实起草 | DashScope / OpenAI 等 API Key | **可配**：merchant-web「AI 设置」本店 Key，或 `Llm:ApiKey` / `LLM_API_KEY`。未配时入站生成「未配置 AI·规则草稿」，不 500；seed/人审/SIM 不依赖 Key |
 | 支付生产对接 | 微信/支付宝商户号、证书、回调域名 | **本阶段不做生产对接**；代码有 Provider 桩 |
 | APNs / FCM | 苹果/谷歌推送证书与包名 | **本阶段不做**；alerts 仅应用内 + 可选浏览器 Notification |
 | Redis 多实例限流 | `ConnectionStrings:Redis` + `Webhook:RateLimitStore=Redis` | 接口已接 StackExchange Redis；默认仍 Memory |
@@ -128,3 +128,10 @@ Box 细节见 [`DEV_SETUP_BOX.md`](./DEV_SETUP_BOX.md)。
 ---
 
 **工程自动补全阶段收口**：代码侧 MVP 可本地验收；剩余为第 2 节外部账号与第 3 节明确不做项。
+
+## 7. LLM Key 与降级（2026-09-17）
+
+- **配置入口**：商家 `merchant-web` → AI 设置 → LLM API Key；平台 `appsettings` `Llm:ApiKey`（兼容 `Tongyi:Qianwen:ApiKey` / `DashScope:ApiKey`）与环境变量 `LLM_API_KEY`。
+- **解析顺序**：本店 `SellerConfig.LlmApiKey` → 平台配置 / env（见 `LlmKeyResolver` / `LlmRuntime`）。
+- **无 Key**：`InboundAiReplyService` 写规则草稿（前缀「未配置 AI·规则草稿」）+ Warning；不因低置信误转人工；API 启动不因缺 Key 崩溃。
+- **演示**：仍以 [`DEMO.md`](./DEMO.md) 的 seed + 人审发送为准，不要求真实模型。

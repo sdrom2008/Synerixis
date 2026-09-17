@@ -276,10 +276,13 @@
             @close="lastSendHint = ''"
           />
           <p class="draft-hint">
-            可编辑 AI 草稿或<strong>手动起草</strong>后点「发送」。内容先落成待审草稿再出站（draft-first），不会开启 AutoSend。演示店为模拟出站，不调用真实 Shopee/TikTok。
+            可编辑 AI / 规则草稿，或<strong>手动起草</strong>后点「人审发送」。内容先落成待审草稿再出站（draft-first），不会开启 AutoSend。演示店为模拟出站，不调用真实 Shopee/TikTok。
           </p>
           <p v-if="!draft" class="draft-empty-hint">
-            当前无 AI 草稿。可在下方直接撰写回复并「保存」或「发送」；也可点左上角「注入测试」生成样例进线。
+            当前无待审草稿。可在下方直接撰写并「保存草稿」或「人审发送」；也可点左上角「注入测试」。未配置 AI 时注入会生成规则草稿，不会报 500。
+          </p>
+          <p v-if="isSupersededDraft" class="draft-empty-hint">
+            会话已转人工或草稿已停用：仍可编辑下方旧草稿后「人审发送」。
           </p>
           <div v-if="quickReplies.length" class="qr-bar">
             <span class="qr-label">快捷回复</span>
@@ -307,7 +310,7 @@
               :loading="sending"
               @click="onSend"
             >
-              发送
+              人审发送
             </el-button>
           </div>
         </div>
@@ -1010,11 +1013,16 @@ async function loadQuickReplies() {
   }
 }
 
+function apiErrMsg(e: unknown, fallback: string) {
+  const any = e as { response?: { data?: { message?: string; title?: string } }; message?: string }
+  return any?.response?.data?.message || any?.response?.data?.title || any?.message || fallback
+}
+
 async function onSave() {
   if (!selectedId.value) return
   const content = draftContent.value.trim()
   if (!content) {
-    ElMessage.warning('内容不能为空')
+    ElMessage.warning('请先填写回复内容')
     return
   }
   saving.value = true
@@ -1024,8 +1032,8 @@ async function onSave() {
     await selectSession(selectedId.value)
     await loadSessions()
     void loadShopOptions()
-  } catch {
-    ElMessage.error('保存失败')
+  } catch (e) {
+    ElMessage.error(apiErrMsg(e, '保存失败'))
   } finally {
     saving.value = false
   }
@@ -1045,7 +1053,7 @@ async function onSend() {
   if (!selectedId.value) return
   const content = draftContent.value.trim()
   if (!content) {
-    ElMessage.warning('内容不能为空')
+    ElMessage.warning('请先填写回复内容后再人审发送')
     return
   }
   sending.value = true
@@ -1058,12 +1066,12 @@ async function onSend() {
     } else {
       res = await approveDraft(selectedId.value)
     }
-    applySendResult(res, '已发送')
+    applySendResult(res, '人审发送成功')
     await selectSession(selectedId.value)
     await loadSessions()
     void loadShopOptions()
-  } catch {
-    ElMessage.error('发送失败')
+  } catch (e) {
+    ElMessage.error(apiErrMsg(e, '人审发送失败'))
   } finally {
     sending.value = false
   }
@@ -1077,9 +1085,23 @@ async function onInjectTest() {
       customerName: '模拟买家·收件箱注入',
       platform: 'SHOPEE',
     })
-    const hint = res.draft?.contentPreview
-      ? `已注入，待审草稿：${res.draft.contentPreview}`
-      : `已注入会话 ${res.sessionNo || res.sessionId || ''}`
+    let hint: string
+    if (res.draft?.contentPreview) {
+      const isRule = String(res.draft.contentPreview).includes('未配置 AI')
+      hint = isRule
+        ? `已注入（规则草稿）：${res.draft.contentPreview}`
+        : `已注入，待审草稿：${res.draft.contentPreview}`
+    } else if (res.pendingHumanHandoff || res.message === 'partial_ok_ai_degraded') {
+      hint = `已注入会话，但未生成草稿（${res.warning || '可能已转人工'}）。仍可手动起草后「人审发送」。`
+      ElMessage.warning(hint)
+      await loadSessions()
+      void loadShopOptions()
+      const sid = res.sessionId
+      if (sid) await selectSession(sid)
+      return
+    } else {
+      hint = `已注入会话 ${res.sessionNo || res.sessionId || ''}（无草稿时可手动起草）`
+    }
     ElMessage.success(hint)
     await loadSessions()
     void loadShopOptions()
