@@ -151,7 +151,7 @@ public enum AgentRole
 
 ## 8. P0 / P1 权限问题（记录，不大改）
 
-### P0（已修）
+### P0（已修 · `54a63e9`）
 
 1. **~~任意 Seller 可创建 `AgentRole.Admin`~~ → 已修**：`SellerController.AddTeamMember` / `UpdateTeamMember` 对 `Role=Admin` 一律 `400`（商家侧不可创建/升格平台 Admin）。仅平台种子 / `init-agent` / Dev 可建。  
 2. **~~`GetTicketMessages` 跨店 IDOR~~ → 已修**：强制 `session.ShopId == agent.ShopId`，再套 Agent seat 规则。  
