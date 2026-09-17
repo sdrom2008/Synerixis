@@ -8,7 +8,7 @@ using ChatMessage = Synerixis.Domain.Entities.ChatMessage;
 namespace Synerixis.Infrastructure.Services
 {
     /// <summary>
-    /// Webhook 与 ConversationService 共享的会话入库实现。
+    /// Webhook 与 Dev 模拟进线共享的会话入库实现。
     /// 不含 AI / handoff / 维护 / 营业外策略（仍在 Webhook ProcessInboundAiReply）。
     /// </summary>
     public class InboundSessionService : IInboundSessionService

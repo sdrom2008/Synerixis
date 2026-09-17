@@ -5,7 +5,7 @@ using Synerixis.Domain.Entities;
 namespace Synerixis.Application.Interfaces
 {
     /// <summary>
-    /// Webhook / ConversationService 共享的入站会话入库（FindOrCreate + 买家消息）。
+    /// Webhook / Dev 模拟进线共享的入站会话入库（FindOrCreate + 买家消息）。
     /// AI 草稿 / handoff 硬闸 / 维护跳过 / 营业外策略仍仅在 Webhook ProcessInboundAiReply 路径。
     /// </summary>
     public interface IInboundSessionService

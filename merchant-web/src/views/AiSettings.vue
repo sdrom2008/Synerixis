@@ -30,8 +30,9 @@
           style="margin-bottom: 16px"
         />
 
-        <el-form-item label="启用自动回复">
+        <el-form-item label="启用 AI 草稿">
           <el-switch v-model="form.enableAutoReply" />
+          <div class="field-hint">关闭后入站只落库，不生成草稿；出站仍由「出站模式」控制，默认 DraftFirst 不会自动发给买家</div>
         </el-form-item>
 
         <el-form-item label="营业开始">

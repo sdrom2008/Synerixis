@@ -87,14 +87,12 @@ builder.Services.AddScoped<IGeneralChatAgent, GeneralChatAgent>();
 builder.Services.AddScoped<IIntentClassifier, IntentClassifier>();
 
 // --- NEWLY ADDED SERVICES FOR MVP ---
-builder.Services.AddScoped<IMarketingCopyService, MarketingCopyService>();
 builder.Services.AddScoped<ILlmClient, AliyunLlmClient>(); // Maps the interface to our Aliyun implementation
 // --- END OF NEWLY ADDED SERVICES ---
 
 // --- SERVICES FOR AI CUSTOMER SUPPORT ---
 builder.Services.AddScoped<IInboundSessionService, Synerixis.Infrastructure.Services.InboundSessionService>();
 builder.Services.AddScoped<IInboundAiReplyService, Synerixis.Infrastructure.Services.InboundAiReplyService>();
-builder.Services.AddScoped<IConversationService, ConversationService>();
 builder.Services.AddScoped<IECommercePlatformClient, ECommercePlatformClient>();
 builder.Services.AddScoped<IAgentStatsService, AgentStatsService>();
 
