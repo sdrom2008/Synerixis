@@ -903,12 +903,13 @@ async function onApprove() {
   if (!selectedId.value || !draft.value) return
   sending.value = true
   try {
+    let res: { message?: string; mocked?: boolean } | undefined
     if (draftContent.value.trim() !== (draft.value.content || '').trim()) {
-      await editAndSendDraft(selectedId.value, draftContent.value)
+      res = (await editAndSendDraft(selectedId.value, draftContent.value)) as typeof res
     } else {
-      await approveDraft(selectedId.value)
+      res = (await approveDraft(selectedId.value)) as typeof res
     }
-    ElMessage.success('已发送')
+    ElMessage.success(res?.message || (res?.mocked ? '已模拟发送（演示）' : '已发送'))
     await selectSession(selectedId.value)
     await loadSessions()
   } catch {
@@ -926,8 +927,11 @@ async function onEditSend() {
   }
   sending.value = true
   try {
-    await editAndSendDraft(selectedId.value, draftContent.value)
-    ElMessage.success('已编辑并发送')
+    const res = (await editAndSendDraft(selectedId.value, draftContent.value)) as {
+      message?: string
+      mocked?: boolean
+    }
+    ElMessage.success(res?.message || (res?.mocked ? '已模拟发送（演示）' : '已编辑并发送'))
     await selectSession(selectedId.value)
     await loadSessions()
   } catch {

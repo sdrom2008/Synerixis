@@ -43,7 +43,10 @@ namespace Synerixis.Infrastructure.Services
                 claims.Add(new Claim("shopId", shopId.Value.ToString()));
             }
 
-            var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_config["Jwt:Key"]!));
+            var jwtKey = _config["Jwt:Key"];
+            if (string.IsNullOrWhiteSpace(jwtKey))
+                jwtKey = "dev-secret-key-please-change-in-production";
+            var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey));
             var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 
             var expiryMinutes = double.Parse(_config["Jwt:ExpiryMinutes"] ?? "1440");

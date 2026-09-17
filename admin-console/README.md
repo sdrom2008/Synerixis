@@ -22,11 +22,11 @@ cd Synerixis.Api && dotnet run
 cd admin-console
 npm install
 npm run dev
-# http://localhost:3000  （/api 代理到 http://localhost:5000）
+# http://localhost:3000  （/api 代理到 http://127.0.0.1:7092，可用 VITE_API_PROXY_TARGET）
 ```
 
 ```bash
-curl -X POST http://localhost:5000/api/dev/seed-demo
+curl -X POST http://127.0.0.1:7092/api/dev/seed-demo
 # 再用 admin@test.com / Agent123! 登录
 ```
 

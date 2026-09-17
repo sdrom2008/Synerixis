@@ -37,6 +37,20 @@ namespace Synerixis.Infrastructure.Clients
         /// </summary>
         public async Task<string?> SendReplyAsync(PlatformMessage context, string content, CancellationToken cancellationToken = default)
         {
+            // 本地演示 / SIM 店：不打真实 Partner API
+            var openId = context.OpenId ?? string.Empty;
+            var convId = context.ConversationId ?? string.Empty;
+            if (openId.StartsWith("SIM-SHOP-", StringComparison.OrdinalIgnoreCase)
+                || convId.StartsWith("demo-conv-", StringComparison.OrdinalIgnoreCase)
+                || convId.StartsWith("sim-conv-", StringComparison.OrdinalIgnoreCase))
+            {
+                var mockId = $"mock:sim-{Guid.NewGuid():N}";
+                _logger.LogInformation(
+                    "[Shopee] SendReply SIM/demo mock success Session={SessionId} MockId={MockId}",
+                    context.ConversationId, mockId);
+                return mockId;
+            }
+
             // 优先按 webhook 的 to_shop_id（context.OpenId）从 PlatformConnection 取 per-shop token + Region
             var (accessToken, shopIdStr, tokenSource, region) = await ResolveShopCredentialsAsync(context.OpenId);
             var partner = ShopeePartnerResolver.Resolve(_config, region);

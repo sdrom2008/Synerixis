@@ -1,3 +1,5 @@
+> 明日最短点击路径见 [`DEMO.md`](./DEMO.md)。
+
 # 本地演示种子包（无需真实平台账号）
 
 > 目标：用**测试账号与模拟数据**先把网页端主路径跑通；以后再换成真实 Shopee / TikTok Partner Key。  
@@ -98,4 +100,4 @@ Content-Type: application/json
 | POST | `/api/dev/simulate-inbound` | 注入一条买家消息 |
 | POST | `/api/auth/phone-login` | 商家登录（开发码 123456） |
 | POST | `/api/auth/agent-login` | 坐席 / Admin 登录 |
-| POST | `/api/auth/init-agent` | 仅 Dev：兜底创建 Admin |
+| POST | `/api/auth/init-agent` | 仅 Dev：确保 Admin 账号并签发 **Admin** JWT（不会误返回普通坐席） |

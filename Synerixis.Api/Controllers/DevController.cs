@@ -110,10 +110,20 @@ namespace Synerixis.Api.Controllers
             }
             else
             {
-                skipped.Add("sellerConfig");
+                // 演示默认 draft-first：若曾改成 AutoSend，seed 拉回 DraftFirst
+                if (!string.Equals(config.OutboundMode, OutboundModes.DraftFirst, StringComparison.OrdinalIgnoreCase))
+                {
+                    config.OutboundMode = OutboundModes.DraftFirst;
+                    config.UpdatedAt = DateTime.UtcNow;
+                    updated.Add("sellerConfig.outboundMode");
+                }
+                else
+                {
+                    skipped.Add("sellerConfig");
+                }
             }
 
-            // 3) 模拟 Shopee PlatformConnection
+            // 3) 模拟 Shopee + TikTok PlatformConnection（多店筛选）
             var connection = await EnsureSimConnectionAsync(seller.Id, "SHOPEE", cancellationToken);
             if (connection.Nickname != "模拟 Shopee 店")
             {
@@ -123,6 +133,17 @@ namespace Synerixis.Api.Controllers
             else
             {
                 skipped.Add("platformConnection");
+            }
+
+            var tiktokConnection = await EnsureSimConnectionAsync(seller.Id, "TIKTOK", cancellationToken);
+            if (tiktokConnection.Nickname != "模拟 TikTok 店")
+            {
+                tiktokConnection.UpdateProfile("模拟 TikTok 店", null);
+                updated.Add("platformConnection.tiktok.profile");
+            }
+            else
+            {
+                skipped.Add("platformConnection.tiktok");
             }
 
             // 4) 坐席（店铺 Agent）+ Admin（控制台）
@@ -157,6 +178,7 @@ namespace Synerixis.Api.Controllers
                 kind: "draft",
                 customerId: DemoCustomerIds[0],
                 customerName: "演示买家·待审草稿",
+                platform: "SHOPEE",
                 created,
                 skipped,
                 updated,
@@ -169,6 +191,7 @@ namespace Synerixis.Api.Controllers
                 kind: "handoff",
                 customerId: DemoCustomerIds[1],
                 customerName: "演示买家·转人工",
+                platform: "SHOPEE",
                 created,
                 skipped,
                 updated,
@@ -181,6 +204,21 @@ namespace Synerixis.Api.Controllers
                 kind: "normal",
                 customerId: DemoCustomerIds[2],
                 customerName: "演示买家·正常咨询",
+                platform: "SHOPEE",
+                created,
+                skipped,
+                updated,
+                cancellationToken);
+
+            // 第二店（TikTok）一条待审草稿，便于收件箱「店铺筛选」演示
+            var tiktokDraftSession = await EnsureSessionBundleAsync(
+                seller.Id,
+                tiktokConnection,
+                shopAgent.Id,
+                kind: "draft",
+                customerId: "demo-buyer-tiktok",
+                customerName: "演示买家·TikTok店",
+                platform: "TIKTOK",
                 created,
                 skipped,
                 updated,
@@ -277,7 +315,13 @@ namespace Synerixis.Api.Controllers
                 {
                     draft = draftSession.Id,
                     handoff = handoffSession.Id,
-                    normal = normalSession.Id
+                    normal = normalSession.Id,
+                    tiktokDraft = tiktokDraftSession.Id
+                },
+                shops = new
+                {
+                    shopee = new { id = connection.Id, nickname = connection.Nickname, shopId = connection.ShopId },
+                    tiktok = new { id = tiktokConnection.Id, nickname = tiktokConnection.Nickname, shopId = tiktokConnection.ShopId }
                 },
                 created,
                 skipped,
@@ -497,7 +541,10 @@ namespace Synerixis.Api.Controllers
                 return existing;
             }
 
-            var shopId = $"SIM-SHOP-{sellerId:N}"[..Math.Min(32, $"SIM-SHOP-{sellerId:N}".Length)];
+            // 按平台区分 ShopId，避免多店筛选时 OpenId 撞车
+            var platTag = platform.Length >= 2 ? platform[..2] : platform;
+            var rawShopId = $"SIM-SHOP-{platTag}-{sellerId:N}";
+            var shopId = rawShopId[..Math.Min(32, rawShopId.Length)];
             var nickname = platform == "TIKTOK" ? "模拟 TikTok 店" : "模拟 Shopee 店";
             var conn = PlatformConnection.Create(
                 sellerId: sellerId,
@@ -619,12 +666,13 @@ namespace Synerixis.Api.Controllers
             string kind,
             string customerId,
             string customerName,
+            string platform,
             List<string> created,
             List<string> skipped,
             List<string> updated,
             CancellationToken cancellationToken)
         {
-            var platform = "SHOPEE";
+            platform = string.IsNullOrWhiteSpace(platform) ? "SHOPEE" : platform.Trim().ToUpperInvariant();
             var session = await _db.ChatSessions
                 .Include(s => s.Messages)
                 .FirstOrDefaultAsync(

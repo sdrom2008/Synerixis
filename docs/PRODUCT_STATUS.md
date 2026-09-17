@@ -1,6 +1,6 @@
 # Synerixis 产品状态总览
 
-> 更新日期：2026-09-14（Asia/Shanghai）。  
+> 更新日期：2026-09-17（Asia/Hong_Kong）。  
 > 定位：**跨境多店客服工作台 + AI 辅助起草**（draft-first / human-in-the-loop），不是全自动 chatbot。  
 > 细节见 [`PRODUCTIZATION_PLAN.md`](./PRODUCTIZATION_PLAN.md)、[`SHOPEE_CLOSED_LOOP.md`](./SHOPEE_CLOSED_LOOP.md)、[`MARKET_FIT_AND_POSITIONING.md`](./MARKET_FIT_AND_POSITIONING.md)。
 
@@ -71,6 +71,7 @@ cd admin-console && npm install && npm run dev  # :3000
 ```
 
 Box 细节见 [`DEV_SETUP_BOX.md`](./DEV_SETUP_BOX.md)。
+明日演示点击路径：[`DEMO.md`](./DEMO.md)。
 
 ### 验收勾选（代码侧）
 

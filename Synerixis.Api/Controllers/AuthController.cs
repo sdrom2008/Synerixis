@@ -479,7 +479,8 @@ namespace Synerixis.Api.Controllers
             return null;
         }
 
-        // 开发用：创建初始 Agent 账号（仅 Development 环境）
+        // 开发用：确保存在 Admin 并签发 Admin JWT（仅 Development）
+        // 注意：seed-demo 会先建店铺坐席；不可 FirstOrDefault 任意 Agent（会拿到 Role=Agent，Admin API 403）
         [HttpPost("init-agent")]
         [AllowAnonymous]
         public async Task<IActionResult> InitAgent()
@@ -488,28 +489,58 @@ namespace Synerixis.Api.Controllers
             if (env == null || env.EnvironmentName != "Development")
                 return StatusCode(403, "Not allowed in production");
 
-            // 确保数据库已连接
             await _db.Database.EnsureCreatedAsync();
 
-            // 检查是否已存在任何 Agent
-            var existing = await _db.Agents.FirstOrDefaultAsync();
-            if (existing != null)
+            const string demoAdminEmail = "admin@test.com";
+            const string demoPassword = "Agent123!";
+
+            // 优先已有 Admin（按邮箱或 Role）
+            var admin = await _db.Agents.FirstOrDefaultAsync(a => a.Email == demoAdminEmail)
+                ?? await _db.Agents.FirstOrDefaultAsync(a => a.Role == AgentRole.Admin);
+
+            if (admin != null)
             {
-                var existingToken = _authService.GenerateJwt(existing.Id, existing.Role.ToString(), existing.ShopId);
-                return Ok(new { token = existingToken, agentId = existing.Id, name = existing.Name, message = "Already exists" });
+                if (admin.Role != AgentRole.Admin)
+                {
+                    admin.UpdateRole(AgentRole.Admin);
+                }
+                if (!admin.IsActive)
+                {
+                    admin.SetActive(true);
+                }
+                if (!AgentPasswordHasher.Verify(demoPassword, admin.PasswordHash))
+                {
+                    admin.UpdatePassword(AgentPasswordHasher.Hash(demoPassword));
+                }
+                await _db.SaveChangesAsync();
+
+                var existingToken = _authService.GenerateJwt(admin.Id, AgentRole.Admin.ToString(), admin.ShopId);
+                return Ok(new
+                {
+                    token = existingToken,
+                    agentId = admin.Id,
+                    name = admin.Name,
+                    email = admin.Email,
+                    role = "Admin",
+                    password = demoPassword,
+                    message = "Admin already exists. Use POST /api/auth/agent-login"
+                });
             }
 
-            // 创建测试 Seller（店铺）
-            var seller = Seller.Create("test-openid-" + Guid.NewGuid().ToString("N"));
-            _db.Sellers.Add(seller);
-            await _db.SaveChangesAsync();
+            // 无 Admin：挂到已有 Seller 或新建
+            var seller = await _db.Sellers.FirstOrDefaultAsync();
+            if (seller == null)
+            {
+                seller = Seller.Create("test-openid-" + Guid.NewGuid().ToString("N"));
+                _db.Sellers.Add(seller);
+                await _db.SaveChangesAsync();
+            }
 
-            // 创建测试 Agent（密码 Agent123!，存 SHA256+salt）
             var agent = Agent.Create(
                 shopId: seller.Id,
-                email: "admin@test.com",
+                email: demoAdminEmail,
                 name: "Admin Agent",
-                passwordHash: AgentPasswordHasher.Hash("Agent123!"),
+                passwordHash: AgentPasswordHasher.Hash(demoPassword),
                 role: AgentRole.Admin
             );
             _db.Agents.Add(agent);
@@ -522,8 +553,9 @@ namespace Synerixis.Api.Controllers
                 agentId = agent.Id,
                 name = agent.Name,
                 email = agent.Email,
-                password = "Agent123!",
-                message = "Dev agent created. Login via POST /api/auth/agent-login"
+                role = "Admin",
+                password = demoPassword,
+                message = "Dev Admin created. Login via POST /api/auth/agent-login"
             });
         }
     }

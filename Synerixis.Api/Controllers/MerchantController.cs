@@ -1858,23 +1858,40 @@ namespace Synerixis.Api.Controllers
                 if (string.IsNullOrWhiteSpace(session.PlatformConversationId))
                     return BadRequest(new { message = "缺少平台会话 ID，无法出站。请等待买家再次进线或检查 Webhook 解析。" });
 
-                var platformRouter = HttpContext.RequestServices.GetRequiredService<IPlatformClientRouter>();
-                var client = platformRouter.GetClient(session.Platform);
-                var platformMsg = new PlatformMessage
-                {
-                    Platform = session.Platform,
-                    OpenId = session.PlatformShopOpenId ?? string.Empty,
-                    CustomerId = session.CustomerId,
-                    CustomerName = session.CustomerName,
-                    ConversationId = session.PlatformConversationId,
-                    Content = draft.Content
-                };
+                // 模拟店 / 本地演示会话：不调用真实 Shopee/TikTok，闭环仍可人审「发送」
+                var shopKey = session.PlatformShopOpenId ?? string.Empty;
+                var convKey = session.PlatformConversationId ?? string.Empty;
+                var isSimDemo =
+                    shopKey.StartsWith("SIM-SHOP-", StringComparison.OrdinalIgnoreCase)
+                    || convKey.StartsWith("demo-conv-", StringComparison.OrdinalIgnoreCase)
+                    || convKey.StartsWith("sim-conv-", StringComparison.OrdinalIgnoreCase);
 
-                var platformOutboundId = await client.SendReplyAsync(platformMsg, draft.Content);
+                string? platformOutboundId;
+                var mocked = false;
+                if (isSimDemo)
+                {
+                    platformOutboundId = $"mock:sim-{Guid.NewGuid():N}";
+                    mocked = true;
+                }
+                else
+                {
+                    var platformRouter = HttpContext.RequestServices.GetRequiredService<IPlatformClientRouter>();
+                    var client = platformRouter.GetClient(session.Platform);
+                    var platformMsg = new PlatformMessage
+                    {
+                        Platform = session.Platform,
+                        OpenId = session.PlatformShopOpenId ?? string.Empty,
+                        CustomerId = session.CustomerId,
+                        CustomerName = session.CustomerName,
+                        ConversationId = session.PlatformConversationId,
+                        Content = draft.Content
+                    };
+                    platformOutboundId = await client.SendReplyAsync(platformMsg, draft.Content);
+                }
 
                 // 人审发送计为坐席消息（非 AI）；Pending/转人工后亦可出站
                 var agentMsg = ChatMessage.FromAgent(draft.Content, chatSessionId: session.Id);
-                // 优先写平台真实 message_id；无则 outbound:{localId} 兜底（见平台客户端注释）
+                // 优先写平台真实 / mock message_id；无则 outbound:{localId} 兜底
                 agentMsg.PlatformMsgId = !string.IsNullOrWhiteSpace(platformOutboundId)
                     ? platformOutboundId
                     : $"outbound:{agentMsg.Id:N}";
@@ -1893,16 +1910,18 @@ namespace Synerixis.Api.Controllers
                     var actor = GetCurrentUser();
                     await _audit.LogAsync(actor.UserId, actor.UserType, AuditActions.DraftApprove,
                         "DraftMessage", draft.Id.ToString(),
-                        new { sessionId = session.Id, messageId = agentMsg.Id },
+                        new { sessionId = session.Id, messageId = agentMsg.Id, mocked },
                         shopId);
                 }
                 catch { }
 
                 return Ok(new
                 {
-                    message = "已发送到平台",
+                    message = mocked ? "已模拟发送（演示店，未调用真实平台）" : "已发送到平台",
                     draftId = draft.Id,
-                    messageId = agentMsg.Id
+                    messageId = agentMsg.Id,
+                    platformMsgId = agentMsg.PlatformMsgId,
+                    mocked
                 });
             }
             catch (Exception ex)

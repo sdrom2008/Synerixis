@@ -5,6 +5,10 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![.NET Version](https://img.shields.io/badge/.NET-8.0-blue)](https://dotnet.microsoft.com/)
 
+## 明日本地演示
+
+见 [`docs/DEMO.md`](docs/DEMO.md)：seed → merchant-web 登录 → 收件箱草稿人审（SIM mock 出站）。
+
 ## 定位（一句话）
 
 卖家绑定跨境店铺 → 统一收件箱 → 意图 / 查单物流 → **AI 起草回复 → 坐席确认发送**；复杂场景转人工。自动发送仅限政策允许通道（官方 autoreply / 站外等），不以 Chat API 伪装 chatbot。
