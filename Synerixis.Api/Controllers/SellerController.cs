@@ -132,7 +132,7 @@ namespace Synerixis.Api.Controllers
                             source = _llm.Source,
                             degradeHint = llmConfigured
                                 ? null
-                                : "未配置 AI：入站将生成「未配置 AI·规则草稿」，演示 seed / 人审发送不受影响"
+                                : "未配置 AI（规则草稿）：入站/注入生成规则草稿；请到「AI 设置」填 Key 启用真实起草。seed / 人审发送 / SIM mock 不受影响"
                         },
                         TeamStats = new
                         {

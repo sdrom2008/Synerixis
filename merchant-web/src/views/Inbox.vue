@@ -222,7 +222,8 @@
             <span v-if="messagesMeta.assignedAt" class="muted"> · {{ formatTime(messagesMeta.assignedAt) }}</span>
           </div>
           <div v-if="messagesMeta.pendingHumanHandoff" class="handoff-hint">
-            已转人工：入站消息不再生成新 AI 草稿，也不 AutoSend；下方旧草稿仍可编辑后手动发送。分配坐席与 handoff 可并存。
+            <strong>已转人工</strong>：新买家消息不再自动生成 AI 草稿，也不会自动发出。
+            下方旧草稿仍可编辑后点「人审发送」。需要时可在右上角分配 / 认领坐席。
           </div>
           <div class="meta">
             <span v-if="messagesMeta.hoursSinceLastBuyerMsg != null">
@@ -262,10 +263,26 @@
         <div class="draft-panel">
           <div class="draft-head">
             <strong>回复草稿（未发到平台）</strong>
-            <el-tag v-if="draft && !isSupersededDraft" size="small" type="warning" effect="plain">待发送</el-tag>
-            <el-tag v-else-if="isSupersededDraft" size="small" type="info" effect="plain">已停用但仍可发送</el-tag>
-            <el-tag v-else size="small" type="info" effect="plain">可手动起草</el-tag>
+            <div class="draft-head-tags">
+              <el-tag v-if="isRuleBasedDraft" size="small" type="info" effect="plain">规则草稿·未配置 AI</el-tag>
+              <el-tag v-if="draft && !isSupersededDraft" size="small" type="warning" effect="plain">待发送</el-tag>
+              <el-tag v-else-if="isSupersededDraft" size="small" type="info" effect="plain">已停用但仍可发送</el-tag>
+              <el-tag v-else size="small" type="info" effect="plain">可手动起草</el-tag>
+            </div>
           </div>
+          <el-alert
+            v-if="llmConfigured === false"
+            type="info"
+            :closable="false"
+            show-icon
+            class="llm-banner"
+          >
+            <template #title>
+              当前为<strong>规则草稿</strong>模式（未配置 AI Key）。演示仍可人审发送；需要真实 AI 起草请到
+              <router-link class="llm-link" to="/ai-settings">AI 设置</router-link>
+              填写本店 Key。
+            </template>
+          </el-alert>
           <el-alert
             v-if="lastSendHint"
             :title="lastSendHint"
@@ -276,7 +293,7 @@
             @close="lastSendHint = ''"
           />
           <p class="draft-hint">
-            可编辑 AI / 规则草稿，或<strong>手动起草</strong>后点「人审发送」。内容先落成待审草稿再出站（draft-first），不会开启 AutoSend。演示店为模拟出站，不调用真实 Shopee/TikTok。
+            可编辑 AI / 规则草稿，或<strong>手动起草</strong>后点「人审发送」。内容先落成待审草稿再出站（draft-first），不会开启 AutoSend。演示店为<strong>模拟出站</strong>，不调用真实 Shopee/TikTok。
           </p>
           <p v-if="!draft" class="draft-empty-hint">
             当前无待审草稿。可在下方直接撰写并「保存草稿」或「人审发送」；也可点左上角「注入测试」。未配置 AI 时注入会生成规则草稿，不会报 500。
@@ -299,19 +316,32 @@
             v-model="draftContent"
             type="textarea"
             :rows="4"
+            :disabled="sending || saving"
             placeholder="撰写回复内容，保存为草稿或直接发送（演示店模拟出站）"
           />
           <div class="draft-actions">
-            <el-button :disabled="!canSaveDraft || saving" @click="onSave" :loading="saving">保存草稿</el-button>
-            <el-button :disabled="!draft || sending" @click="onDiscard" :loading="discarding">丢弃</el-button>
-            <el-button
-              type="primary"
-              :disabled="!canSendDraft || sending"
-              :loading="sending"
-              @click="onSend"
-            >
-              人审发送
-            </el-button>
+            <el-tooltip :disabled="!!canSaveDraft" :content="saveDisabledReason" placement="top">
+              <span class="btn-wrap">
+                <el-button :disabled="!canSaveDraft || saving || sending" @click="onSave" :loading="saving">保存草稿</el-button>
+              </span>
+            </el-tooltip>
+            <el-tooltip :disabled="!!draft && !sending" :content="discardDisabledReason" placement="top">
+              <span class="btn-wrap">
+                <el-button :disabled="!draft || sending || discarding" @click="onDiscard" :loading="discarding">丢弃</el-button>
+              </span>
+            </el-tooltip>
+            <el-tooltip :disabled="!!canSendDraft" :content="sendDisabledReason" placement="top">
+              <span class="btn-wrap">
+                <el-button
+                  type="primary"
+                  :disabled="!canSendDraft || sending || saving"
+                  :loading="sending"
+                  @click="onSend"
+                >
+                  人审发送
+                </el-button>
+              </span>
+            </el-tooltip>
           </div>
         </div>
       </template>
@@ -451,6 +481,7 @@ import {
   type DraftSendResult,
   type SlaUrgency,
 } from '@/api/merchant'
+import { getSellerProfile } from '@/api/seller'
 import { useAuthStore } from '@/stores/auth'
 
 const listLoading = ref(false)
@@ -490,6 +521,8 @@ const messages = ref<MessageItem[]>([])
 const draft = ref<DraftInfo | null>(null)
 const draftContent = ref('')
 const lastSendHint = ref('')
+/** null=未知；false=未配置 AI；true=已配置 */
+const llmConfigured = ref<boolean | null>(null)
 const quickReplies = ref<QuickReplyItem[]>([])
 const timelineEl = ref<HTMLElement | null>(null)
 const messagesMeta = ref<{
@@ -513,6 +546,29 @@ const isSupersededDraft = computed(() => {
 
 const canSaveDraft = computed(() => !!selectedId.value && !!draftContent.value.trim())
 const canSendDraft = computed(() => !!selectedId.value && !!draftContent.value.trim())
+
+const isRuleBasedDraft = computed(() => {
+  const c = (draft.value?.content || draftContent.value || '')
+  return c.includes('未配置 AI') || c.includes('规则草稿')
+})
+
+const saveDisabledReason = computed(() => {
+  if (!selectedId.value) return '请先选择左侧会话'
+  if (!draftContent.value.trim()) return '请先填写回复内容'
+  return ''
+})
+
+const sendDisabledReason = computed(() => {
+  if (!selectedId.value) return '请先选择左侧会话'
+  if (!draftContent.value.trim()) return '请先填写回复内容后再人审发送'
+  return ''
+})
+
+const discardDisabledReason = computed(() => {
+  if (!draft.value) return '当前没有可丢弃的待审草稿'
+  if (sending.value) return '发送中，请稍候'
+  return ''
+})
 
 const canTransfer = computed(() => {
   if (messagesMeta.value.pendingHumanHandoff) return false
@@ -1087,10 +1143,11 @@ async function onInjectTest() {
     })
     let hint: string
     if (res.draft?.contentPreview) {
-      const isRule = String(res.draft.contentPreview).includes('未配置 AI')
+      const preview = String(res.draft.contentPreview)
+      const isRule = preview.includes('未配置 AI') || preview.includes('规则草稿')
       hint = isRule
-        ? `已注入（规则草稿）：${res.draft.contentPreview}`
-        : `已注入，待审草稿：${res.draft.contentPreview}`
+        ? `已注入（规则草稿·未配置 AI）：${preview} — 可到「AI 设置」填 Key 启用真实起草`
+        : `已注入，待审草稿：${preview}`
     } else if (res.pendingHumanHandoff || res.message === 'partial_ok_ai_degraded') {
       hint = `已注入会话，但未生成草稿（${res.warning || '可能已转人工'}）。仍可手动起草后「人审发送」。`
       ElMessage.warning(hint)
@@ -1139,9 +1196,20 @@ async function onDiscard() {
   }
 }
 
+async function loadLlmStatus() {
+  try {
+    const profile = await getSellerProfile()
+    const llmInfo = (profile.Llm || profile.llm || {}) as Record<string, unknown>
+    llmConfigured.value = !!llmInfo.configured
+  } catch {
+    llmConfigured.value = null
+  }
+}
+
 onMounted(() => {
   loadShopOptions()
   loadShopAgents()
+  void loadLlmStatus()
   refreshAll()
   alertPollTimer = setInterval(() => {
     loadAlerts()
@@ -1555,14 +1623,35 @@ onUnmounted(() => {
   margin-top: -8px;
   padding-bottom: 12px;
 }
-.send-hint {
-  margin: 0 12px 8px;
+.send-hint,
+.llm-banner {
+  margin: 0 0 8px;
 }
-.draft-empty-hint {
-  margin: 0 14px 8px;
+.llm-link {
+  color: #2563eb;
+  font-weight: 600;
+  text-decoration: underline;
+}
+.draft-head-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+.draft-empty-hint,
+.draft-disabled-hint {
+  margin: 0 0 8px;
   font-size: 12px;
   color: #64748b;
   line-height: 1.45;
+}
+.draft-disabled-hint {
+  margin: 8px 0 0;
+  color: #b45309;
+  text-align: right;
+}
+.btn-wrap {
+  display: inline-flex;
 }
 .mock-tag {
   margin: 0 4px;

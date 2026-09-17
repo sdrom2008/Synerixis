@@ -2,7 +2,8 @@
   <div>
     <h2 class="page-title">AI 设置</h2>
     <p class="page-desc">
-      语气、LLM Key、营业时段、handoff、出站模式与 SLA。默认 DraftFirst：AI/规则只写草稿，人工「人审发送」。无 Key 时规则降级，演示不依赖真实模型。
+      语气、LLM Key、营业时段、转人工、出站模式与 SLA。默认 DraftFirst：AI/规则只写草稿，由人工「人审发送」。
+      无 Key 时自动降级为规则草稿，演示不依赖真实模型。
     </p>
 
     <el-card shadow="never" class="sx-card" v-loading="loading">
@@ -78,19 +79,23 @@
         <el-divider content-position="left">LLM API Key</el-divider>
 
         <el-alert
-          :type="llm.configured ? 'success' : 'warning'"
+          :type="llm.configured ? 'success' : 'info'"
           :closable="false"
           show-icon
           style="margin-bottom: 16px"
         >
           <template #title>
             <span v-if="llm.configured">
-              AI 已配置（来源：{{ sourceLabel }}<span v-if="llm.keyHint">，{{ llm.keyHint }}</span>）
+              AI 已配置（来源：{{ sourceLabel }}<span v-if="llm.keyHint">，{{ llm.keyHint }}</span>）— 入站将走真实 LLM 起草
             </span>
             <span v-else>
-              未配置 AI — 入站将生成「未配置 AI·规则草稿」，seed / 人审发送 / SIM mock 仍可演示，不会 500
+              <strong>未配置 AI</strong>（规则草稿模式）— 入站 / 注入会生成「未配置 AI·规则草稿」，
+              seed、人审发送、SIM 模拟出站仍可演示，不会报错。要启用真实 AI 起草，请在下方填写本店 Key 并保存。
             </span>
           </template>
+          <div v-if="!llm.configured && llm.degradeHint" class="field-hint" style="margin-top: 6px">
+            {{ llm.degradeHint }}
+          </div>
         </el-alert>
 
         <el-form-item label="API Key">
@@ -100,12 +105,12 @@
             @input="llmKeyTouched = true"
             show-password
             clearable
-            placeholder="DashScope / 通义兼容 Key；留空保存可清除商家 Key"
+            placeholder="粘贴 DashScope / 通义兼容 Key；留空保存可清除商家 Key"
             autocomplete="off"
           />
           <div class="field-hint">
             优先使用本店 Key；未填则回退平台 <code>Llm:ApiKey</code> / 环境变量 <code>LLM_API_KEY</code>。
-            不需要真实 Key 也能演示：规则草稿 + 人审发送。
+            <strong>没有 Key 也能演示</strong>：规则草稿 + 人审发送即可跑通闭环。
           </div>
         </el-form-item>
 
@@ -289,6 +294,7 @@ async function save() {
     llm.platformKeyConfigured = !!llmInfo.platformKeyConfigured
     llm.keyHint = (llmInfo.keyHint as string) || null
     llm.source = String(llmInfo.source || 'none')
+    llm.degradeHint = (llmInfo.degradeHint as string) || null
     if (llm.sellerKeyConfigured && llm.keyHint) {
       form.llmApiKey = String(llm.keyHint)
       llmKeyTouched.value = false
