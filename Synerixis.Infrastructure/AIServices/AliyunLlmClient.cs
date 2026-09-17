@@ -9,11 +9,10 @@ using Synerixis.Infrastructure.AI;
 namespace Synerixis.Infrastructure.AIServices
 {
     /// <summary>
-    /// Aliyun Tongyi Qianwen adapter implementing ILlmClient.
+    /// OpenAI-compatible ILlmClient（经 LlmRuntime：Admin Provider / appsettings / 商家 Key）。
     /// </summary>
     public class AliyunLlmClient : ILlmClient
     {
-        private const string DefaultModel = "qwen-max";
         private readonly LlmRuntime _runtime;
         private readonly IAiUsageRecorder? _usageRecorder;
 
@@ -34,7 +33,7 @@ namespace Synerixis.Infrastructure.AIServices
 
             if (_usageRecorder != null && usage != null && usage.SellerId != Guid.Empty)
             {
-                var model = string.IsNullOrWhiteSpace(usage.Model) ? DefaultModel : usage.Model!;
+                var model = string.IsNullOrWhiteSpace(usage.Model) ? _runtime.ModelId : usage.Model!;
                 var purpose = string.IsNullOrWhiteSpace(usage.Purpose) ? AiUsagePurposes.Other : usage.Purpose;
                 await _usageRecorder.RecordFromChatResultAsync(
                     usage.SellerId,

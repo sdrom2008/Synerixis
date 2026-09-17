@@ -1,41 +1,97 @@
 using System.Collections.Concurrent;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Microsoft.SemanticKernel.Connectors.OpenAI;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
+using Synerixis.Application.Interfaces;
 
 namespace Synerixis.Infrastructure.AI
 {
     /// <summary>
-    /// 进程内 LLM 运行时：平台 Key（配置/环境）+ 可选商家级覆盖（AsyncLocal）。
-    /// 无 Key 时不抛启动异常；调用方应先查 <see cref="IsConfigured"/> 并降级。
+    /// 进程内 LLM 运行时：Admin Provider / 配置 Key + 可选商家级覆盖（AsyncLocal）。
+    /// OpenAI-compatible only（cloud + Ollama / LM Studio）。
+    /// 无 Key（且非本地 endpoint）时不抛启动异常；调用方应先查 <see cref="IsConfigured"/> 并降级。
     /// </summary>
     public sealed class LlmRuntime
     {
         private static readonly AsyncLocal<string?> ScopedSellerKey = new();
         private readonly IConfiguration _config;
+        private readonly IServiceScopeFactory _scopeFactory;
         private readonly ILogger<LlmRuntime> _logger;
         private readonly ConcurrentDictionary<string, Kernel> _kernels = new(StringComparer.Ordinal);
         private int _warnedMissing;
 
-        public LlmRuntime(IConfiguration config, ILogger<LlmRuntime> logger)
+        public LlmRuntime(
+            IConfiguration config,
+            IServiceScopeFactory scopeFactory,
+            ILogger<LlmRuntime> logger)
         {
             _config = config;
+            _scopeFactory = scopeFactory;
             _logger = logger;
         }
 
-        public string? PlatformKey => LlmKeyResolver.ResolvePlatformKey(_config);
+        /// <summary>Admin Active Provider（短缓存）；未 Active 时字段可能仍有草稿值。</summary>
+        public LlmProviderSettings GetAdminProvider()
+        {
+            using var scope = _scopeFactory.CreateScope();
+            var svc = scope.ServiceProvider.GetRequiredService<ISystemSettingsService>();
+            return svc.GetLlmProviderAsync().GetAwaiter().GetResult();
+        }
 
-        public string ModelId => LlmKeyResolver.ResolveModel(_config);
+        public string? PlatformKey
+        {
+            get
+            {
+                var admin = GetAdminProvider();
+                return LlmKeyResolver.ResolvePlatformKey(_config, admin);
+            }
+        }
 
-        /// <summary>当前有效 Key = 商家覆盖 ?? 平台配置。</summary>
+        public string ModelId
+        {
+            get
+            {
+                var admin = GetAdminProvider();
+                return LlmKeyResolver.ResolveModel(_config, admin);
+            }
+        }
+
+        public string BaseUrl
+        {
+            get
+            {
+                var admin = GetAdminProvider();
+                return LlmKeyResolver.ResolveBaseUrl(_config, admin);
+            }
+        }
+
+        /// <summary>当前有效 Key = 商家覆盖 ?? 平台（Admin Active / appsettings）。</summary>
         public string? EffectiveKey =>
             LlmKeyResolver.FirstNonEmpty(ScopedSellerKey.Value, PlatformKey);
 
-        public bool IsConfigured => !string.IsNullOrWhiteSpace(EffectiveKey);
+        /// <summary>
+        /// 有商家/平台 Key，或本地 OpenAI-compatible（Ollama/LM Studio）已配 BaseUrl+Model。
+        /// </summary>
+        public bool IsConfigured
+        {
+            get
+            {
+                if (!string.IsNullOrWhiteSpace(EffectiveKey))
+                    return true;
 
-        public bool PlatformConfigured => !string.IsNullOrWhiteSpace(PlatformKey);
+                // 本地 OpenAI-compatible（Ollama / LM Studio）允许无 Key
+                var baseUrl = BaseUrl;
+                var model = ModelId;
+                return LlmKeyResolver.IsLocalBaseUrl(baseUrl)
+                       && !string.IsNullOrWhiteSpace(model);
+            }
+        }
+
+        public bool PlatformConfigured =>
+            !string.IsNullOrWhiteSpace(PlatformKey)
+            || (LlmKeyResolver.IsLocalBaseUrl(BaseUrl) && !string.IsNullOrWhiteSpace(ModelId));
 
         public string? KeyHint => LlmKeyResolver.MaskHint(EffectiveKey);
 
@@ -44,6 +100,8 @@ namespace Synerixis.Infrastructure.AI
             get
             {
                 if (!string.IsNullOrWhiteSpace(ScopedSellerKey.Value)) return "seller";
+                var admin = GetAdminProvider();
+                if (admin.Active) return "admin";
                 if (PlatformConfigured) return "platform";
                 return "none";
             }
@@ -57,29 +115,44 @@ namespace Synerixis.Infrastructure.AI
             return new ScopeRevert(() => ScopedSellerKey.Value = prev);
         }
 
+        /// <summary>Admin 保存/激活后清空 Kernel 缓存。</summary>
+        public void InvalidateKernels()
+        {
+            _kernels.Clear();
+            Interlocked.Exchange(ref _warnedMissing, 0);
+            _logger.LogInformation("[Llm] Kernel cache cleared after provider change");
+        }
+
         public IChatCompletionService GetChatService()
         {
-            var key = EffectiveKey;
-            if (string.IsNullOrWhiteSpace(key))
+            if (!IsConfigured)
             {
                 WarnMissingOnce();
-                throw new InvalidOperationException("未配置 AI：请在商家「AI 设置」填写 LLM API Key，或配置 Llm:ApiKey / 环境变量 LLM_API_KEY。");
+                throw new InvalidOperationException(
+                    "未配置 AI：请在 Admin「LLM Provider」或商家「AI 设置」配置，或设 Llm:ApiKey / LLM_API_KEY；本地可配 Ollama/LM Studio BaseUrl。");
             }
 
-            var kernel = _kernels.GetOrAdd(key, k => BuildKernel(k, ModelId));
+            var key = EffectiveKey;
+            var apiKey = string.IsNullOrWhiteSpace(key) ? "local" : key;
+            var modelId = ModelId;
+            var baseUrl = BaseUrl;
+            var cacheKey = $"{baseUrl}|{modelId}|{apiKey}";
+            var kernel = _kernels.GetOrAdd(cacheKey, _ => BuildKernel(apiKey, modelId, baseUrl));
             return kernel.GetRequiredService<IChatCompletionService>();
         }
 
         /// <summary>
-        /// DI 用：无 Key 时返回占位 Chat（调用会失败）；业务路径应先查 <see cref="IsConfigured"/>。
+        /// DI 用：无配置时返回占位 Chat（调用会失败）；业务路径应先查 <see cref="IsConfigured"/>。
         /// </summary>
         public IChatCompletionService GetChatServiceOrPlaceholder()
         {
             if (IsConfigured)
                 return GetChatService();
             WarnMissingOnce();
+            var modelId = ModelId;
+            var baseUrl = BaseUrl;
             var kernel = _kernels.GetOrAdd("__not_configured__",
-                _ => BuildKernel("sk-not-configured", ModelId));
+                _ => BuildKernel("sk-not-configured", modelId, baseUrl));
             return kernel.GetRequiredService<IChatCompletionService>();
         }
 
@@ -99,10 +172,14 @@ namespace Synerixis.Infrastructure.AI
 
         public Kernel GetKernel()
         {
-            var key = EffectiveKey;
-            if (string.IsNullOrWhiteSpace(key))
+            if (!IsConfigured)
                 throw new InvalidOperationException("未配置 AI");
-            return _kernels.GetOrAdd(key, k => BuildKernel(k, ModelId));
+            var key = EffectiveKey;
+            var apiKey = string.IsNullOrWhiteSpace(key) ? "local" : key;
+            var modelId = ModelId;
+            var baseUrl = BaseUrl;
+            var cacheKey = $"{baseUrl}|{modelId}|{apiKey}";
+            return _kernels.GetOrAdd(cacheKey, _ => BuildKernel(apiKey, modelId, baseUrl));
         }
 
         private void WarnMissingOnce()
@@ -110,17 +187,20 @@ namespace Synerixis.Infrastructure.AI
             if (Interlocked.Exchange(ref _warnedMissing, 1) == 0)
             {
                 _logger.LogWarning(
-                    "[Llm] 未配置 API Key：起草将走规则降级。可在 merchant-web「AI 设置」填写，或设 Llm:ApiKey / LLM_API_KEY。");
+                    "[Llm] 未配置可用 Provider：起草将走规则降级。Admin「LLM Provider」、merchant-web「AI 设置」，或 Llm:ApiKey / LLM_API_KEY / 本地 BaseUrl。");
             }
         }
 
-        private static Kernel BuildKernel(string apiKey, string modelId)
+        private static Kernel BuildKernel(string apiKey, string modelId, string baseUrl)
         {
             var builder = Kernel.CreateBuilder();
+            var endpoint = new Uri(string.IsNullOrWhiteSpace(baseUrl)
+                ? LlmKeyResolver.DefaultDashScopeBaseUrl
+                : baseUrl);
             builder.AddOpenAIChatCompletion(
-                modelId: string.IsNullOrWhiteSpace(modelId) ? "qwen-plus" : modelId,
-                apiKey: apiKey,
-                endpoint: new Uri("https://dashscope.aliyuncs.com/compatible-mode/v1"));
+                modelId: string.IsNullOrWhiteSpace(modelId) ? LlmKeyResolver.DefaultModel : modelId,
+                apiKey: string.IsNullOrWhiteSpace(apiKey) ? "local" : apiKey,
+                endpoint: endpoint);
             return builder.Build();
         }
 

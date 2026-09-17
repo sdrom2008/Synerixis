@@ -486,8 +486,8 @@ namespace Synerixis.Infrastructure.Data
                       .IsRequired();
 
                 entity.Property(e => e.Value)
-                      .HasColumnType("varchar(512)")
-                      .HasMaxLength(512)
+                      .HasColumnType("varchar(2048)")
+                      .HasMaxLength(2048)
                       .IsRequired();
 
                 entity.Property(e => e.UpdatedAt)

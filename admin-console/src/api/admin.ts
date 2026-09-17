@@ -167,3 +167,67 @@ export async function exportUsageCsv(days = 30) {
   })
   triggerCsvDownload(res.data, `admin-usage-${new Date().toISOString().slice(0, 10)}.csv`)
 }
+
+export interface LlmProviderPreset {
+  id: string
+  name: string
+  baseUrl: string
+  model: string
+}
+
+export interface LlmProviderState {
+  active?: boolean
+  name?: string | null
+  baseUrl?: string
+  model?: string
+  apiKeyConfigured?: boolean
+  apiKeyHint?: string | null
+  configured?: boolean
+  source?: string
+  effective?: Record<string, unknown>
+  presets?: LlmProviderPreset[]
+  note?: string
+  message?: string
+}
+
+export function getLlmProvider() {
+  return request<LlmProviderState>({ url: '/api/admin/llm-provider' })
+}
+
+export interface LlmProviderUpdate {
+  name?: string
+  baseUrl?: string
+  model?: string
+  apiKey?: string
+  active?: boolean
+  clearApiKey?: boolean
+}
+
+export function updateLlmProvider(data: LlmProviderUpdate) {
+  return request<LlmProviderState>({
+    url: '/api/admin/llm-provider',
+    method: 'PUT',
+    data: {
+      name: data.name,
+      Name: data.name,
+      baseUrl: data.baseUrl,
+      BaseUrl: data.baseUrl,
+      model: data.model,
+      Model: data.model,
+      apiKey: data.apiKey,
+      ApiKey: data.apiKey,
+      active: data.active,
+      Active: data.active,
+      clearApiKey: data.clearApiKey,
+      ClearApiKey: data.clearApiKey,
+    },
+  })
+}
+
+export function activateLlmProvider(active = true) {
+  return request<LlmProviderState>({
+    url: '/api/admin/llm-provider/activate',
+    method: 'POST',
+    data: { active, Active: active },
+  })
+}

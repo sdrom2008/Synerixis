@@ -296,6 +296,18 @@ CREATE TABLE IF NOT EXISTS `system_settings` (
             await db.Database.ExecuteSqlRawAsync(settingsSql);
             logger?.LogInformation("[SchemaPatcher] system_settings table ensured (MySQL)");
 
+            // Widen Value for LLM API Key / BaseUrl (idempotent)
+            try
+            {
+                await db.Database.ExecuteSqlRawAsync(
+                    "ALTER TABLE `system_settings` MODIFY COLUMN `Value` varchar(2048) NOT NULL");
+                logger?.LogInformation("[SchemaPatcher] system_settings.Value widened to 2048 (MySQL)");
+            }
+            catch (Exception ex)
+            {
+                logger?.LogDebug(ex, "[SchemaPatcher] system_settings.Value widen skipped");
+            }
+
         }
 
         private static async Task TrySqliteAsync(AppDbContext db, ILogger? logger)

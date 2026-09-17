@@ -52,6 +52,7 @@ namespace Synerixis.Domain.Entities
         public const string SessionAssign = "session.assign";
         public const string SessionClaim = "session.claim";
         public const string AdminSettingsUpdate = "admin.settings.update";
+        public const string AdminLlmProviderUpdate = "admin.llm_provider.update";
         public const string AiSettingsUpdate = "ai_settings.update";
         public const string AdminSensitive = "admin.sensitive";
         public const string AdminLogin = "admin.login";

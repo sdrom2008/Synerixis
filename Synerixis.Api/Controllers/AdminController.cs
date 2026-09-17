@@ -5,11 +5,13 @@ using Synerixis.Application.Interfaces;
 using Synerixis.Domain.Entities;
 using Synerixis.Infrastructure.Data;
 using Synerixis.Api.Helpers;
+using Synerixis.Infrastructure.AI;
 
 namespace Synerixis.Api.Controllers
 {
     /// <summary>
-    /// 平台运营 Admin API（需 JWT Role=Admin）：监控 + 安全写操作。
+    /// 平台运营 Admin API（需 JWT Role=Admin，即 Agents.Role=Admin）：监控 + 安全写操作。
+    /// AgentRole.Admin 为 PLATFORM-only；商家 SellerController 团队接口禁止创建/升格此角色。
     /// </summary>
     [ApiController]
     [Route("api/admin")]
@@ -19,12 +21,14 @@ namespace Synerixis.Api.Controllers
         private readonly AppDbContext _db;
         private readonly IAuditLogger _audit;
         private readonly ISystemSettingsService _ops;
+        private readonly LlmRuntime _llm;
 
-        public AdminController(AppDbContext db, IAuditLogger audit, ISystemSettingsService ops)
+        public AdminController(AppDbContext db, IAuditLogger audit, ISystemSettingsService ops, LlmRuntime llm)
         {
             _db = db;
             _audit = audit ?? throw new ArgumentNullException(nameof(audit));
             _ops = ops ?? throw new ArgumentNullException(nameof(ops));
+            _llm = llm ?? throw new ArgumentNullException(nameof(llm));
         }
 
         /// <summary>Dashboard KPI：商家数、连接店铺、今日会话、待手审草稿、SLA overdue 粗计数</summary>
@@ -680,7 +684,7 @@ namespace Synerixis.Api.Controllers
                     ready = "/health/ready",
                     note = "ready 含 EF DbContext 连通检查"
                 },
-                note = "仅 MaintenanceMode / DefaultOutboundMode / AllowNewRegistration 可写；密钥不可通过本接口读写"
+                note = "运营开关：MaintenanceMode / DefaultOutboundMode / AllowNewRegistration。LLM Provider 见 GET/PUT /api/admin/llm-provider（Key 掩码）"
             });
         }
 
@@ -736,6 +740,183 @@ namespace Synerixis.Api.Controllers
                 allowNewRegistration = after.AllowNewRegistration
             });
         }
+
+
+        /// <summary>
+        /// 全局 OpenAI-compatible LLM Provider（Admin）。GET 返回掩码 Key；Active 时优先于 appsettings。
+        /// </summary>
+        [HttpGet("llm-provider")]
+        public async Task<IActionResult> GetLlmProvider([FromServices] IConfiguration config)
+        {
+            var admin = await _ops.GetLlmProviderAsync();
+            var effectiveBase = LlmKeyResolver.ResolveBaseUrl(config, admin);
+            var effectiveModel = LlmKeyResolver.ResolveModel(config, admin);
+            var platformKey = LlmKeyResolver.ResolvePlatformKey(config, admin);
+            return Ok(new
+            {
+                active = admin.Active,
+                name = admin.Name,
+                baseUrl = string.IsNullOrWhiteSpace(admin.BaseUrl) ? effectiveBase : admin.BaseUrl,
+                model = string.IsNullOrWhiteSpace(admin.Model) ? effectiveModel : admin.Model,
+                apiKeyConfigured = admin.HasApiKey,
+                apiKeyHint = admin.ApiKeyHint,
+                effective = new
+                {
+                    source = admin.Active ? "admin" : (string.IsNullOrWhiteSpace(platformKey) && !LlmKeyResolver.IsLocalBaseUrl(effectiveBase) ? "none" : "platform"),
+                    baseUrl = effectiveBase,
+                    model = effectiveModel,
+                    apiKeyConfigured = !string.IsNullOrWhiteSpace(platformKey) || LlmKeyResolver.IsLocalBaseUrl(effectiveBase),
+                    configured = _llm.IsConfigured,
+                    llmSource = _llm.Source
+                },
+                presets = new[]
+                {
+                    new { id = "openai", name = "OpenAI", baseUrl = "https://api.openai.com/v1", model = "gpt-4o-mini" },
+                    new { id = "dashscope", name = "DashScope 兼容", baseUrl = LlmKeyResolver.DefaultDashScopeBaseUrl, model = "qwen-plus" },
+                    new { id = "ollama", name = "Ollama（本地）", baseUrl = "http://127.0.0.1:11434/v1", model = "llama3.2" },
+                    new { id = "lmstudio", name = "LM Studio（本地）", baseUrl = "http://127.0.0.1:1234/v1", model = "local-model" }
+                },
+                note = "仅 OpenAI-compatible。商家 SellerConfig.LlmApiKey 仍可覆盖 Key。无 Key / 本地不可达 → 规则草稿降级。"
+            });
+        }
+
+        /// <summary>保存全局 Provider；activate=true 时立即切换为 Active。</summary>
+        [HttpPut("llm-provider")]
+        public async Task<IActionResult> UpdateLlmProvider([FromBody] AdminLlmProviderUpdateDto dto)
+        {
+            if (dto == null)
+                return BadRequest(new { message = "body 不能为空" });
+
+            var before = await _ops.GetLlmProviderAsync();
+            var changed = new Dictionary<string, object?>();
+
+            if (dto.Name != null)
+            {
+                await UpsertSettingAsync(LlmProviderSettingKeys.Name, dto.Name.Trim());
+                changed["name"] = dto.Name.Trim();
+            }
+            if (dto.BaseUrl != null)
+            {
+                var url = LlmKeyResolver.NormalizeBaseUrl(dto.BaseUrl);
+                if (string.IsNullOrWhiteSpace(url))
+                    return BadRequest(new { message = "baseUrl 不能为空" });
+                await UpsertSettingAsync(LlmProviderSettingKeys.BaseUrl, url);
+                changed["baseUrl"] = url;
+            }
+            if (dto.Model != null)
+            {
+                var model = dto.Model.Trim();
+                if (string.IsNullOrWhiteSpace(model))
+                    return BadRequest(new { message = "model 不能为空" });
+                await UpsertSettingAsync(LlmProviderSettingKeys.Model, model);
+                changed["model"] = model;
+            }
+            if (dto.ClearApiKey == true)
+            {
+                await UpsertSettingAsync(LlmProviderSettingKeys.ApiKey, "");
+                changed["apiKey"] = "(cleared)";
+            }
+            else if (!string.IsNullOrWhiteSpace(dto.ApiKey) && !LooksMasked(dto.ApiKey))
+            {
+                var key = dto.ApiKey.Trim();
+                if (key.Length > 2048)
+                    return BadRequest(new { message = "apiKey 过长" });
+                await UpsertSettingAsync(LlmProviderSettingKeys.ApiKey, key);
+                changed["apiKey"] = LlmKeyResolver.MaskHint(key);
+            }
+
+            if (dto.Active.HasValue)
+            {
+                await UpsertSettingAsync(LlmProviderSettingKeys.Active, dto.Active.Value ? "true" : "false");
+                changed["active"] = dto.Active.Value;
+            }
+
+            if (changed.Count == 0)
+                return BadRequest(new { message = "未提供可写字段（name / baseUrl / model / apiKey / clearApiKey / active）" });
+
+            if (dto.Active == true)
+            {
+                var url = dto.BaseUrl != null ? LlmKeyResolver.NormalizeBaseUrl(dto.BaseUrl) : before.BaseUrl;
+                var model = dto.Model != null ? dto.Model.Trim() : before.Model;
+                if (string.IsNullOrWhiteSpace(url) || string.IsNullOrWhiteSpace(model))
+                    return BadRequest(new { message = "激活前请填写 baseUrl 与 model" });
+            }
+
+            await _db.SaveChangesAsync();
+            _ops.InvalidateLlmProvider();
+            _llm.InvalidateKernels();
+
+            var after = await _ops.GetLlmProviderAsync();
+            var actorId = TryGetActorId();
+            await _audit.LogAsync(
+                actorId,
+                "Admin",
+                AuditActions.AdminLlmProviderUpdate,
+                "LlmProvider",
+                null,
+                new
+                {
+                    before = new { before.Active, before.Name, before.BaseUrl, before.Model, apiKeyHint = before.ApiKeyHint },
+                    changed,
+                    after = new { after.Active, after.Name, after.BaseUrl, after.Model, apiKeyHint = after.ApiKeyHint }
+                },
+                null);
+
+            return Ok(new
+            {
+                message = after.Active ? "LLM Provider 已保存并激活" : "LLM Provider 已保存",
+                active = after.Active,
+                name = after.Name,
+                baseUrl = after.BaseUrl,
+                model = after.Model,
+                apiKeyConfigured = after.HasApiKey,
+                apiKeyHint = after.ApiKeyHint,
+                configured = _llm.IsConfigured,
+                source = _llm.Source
+            });
+        }
+
+        /// <summary>仅切换 Active（需已保存 baseUrl+model）。</summary>
+        [HttpPost("llm-provider/activate")]
+        public async Task<IActionResult> ActivateLlmProvider([FromBody] AdminLlmProviderActivateDto? dto)
+        {
+            var active = dto?.Active ?? true;
+            var before = await _ops.GetLlmProviderAsync();
+            if (active && (string.IsNullOrWhiteSpace(before.BaseUrl) || string.IsNullOrWhiteSpace(before.Model)))
+                return BadRequest(new { message = "请先保存 baseUrl 与 model 再激活" });
+
+            await UpsertSettingAsync(LlmProviderSettingKeys.Active, active ? "true" : "false");
+            await _db.SaveChangesAsync();
+            _ops.InvalidateLlmProvider();
+            _llm.InvalidateKernels();
+
+            var after = await _ops.GetLlmProviderAsync();
+            var actorId = TryGetActorId();
+            await _audit.LogAsync(
+                actorId,
+                "Admin",
+                AuditActions.AdminLlmProviderUpdate,
+                "LlmProvider",
+                null,
+                new { action = active ? "activate" : "deactivate", beforeActive = before.Active, afterActive = after.Active },
+                null);
+
+            return Ok(new
+            {
+                message = active ? "已激活全局 LLM Provider" : "已停用（回退 appsettings/环境变量）",
+                active = after.Active,
+                configured = _llm.IsConfigured,
+                source = _llm.Source
+            });
+        }
+
+        private static bool LooksMasked(string? apiKey)
+        {
+            if (string.IsNullOrWhiteSpace(apiKey)) return true;
+            var k = apiKey.Trim();
+            return k.StartsWith("****", StringComparison.Ordinal) || k == "********";
+        }
+
 
         private async Task UpsertSettingAsync(string key, string value)
         {
@@ -796,5 +977,20 @@ namespace Synerixis.Api.Controllers
         public bool? MaintenanceMode { get; set; }
         public string? DefaultOutboundMode { get; set; }
         public bool? AllowNewRegistration { get; set; }
+    }
+
+    public class AdminLlmProviderUpdateDto
+    {
+        public string? Name { get; set; }
+        public string? BaseUrl { get; set; }
+        public string? ApiKey { get; set; }
+        public string? Model { get; set; }
+        public bool? Active { get; set; }
+        public bool? ClearApiKey { get; set; }
+    }
+
+    public class AdminLlmProviderActivateDto
+    {
+        public bool Active { get; set; } = true;
     }
 }

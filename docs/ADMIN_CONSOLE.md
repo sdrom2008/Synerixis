@@ -71,3 +71,12 @@ cd admin-console && npm install && npm run dev
 ```
 
 验收：seed 后用 `admin@test.com` / `Agent123!` 登录 → 各页有数据可操作 → 系统设置维护开关可保存。
+
+## LLM Provider
+
+系统设置页含 **LLM Provider（OpenAI-compatible）**：BaseUrl / 掩码 API Key / Model，预设 OpenAI、DashScope、Ollama、LM Studio。
+
+- `GET/PUT /api/admin/llm-provider`
+- `POST /api/admin/llm-provider/activate`
+
+说明见 [`LLM_PROVIDERS.md`](./LLM_PROVIDERS.md)。

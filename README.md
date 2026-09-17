@@ -8,7 +8,7 @@
 ## 明日本地演示（唯一点击路径）
 
 见 **[`docs/DEMO.md`](docs/DEMO.md)**：账号 / 端口 / seed / 收件箱人审发送 / 注入 / Admin。  
-无 LLM Key 也可演示（规则草稿 + SIM mock）；Key 在「AI 设置」或 `Llm:ApiKey`。
+无 LLM Key 也可演示（规则草稿 + SIM mock）；Key / BaseUrl 在 Admin「LLM Provider」、商家「AI 设置」或 `Llm:*`。见 [`docs/LLM_PROVIDERS.md`](docs/LLM_PROVIDERS.md)。
 
 ## 定位（一句话）
 

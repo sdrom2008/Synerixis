@@ -2,8 +2,8 @@
   <div>
     <h2 class="page-title">系统设置</h2>
     <p class="page-desc">
-      可写运营开关存 <code>system_settings</code>；只暴露安全项，密钥不可读写。
-      <code>GET/PUT /api/admin/settings</code>
+      可写运营开关存 <code>system_settings</code>；LLM Provider 见下方（Key 掩码）。
+      <code>GET/PUT /api/admin/settings</code> · <code>/api/admin/llm-provider</code>
     </p>
 
     <el-card shadow="never" v-loading="loading" style="margin-bottom: 16px">
@@ -15,6 +15,75 @@
       <el-button size="small" style="margin-top: 12px" :loading="healthLoading" @click="fetchHealth">
         重新检查
       </el-button>
+    </el-card>
+
+    <el-card shadow="never" v-loading="llmLoading" style="margin-bottom: 16px">
+      <template #header>
+        <div class="dev-head">
+          <span>LLM Provider（OpenAI-compatible）</span>
+          <el-tag v-if="llmForm.active" type="success" size="small">Active</el-tag>
+          <el-tag v-else type="info" size="small">Inactive → appsettings</el-tag>
+        </div>
+      </template>
+      <p class="dev-desc">
+        Admin 配置全局 BaseUrl / Model / API Key；激活后优先于 <code>Llm:*</code> 与环境变量。
+        商家仍可用「AI 设置」覆盖本店 Key。无 Key / 本地不可达 → 规则草稿降级。
+      </p>
+      <div class="preset-row">
+        <span class="preset-label">预设：</span>
+        <el-button
+          v-for="p in presets"
+          :key="p.id"
+          size="small"
+          @click="applyPreset(p)"
+        >
+          {{ p.name }}
+        </el-button>
+      </div>
+      <el-form label-width="120px" style="max-width: 720px; margin-top: 12px">
+        <el-form-item label="显示名">
+          <el-input v-model="llmForm.name" placeholder="可选，如 DashScope / Ollama" clearable />
+        </el-form-item>
+        <el-form-item label="Base URL" required>
+          <el-input v-model="llmForm.baseUrl" placeholder="https://.../v1 或 http://127.0.0.1:11434/v1" />
+        </el-form-item>
+        <el-form-item label="Model" required>
+          <el-input v-model="llmForm.model" placeholder="qwen-plus / gpt-4o-mini / llama3.2" />
+        </el-form-item>
+        <el-form-item label="API Key">
+          <el-input
+            v-model="llmForm.apiKey"
+            type="password"
+            show-password
+            :placeholder="apiKeyPlaceholder"
+            clearable
+          />
+          <div class="hint" style="margin-left: 0; margin-top: 6px">
+            留空不改；本地 Ollama/LM Studio 可不填。勾选清除将删除已存 Key。
+          </div>
+          <el-checkbox v-model="llmForm.clearApiKey" style="margin-top: 6px">清除已存 Key</el-checkbox>
+        </el-form-item>
+        <el-form-item label="状态">
+          <div class="switch-row">
+            <el-switch v-model="llmForm.active" active-text="激活" inactive-text="停用" />
+            <span class="hint">停用后回退 appsettings / 环境变量</span>
+          </div>
+        </el-form-item>
+        <el-form-item>
+          <el-button type="primary" :loading="llmSaving" @click="onSaveLlm(false)">保存</el-button>
+          <el-button type="success" :loading="llmSaving" @click="onSaveLlm(true)">保存并激活</el-button>
+          <el-button :loading="llmSaving" @click="onActivateOnly(false)">仅停用</el-button>
+          <el-button :disabled="llmLoading" @click="reloadLlm">刷新</el-button>
+        </el-form-item>
+      </el-form>
+      <el-alert
+        v-if="llmEffective"
+        type="info"
+        :closable="false"
+        show-icon
+        style="margin-top: 8px"
+        :title="`生效：source=${llmEffective.source || '—'} · configured=${llmEffective.configured} · baseUrl=${llmEffective.baseUrl || '—'} · model=${llmEffective.model || '—'}`"
+      />
     </el-card>
 
     <el-card shadow="never" v-loading="loading" style="margin-bottom: 16px">
@@ -47,7 +116,7 @@
         type="info"
         :closable="false"
         show-icon
-        title="不会通过本页读写 AppKey / AppSecret / Token 等密钥。"
+        title="运营开关不读写 AppKey / Token。LLM Key 仅在上方 Provider 区（掩码）。"
         style="margin-top: 8px"
       />
     </el-card>
@@ -100,12 +169,22 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { getSettings, updateSettings, seedDemo } from '@/api/admin'
+import {
+  getSettings,
+  updateSettings,
+  seedDemo,
+  getLlmProvider,
+  updateLlmProvider,
+  activateLlmProvider,
+  type LlmProviderPreset,
+} from '@/api/admin'
 
 const loading = ref(false)
 const saving = ref(false)
 const seeding = ref(false)
 const healthLoading = ref(false)
+const llmLoading = ref(false)
+const llmSaving = ref(false)
 const data = ref<Record<string, unknown> | null>(null)
 const healthLive = ref('')
 const healthReady = ref('')
@@ -114,6 +193,24 @@ const form = reactive({
   maintenanceMode: false,
   defaultOutboundMode: 'DraftFirst',
   allowNewRegistration: true,
+})
+
+const llmForm = reactive({
+  name: '',
+  baseUrl: '',
+  model: '',
+  apiKey: '',
+  active: false,
+  clearApiKey: false,
+})
+const presets = ref<LlmProviderPreset[]>([])
+const apiKeyHint = ref<string | null>(null)
+const apiKeyConfigured = ref(false)
+const llmEffective = ref<Record<string, unknown> | null>(null)
+
+const apiKeyPlaceholder = computed(() => {
+  if (apiKeyConfigured.value && apiKeyHint.value) return `已配置 ${apiKeyHint.value}（留空不改）`
+  return 'sk-... 或本地留空'
 })
 
 const isDevEnv = computed(() => {
@@ -127,6 +224,13 @@ function applyForm(src: Record<string, unknown> | null) {
   form.maintenanceMode = !!src.maintenanceMode
   form.defaultOutboundMode = String(src.defaultOutboundMode || 'DraftFirst')
   form.allowNewRegistration = src.allowNewRegistration !== false
+}
+
+function applyPreset(p: LlmProviderPreset) {
+  llmForm.name = p.name
+  llmForm.baseUrl = p.baseUrl
+  llmForm.model = p.model
+  ElMessage.info(`已套用预设：${p.name}`)
 }
 
 async function fetchHealth() {
@@ -146,6 +250,70 @@ async function fetchHealth() {
     healthReady.value = '检查失败'
   } finally {
     healthLoading.value = false
+  }
+}
+
+async function reloadLlm() {
+  llmLoading.value = true
+  try {
+    const res = await getLlmProvider()
+    llmForm.name = String(res.name || '')
+    llmForm.baseUrl = String(res.baseUrl || '')
+    llmForm.model = String(res.model || '')
+    llmForm.active = !!res.active
+    llmForm.apiKey = ''
+    llmForm.clearApiKey = false
+    apiKeyConfigured.value = !!res.apiKeyConfigured
+    apiKeyHint.value = res.apiKeyHint || null
+    presets.value = res.presets || []
+    llmEffective.value = {
+      ...(res.effective || {}),
+      configured: res.effective?.configured ?? res.configured,
+      source: (res.effective as Record<string, unknown> | undefined)?.llmSource || res.effective?.source || res.source,
+      baseUrl: (res.effective as Record<string, unknown> | undefined)?.baseUrl || res.baseUrl,
+      model: (res.effective as Record<string, unknown> | undefined)?.model || res.model,
+    }
+  } catch {
+    ElMessage.error('加载 LLM Provider 失败')
+  } finally {
+    llmLoading.value = false
+  }
+}
+
+async function onSaveLlm(forceActivate: boolean) {
+  if (!llmForm.baseUrl.trim() || !llmForm.model.trim()) {
+    ElMessage.warning('请填写 Base URL 与 Model')
+    return
+  }
+  llmSaving.value = true
+  try {
+    const res = await updateLlmProvider({
+      name: llmForm.name.trim() || undefined,
+      baseUrl: llmForm.baseUrl.trim(),
+      model: llmForm.model.trim(),
+      apiKey: llmForm.clearApiKey ? undefined : (llmForm.apiKey.trim() || undefined),
+      clearApiKey: llmForm.clearApiKey || undefined,
+      active: forceActivate ? true : llmForm.active,
+    })
+    ElMessage.success(res.message || '已保存')
+    await reloadLlm()
+  } catch {
+    ElMessage.error('保存 LLM Provider 失败')
+  } finally {
+    llmSaving.value = false
+  }
+}
+
+async function onActivateOnly(active: boolean) {
+  llmSaving.value = true
+  try {
+    const res = await activateLlmProvider(active)
+    ElMessage.success(res.message || (active ? '已激活' : '已停用'))
+    await reloadLlm()
+  } catch {
+    ElMessage.error('切换失败（请先保存 baseUrl/model）')
+  } finally {
+    llmSaving.value = false
   }
 }
 
@@ -219,7 +387,7 @@ function fillHint() {
 }
 
 onMounted(async () => {
-  await reload()
+  await Promise.all([reload(), reloadLlm()])
   void fetchHealth()
 })
 </script>
@@ -259,5 +427,15 @@ onMounted(async () => {
   font-size: 12px;
   color: #94a3b8;
   word-break: break-all;
+}
+.preset-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.preset-label {
+  font-size: 13px;
+  color: #64748b;
 }
 </style>

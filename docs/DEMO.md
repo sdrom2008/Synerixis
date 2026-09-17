@@ -95,11 +95,14 @@ curl -sS -X POST http://127.0.0.1:7092/api/dev/seed-demo | head
 
 | 来源 | 怎么配 |
 |------|--------|
-| 商家 UI | **AI 设置** → LLM API Key → `SellerConfig.LlmApiKey` |
-| 平台配置 | `Llm:ApiKey` / `Tongyi:Qianwen:ApiKey` / `DashScope:ApiKey` |
-| 环境变量 | `LLM_API_KEY` / `TONGYI_API_KEY` / `DASHSCOPE_API_KEY` |
+| **Admin Provider** | `http://localhost:3000` → 系统设置 → **LLM Provider**（OpenAI / DashScope / Ollama / LM Studio） |
+| 商家 UI | **AI 设置** → LLM API Key → `SellerConfig.LlmApiKey`（覆盖 Key） |
+| 平台配置 | `Llm:BaseUrl` / `Llm:ApiKey` / `Llm:Model`（及 Tongyi/DashScope 兼容名） |
+| 环境变量 | `LLM_API_KEY` / `LLM_BASE_URL` / `TONGYI_API_KEY` / `DASHSCOPE_API_KEY` |
 
-**无 Key**：入站/inject 生成 `【未配置 AI·规则草稿】` Pending 草稿；Warning 日志；**不 500**。seed 预置草稿 + 人审 + SIM mock **不依赖** Key。
+**无 Key**（且非本地 endpoint）：入站/inject 生成规则草稿；Warning 日志；**不 500**。seed 预置草稿 + 人审 + SIM mock **不依赖** Key。
+
+详见 [`LLM_PROVIDERS.md`](./LLM_PROVIDERS.md)。
 
 ---
 
@@ -111,6 +114,8 @@ curl -sS -X POST http://127.0.0.1:7092/api/dev/seed-demo | head
 | POST | `/api/dev/simulate-inbound` | 注入买家消息 → AI/规则草稿 |
 | POST | `/api/auth/phone-login` | 商家登录 |
 | POST | `/api/auth/agent-login` | 坐席 / Admin |
+| GET | `/api/admin/llm-provider` | Admin 全局 Provider（Key 掩码） |
+| PUT | `/api/admin/llm-provider` | 保存/激活全局 Provider |
 | GET | `/api/seller/profile` | 含 `Llm.configured`（Key 已掩码） |
 | PUT | `/api/seller/config` | 可写 `LlmApiKey`（空串清除） |
 | PUT | `/api/merchant/sessions/{id}/draft` | 保存草稿；无草稿时创建 Pending |
@@ -122,7 +127,7 @@ curl -sS -X POST http://127.0.0.1:7092/api/dev/seed-demo | head
 ## 换成真实 Shopee / 真实 LLM
 
 1. 填 Partner Key → 绑真实 OAuth（勿覆盖 `SIM-SHOP-*`）
-2. AI 设置或 `Llm:ApiKey` 填 DashScope Key → 入站走真实起草
+2. Admin LLM Provider 或 AI 设置 / `Llm:ApiKey` → 入站走真实起草（见 [`LLM_PROVIDERS.md`](./LLM_PROVIDERS.md)）
 3. **不要**把 `SIM-DEV` token 当生产凭证
 
 详见 [`SHOPEE_SANDBOX_CHECKLIST.md`](./SHOPEE_SANDBOX_CHECKLIST.md) · [`LOCAL_DEMO.md`](./LOCAL_DEMO.md)
