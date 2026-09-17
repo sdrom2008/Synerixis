@@ -137,6 +137,14 @@ export interface ShopOption {
   platform?: string
   shopId?: string
   nickname?: string
+  /** 该店待审草稿会话数 */
+  pendingDraftCount?: number
+  /** 已超时会话数 */
+  overdueCount?: number
+  /** 即将超时会话数 */
+  soonCount?: number
+  /** overdue + soon */
+  alertCount?: number
 }
 
 export function getShopOptions() {
@@ -263,7 +271,7 @@ export function getSessionDraft(id: string) {
 }
 
 export function updateDraft(id: string, content: string) {
-  return request<{ message: string; draftId: string; content: string }>({
+  return request<{ message: string; draftId: string; content: string; created?: boolean }>({
     url: `/api/merchant/sessions/${id}/draft`,
     method: 'PUT',
     data: { content },

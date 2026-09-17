@@ -7,7 +7,16 @@
           <span>会话</span>
           <el-badge v-if="pendingDraftCount > 0" :value="pendingDraftCount" type="warning" />
         </div>
-        <el-button text :icon="Refresh" :loading="listLoading" @click="refreshAll">刷新</el-button>
+        <div class="list-head-actions">
+          <el-button
+            size="small"
+            type="primary"
+            plain
+            :loading="injecting"
+            @click="onInjectTest"
+          >注入测试</el-button>
+          <el-button text :icon="Refresh" :loading="listLoading" @click="refreshAll">刷新</el-button>
+        </div>
       </div>
 
       <div v-if="pendingDraftCount > 0" class="draft-banner">
@@ -45,7 +54,25 @@
             :key="opt.connectionId"
             :label="shopOptionLabel(opt)"
             :value="opt.connectionId"
-          />
+          >
+            <div class="shop-opt-row">
+              <span>{{ shopOptionBase(opt) }}</span>
+              <span class="shop-opt-badges">
+                <el-tag v-if="(opt.pendingDraftCount || 0) > 0" size="small" type="warning" effect="plain">
+                  草稿 {{ opt.pendingDraftCount }}
+                </el-tag>
+                <el-tag v-if="(opt.overdueCount || 0) > 0" size="small" type="danger" effect="plain">
+                  超时 {{ opt.overdueCount }}
+                </el-tag>
+                <el-tag
+                  v-else-if="(opt.soonCount || 0) > 0"
+                  size="small"
+                  class="tag-soon"
+                  effect="plain"
+                >即将 {{ opt.soonCount }}</el-tag>
+              </span>
+            </div>
+          </el-option>
         </el-select>
         <el-radio-group v-model="statusFilter" size="small" @change="onFilterChange">
           <el-radio-button label="">全部</el-radio-button>
@@ -107,7 +134,7 @@
       <template v-if="!selectedId">
         <EmptyState
           title="选择会话开始处理"
-          desc="左侧选择买家会话后，可查看消息并审发 AI 草稿。"
+          desc="左侧选择买家会话后，可审发 AI 草稿或手动起草发送。"
           icon="ChatDotRound"
         />
       </template>
@@ -234,10 +261,10 @@
 
         <div class="draft-panel">
           <div class="draft-head">
-            <strong>AI 草稿（未发到平台）</strong>
+            <strong>回复草稿（未发到平台）</strong>
             <el-tag v-if="draft && !isSupersededDraft" size="small" type="warning" effect="plain">待发送</el-tag>
             <el-tag v-else-if="isSupersededDraft" size="small" type="info" effect="plain">已停用但仍可发送</el-tag>
-            <el-tag v-else size="small" type="info" effect="plain">无草稿</el-tag>
+            <el-tag v-else size="small" type="info" effect="plain">可手动起草</el-tag>
           </div>
           <el-alert
             v-if="lastSendHint"
@@ -249,10 +276,10 @@
             @close="lastSendHint = ''"
           />
           <p class="draft-hint">
-            确认无误后再<strong>审核发送</strong>。自动生成的草稿不计入平台「真人坐席响应率」；请勿宣称无人值守自动回信。演示店为模拟出站，不调用真实 Shopee/TikTok。
+            可编辑 AI 草稿或<strong>手动起草</strong>后点「发送」。内容先落成待审草稿再出站（draft-first），不会开启 AutoSend。演示店为模拟出站，不调用真实 Shopee/TikTok。
           </p>
           <p v-if="!draft" class="draft-empty-hint">
-            当前无待发草稿。可筛选「待发草稿 / 超时告警 / 待人工」，或到「上手指南」注入测试消息生成新草稿。
+            当前无 AI 草稿。可在下方直接撰写回复并「保存」或「发送」；也可点左上角「注入测试」生成样例进线。
           </p>
           <div v-if="quickReplies.length" class="qr-bar">
             <span class="qr-label">快捷回复</span>
@@ -260,7 +287,6 @@
               v-for="qr in quickReplies"
               :key="qr.id"
               size="small"
-              :disabled="!draft"
               @click="insertQuickReply(qr.content)"
             >
               {{ qr.title }}
@@ -270,17 +296,18 @@
             v-model="draftContent"
             type="textarea"
             :rows="4"
-            :disabled="!draft"
-            placeholder="选中会话后，若有待发草稿可在此编辑"
+            placeholder="撰写回复内容，保存为草稿或直接发送（演示店模拟出站）"
           />
           <div class="draft-actions">
-            <el-button :disabled="!draft || saving" @click="onSave" :loading="saving">保存</el-button>
+            <el-button :disabled="!canSaveDraft || saving" @click="onSave" :loading="saving">保存草稿</el-button>
             <el-button :disabled="!draft || sending" @click="onDiscard" :loading="discarding">丢弃</el-button>
-            <el-button type="primary" :disabled="!draft || sending" :loading="sending" @click="onApprove">
-              审核发送
-            </el-button>
-            <el-button type="success" :disabled="!draft || sending" :loading="sending" @click="onEditSend">
-              编辑并发送
+            <el-button
+              type="primary"
+              :disabled="!canSendDraft || sending"
+              :loading="sending"
+              @click="onSend"
+            >
+              发送
             </el-button>
           </div>
         </div>
@@ -409,6 +436,7 @@ import {
   claimSession,
   transferSession,
   updateDraft,
+  simulateInbound,
   listQuickReplies,
   type QuickReplyItem,
   type MessageItem,
@@ -427,6 +455,7 @@ const detailLoading = ref(false)
 const saving = ref(false)
 const sending = ref(false)
 const discarding = ref(false)
+const injecting = ref(false)
 const transferring = ref(false)
 const assigning = ref(false)
 const claiming = ref(false)
@@ -478,6 +507,9 @@ const isSupersededDraft = computed(() => {
   const st = draft.value?.status || ''
   return st === 'Superseded'
 })
+
+const canSaveDraft = computed(() => !!selectedId.value && !!draftContent.value.trim())
+const canSendDraft = computed(() => !!selectedId.value && !!draftContent.value.trim())
 
 const canTransfer = computed(() => {
   if (messagesMeta.value.pendingHumanHandoff) return false
@@ -667,9 +699,18 @@ function urgencyClass(s: SessionItem) {
   return ''
 }
 
-function shopOptionLabel(opt: ShopOption) {
+function shopOptionBase(opt: ShopOption) {
   const nick = opt.nickname || opt.shopId || '店铺'
   return `${opt.platform || '—'} · ${nick}`
+}
+
+function shopOptionLabel(opt: ShopOption) {
+  const base = shopOptionBase(opt)
+  const bits: string[] = []
+  if ((opt.pendingDraftCount || 0) > 0) bits.push(`草稿${opt.pendingDraftCount}`)
+  if ((opt.overdueCount || 0) > 0) bits.push(`超时${opt.overdueCount}`)
+  else if ((opt.soonCount || 0) > 0) bits.push(`即将${opt.soonCount}`)
+  return bits.length ? `${base}（${bits.join(' · ')}）` : base
 }
 
 function platformShopLabel(s: SessionItem) {
@@ -949,8 +990,8 @@ async function onClaim() {
 }
 
 function insertQuickReply(content: string) {
-  if (!draft.value) {
-    ElMessage.warning('请先选中有草稿的会话')
+  if (!selectedId.value) {
+    ElMessage.warning('请先选择会话')
     return
   }
   const piece = (content || '').trim()
@@ -970,11 +1011,19 @@ async function loadQuickReplies() {
 }
 
 async function onSave() {
-  if (!selectedId.value || !draft.value) return
+  if (!selectedId.value) return
+  const content = draftContent.value.trim()
+  if (!content) {
+    ElMessage.warning('内容不能为空')
+    return
+  }
   saving.value = true
   try {
-    await updateDraft(selectedId.value, draftContent.value)
-    ElMessage.success('草稿已保存')
+    const res = await updateDraft(selectedId.value, content)
+    ElMessage.success(res?.created ? '草稿已创建' : '草稿已保存')
+    await selectSession(selectedId.value)
+    await loadSessions()
+    void loadShopOptions()
   } catch {
     ElMessage.error('保存失败')
   } finally {
@@ -991,19 +1040,28 @@ function applySendResult(res?: DraftSendResult | null, fallback = '已发送') {
     : '✓ 已发送到平台，时间线已更新。'
 }
 
-async function onApprove() {
-  if (!selectedId.value || !draft.value) return
+/** 发送：有草稿则 approve/edit-send；无草稿则先落草稿再出站（仍 draft-first） */
+async function onSend() {
+  if (!selectedId.value) return
+  const content = draftContent.value.trim()
+  if (!content) {
+    ElMessage.warning('内容不能为空')
+    return
+  }
   sending.value = true
   try {
     let res: DraftSendResult
-    if (draftContent.value.trim() !== (draft.value.content || '').trim()) {
-      res = await editAndSendDraft(selectedId.value, draftContent.value)
+    if (!draft.value) {
+      res = await editAndSendDraft(selectedId.value, content)
+    } else if (content !== (draft.value.content || '').trim()) {
+      res = await editAndSendDraft(selectedId.value, content)
     } else {
       res = await approveDraft(selectedId.value)
     }
-    applySendResult(res, '已审核发送')
+    applySendResult(res, '已发送')
     await selectSession(selectedId.value)
     await loadSessions()
+    void loadShopOptions()
   } catch {
     ElMessage.error('发送失败')
   } finally {
@@ -1011,22 +1069,26 @@ async function onApprove() {
   }
 }
 
-async function onEditSend() {
-  if (!selectedId.value || !draft.value) return
-  if (!draftContent.value.trim()) {
-    ElMessage.warning('内容不能为空')
-    return
-  }
-  sending.value = true
+async function onInjectTest() {
+  injecting.value = true
   try {
-    const res = await editAndSendDraft(selectedId.value, draftContent.value)
-    applySendResult(res, '已编辑并发送')
-    await selectSession(selectedId.value)
+    const res = await simulateInbound({
+      message: `【收件箱注入】买家咨询测试 ${new Date().toLocaleTimeString('zh-CN', { hour12: false })}`,
+      customerName: '模拟买家·收件箱注入',
+      platform: 'SHOPEE',
+    })
+    const hint = res.draft?.contentPreview
+      ? `已注入，待审草稿：${res.draft.contentPreview}`
+      : `已注入会话 ${res.sessionNo || res.sessionId || ''}`
+    ElMessage.success(hint)
     await loadSessions()
-  } catch {
-    ElMessage.error('发送失败')
+    void loadShopOptions()
+    const sid = res.sessionId
+    if (sid) await selectSession(sid)
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '注入失败（仅 Development）')
   } finally {
-    sending.value = false
+    injecting.value = false
   }
 }
 
@@ -1047,6 +1109,7 @@ async function onDiscard() {
     ElMessage.success('草稿已丢弃')
     await selectSession(selectedId.value)
     await loadSessions()
+    void loadShopOptions()
   } catch {
     ElMessage.error('丢弃失败')
   } finally {
@@ -1492,5 +1555,23 @@ onUnmounted(() => {
 }
 .sla-text-ok {
   color: #047857;
+}
+.list-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.shop-opt-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+}
+.shop-opt-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  justify-content: flex-end;
 }
 </style>

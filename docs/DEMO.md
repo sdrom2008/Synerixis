@@ -64,18 +64,21 @@ BASE_URL=http://127.0.0.1:7092 ./scripts/smoke.sh
 2. 登录页点 **「加载演示数据」**（或先 `POST /api/dev/seed-demo`）
 3. 点 **「填入商家号」** → 登录（`13800138000` / `123456`）
 4. 进入 **收件箱**：
-   - 可见多条会话（待审草稿 / 转人工 / 已超时 / 正常咨询 / TikTok 店）
-   - 顶部 **店铺筛选**：至少「模拟 Shopee 店」与「模拟 TikTok 店」
+   - 可见多条会话（待审草稿 / 转人工 / 已超时 / **即将超时** / 正常咨询 / TikTok 店）
+   - 顶部 **店铺筛选**：下拉里每店显示 **草稿 / 超时** 角标（多店差异一眼可见）
    - 筛选「待发草稿」→ 打开 **演示买家·待审草稿**
-   - 筛选「超时告警」→ **演示买家·已超时**（红标 SLA）
+   - 筛选「超时告警」→ **演示买家·已超时**（红标）与 **演示买家·即将超时**（橙标）
    - 筛选「待人工」→ **演示买家·转人工**（旧草稿仍可审发）
-5. 右侧草稿面板：可改文案 → **保存** → **审核发送**
+   - 左上角 **「注入测试」**：在收件箱直接 `simulate-inbound`，不必回上手指南
+5. 草稿面板（**回复草稿**）：
+   - 有 AI 草稿：改文案 → **保存草稿** → **发送**
+   - **无草稿也可手动起草**：在输入框撰写 → **保存草稿** 或直接 **发送**（仍先落 Pending 草稿再出站，不启用 AutoSend）
    - 演示店会 **模拟出站**（响应 `mocked: true`，不调真实 Shopee）
    - Toast + 成功条提示「演示闭环」；时间线坐席气泡带 **演示·模拟出站**；草稿变为已发送
-6. （可选）上手指南 / 概览再点「一键注入测试消息」走 Webhook 同路径起草
+6. （可选）上手指南 / 概览也可点「一键注入测试消息」
 7. （可选）Admin：`admin@test.com` / `Agent123!` 看概览 / 商家 / 用量
 
-**出站模式**：seed 强制 `SellerConfig.OutboundMode = DraftFirst`；AutoSend 仅显式开启，默认关闭。
+**出站模式**：seed 强制 `SellerConfig.OutboundMode = DraftFirst`；AutoSend 仅显式开启，默认关闭。坐席「发送」= 人审出站，不是 chatbot。
 
 ---
 
@@ -88,6 +91,8 @@ BASE_URL=http://127.0.0.1:7092 ./scripts/smoke.sh
 | POST | `/api/auth/phone-login` | 商家登录 |
 | POST | `/api/auth/agent-login` | 坐席 / Admin |
 | POST | `/api/auth/init-agent` | Dev：确保 **Admin** JWT（勿再返回普通坐席） |
+| PUT | `/api/merchant/sessions/{id}/draft` | 保存草稿；无草稿时创建 Pending |
+| POST | `/api/merchant/sessions/{id}/draft/edit-send` | 编辑（或新建）后发送 |
 | POST | `/api/merchant/sessions/{id}/draft/approve` | 人审发送（SIM 店 mock） |
 
 ---

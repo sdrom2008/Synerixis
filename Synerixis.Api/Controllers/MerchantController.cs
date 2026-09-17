@@ -79,12 +79,73 @@ namespace Synerixis.Api.Controllers
             {
                 var shopId = GetMerchantShopId();
                 var connections = await _connectionRepo.GetBySellerIdAndActiveAsync(shopId);
-                var items = connections.Select(c => new
+                var sellerConfig = await _db.SellerConfigs.AsNoTracking()
+                    .FirstOrDefaultAsync(c => c.SellerId == shopId);
+                var slaHours = sellerConfig?.ResponseSlaHours > 0 ? sellerConfig.ResponseSlaHours : 12;
+                var now = DateTime.UtcNow;
+
+                var sessions = await _db.ChatSessions.AsNoTracking()
+                    .Where(s => s.ShopId == shopId)
+                    .Select(s => new
+                    {
+                        s.Id,
+                        s.Platform,
+                        s.PlatformShopOpenId,
+                        s.LastBuyerMessageAt,
+                        s.LastActiveAt,
+                        s.CreatedAt
+                    })
+                    .ToListAsync();
+
+                var pendingIds = (await _db.DraftMessages.AsNoTracking()
+                        .Where(d => d.Status == DraftStatuses.Pending || d.Status == DraftStatuses.Superseded)
+                        .Select(d => d.ChatSessionId)
+                        .Distinct()
+                        .ToListAsync())
+                    .ToHashSet();
+
+                var connList = connections.ToList();
+                var items = connList.Select(c =>
                 {
-                    connectionId = c.Id,
-                    platform = c.Platform,
-                    shopId = c.ShopId,
-                    nickname = c.Nickname ?? c.ShopId ?? c.Platform
+                    var matched = sessions.Where(s =>
+                    {
+                        var plat = (s.Platform ?? "").ToUpperInvariant();
+                        if (!string.Equals(c.Platform, plat, StringComparison.OrdinalIgnoreCase)
+                            && !string.Equals(c.Platform, s.Platform, StringComparison.OrdinalIgnoreCase))
+                            return false;
+                        var oid = s.PlatformShopOpenId;
+                        if (!string.IsNullOrEmpty(oid))
+                            return c.OpenId == oid || c.ShopId == oid;
+                        // 无 PlatformShopOpenId：仅当该平台唯一连接时计入
+                        return connList.Count(x =>
+                            string.Equals(x.Platform, s.Platform, StringComparison.OrdinalIgnoreCase)) == 1;
+                    }).ToList();
+
+                    var pendingDraftCount = matched.Count(s => pendingIds.Contains(s.Id));
+                    var overdueCount = matched.Count(s =>
+                    {
+                        var anchor = s.LastBuyerMessageAt ?? s.LastActiveAt ?? s.CreatedAt;
+                        return now >= anchor.AddHours(slaHours);
+                    });
+                    var soonCount = matched.Count(s =>
+                    {
+                        var anchor = s.LastBuyerMessageAt ?? s.LastActiveAt ?? s.CreatedAt;
+                        var needsBy = anchor.AddHours(slaHours);
+                        if (now >= needsBy) return false;
+                        return (needsBy - now).TotalHours <= Math.Max(0.5, slaHours * 0.25);
+                    });
+
+                    return new
+                    {
+                        connectionId = c.Id,
+                        platform = c.Platform,
+                        shopId = c.ShopId,
+                        nickname = c.Nickname ?? c.ShopId ?? c.Platform,
+                        pendingDraftCount,
+                        overdueCount,
+                        soonCount,
+                        alertCount = overdueCount + soonCount
+                    };
                 });
                 return Ok(new { items });
             }
@@ -1774,13 +1835,35 @@ namespace Synerixis.Api.Controllers
                     .OrderByDescending(d => d.Status == DraftStatuses.Pending)
                     .ThenByDescending(d => d.CreatedAt)
                     .FirstOrDefaultAsync();
+
+                // 无草稿时允许坐席手动起草（draft-first，仍需人审发送；不启用 AutoSend）
                 if (draft == null)
-                    return NotFound(new { message = "无待发送草稿" });
+                {
+                    draft = new DraftMessage
+                    {
+                        ChatSessionId = id,
+                        Content = body.Content.Trim(),
+                        Status = DraftStatuses.Pending,
+                        CreatedAt = DateTime.UtcNow
+                    };
+                    _db.DraftMessages.Add(draft);
+                    await _db.SaveChangesAsync();
+                    try
+                    {
+                        var actor = GetCurrentUser();
+                        await _audit.LogAsync(actor.UserId, actor.UserType, AuditActions.DraftCreate,
+                            "DraftMessage", draft.Id.ToString(),
+                            new { sessionId = id, created = true },
+                            shopId);
+                    }
+                    catch { }
+                    return Ok(new { message = "草稿已创建", draftId = draft.Id, content = draft.Content, created = true });
+                }
 
                 draft.Content = body.Content.Trim();
                 draft.UpdatedAt = DateTime.UtcNow;
                 await _db.SaveChangesAsync();
-                return Ok(new { message = "草稿已更新", draftId = draft.Id, content = draft.Content });
+                return Ok(new { message = "草稿已更新", draftId = draft.Id, content = draft.Content, created = false });
             }
             catch (Exception ex)
             {
@@ -1847,10 +1930,22 @@ namespace Synerixis.Api.Controllers
                     .OrderByDescending(d => d.Status == DraftStatuses.Pending)
                     .ThenByDescending(d => d.CreatedAt)
                     .FirstOrDefaultAsync();
-                if (draft == null)
-                    return NotFound(new { message = "无待发送草稿" });
 
-                if (!string.IsNullOrWhiteSpace(editedContent))
+                // 无草稿 + 有正文：先建 Pending 草稿再出站（坐席直发仍走 draft-first）
+                if (draft == null)
+                {
+                    if (string.IsNullOrWhiteSpace(editedContent))
+                        return NotFound(new { message = "无待发送草稿" });
+                    draft = new DraftMessage
+                    {
+                        ChatSessionId = sessionId,
+                        Content = editedContent.Trim(),
+                        Status = DraftStatuses.Pending,
+                        CreatedAt = DateTime.UtcNow
+                    };
+                    _db.DraftMessages.Add(draft);
+                }
+                else if (!string.IsNullOrWhiteSpace(editedContent))
                 {
                     draft.Content = editedContent.Trim();
                     draft.UpdatedAt = DateTime.UtcNow;

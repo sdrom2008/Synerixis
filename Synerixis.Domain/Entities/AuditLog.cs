@@ -46,6 +46,8 @@ namespace Synerixis.Domain.Entities
         public const string TeamResetPassword = "team.reset_password";
         public const string DraftApprove = "draft.approve";
         public const string DraftReject = "draft.reject";
+        public const string DraftCreate = "draft.create";
+        public const string DraftEdit = "draft.edit";
         public const string SessionHandoff = "session.handoff";
         public const string SessionAssign = "session.assign";
         public const string SessionClaim = "session.claim";
