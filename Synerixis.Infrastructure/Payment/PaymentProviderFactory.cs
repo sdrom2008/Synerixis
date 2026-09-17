@@ -17,13 +17,16 @@ namespace Synerixis.Infrastructure.Payment
             _serviceProvider = serviceProvider;
         }
 
-        public IPaymentProvider GetProvider(string channel)
+        public IPaymentProvider? GetProvider(string channel)
         {
-            return channel.ToLowerInvariant() switch
+            if (string.IsNullOrWhiteSpace(channel))
+                return null;
+
+            return channel.Trim().ToLowerInvariant() switch
             {
                 "wechat" => _serviceProvider.GetRequiredService<WechatPaymentProvider>(),
                 "alipay" => _serviceProvider.GetRequiredService<AlipayPaymentProvider>(),
-                _ => throw new ArgumentException($"Unsupported payment channel: {channel}")
+                _ => null
             };
         }
     }

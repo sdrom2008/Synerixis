@@ -14,7 +14,8 @@
 | 角色 | 登录方式 | 凭证 |
 |------|----------|------|
 | 商家 | merchant-web 手机登录 | 手机 `13800138000`，验证码 `123456` |
-| 坐席 | merchant-web 坐席登录 | `agent@demo.synerixis.local` / `Agent123!` |
+| 坐席（Agent） | merchant-web 坐席登录 | `agent@demo.synerixis.local` / `Agent123!` |
+| 主管（Supervisor） | merchant-web 坐席登录 | `supervisor@demo.synerixis.local` / `Agent123!` |
 | Admin | admin-console | `admin@test.com` / `Agent123!` |
 
 手机号在库中存 E.164：`+8613800138000`（CountryCode 默认 `86`）。
@@ -34,7 +35,7 @@ POST /api/dev/seed-demo
   - 模拟 `PlatformConnection`（Shopee，`SIM-SHOP-*`，Token 远期）
   - 3 条会话：待审草稿 / 转人工 handoff / 正常咨询（含 ChatMessage）
   - 2 条本地 Order（含物流单号，Inbox 侧栏可见）
-  - 坐席 `agent@demo.synerixis.local` + Admin `admin@test.com`
+  - 坐席 `agent@demo.synerixis.local` + 主管 `supervisor@demo.synerixis.local` + Admin `admin@test.com`
   - 若干 `[Demo]` QuickReply
   - 若干 `AiUsageLog`（Admin usage 非空）
 
@@ -69,7 +70,7 @@ Content-Type: application/json
 3. merchant-web：`npm run dev` → 登录页加载演示数据 → 手机登录
 4. **收件箱**：看到 3 类会话；打开待审草稿可人审；侧栏有本地订单/物流单号
 5. **店铺绑定**：出现「模拟 Shopee 店」
-6. **团队**：出现演示坐席
+6. **团队**：出现演示坐席 + 演示主管（亦可由商家在团队页创建 Supervisor）
 7. **admin-console（平台运营台）**：
    - 打开 `http://localhost:3000`，登录页可见演示账号；或点「加载演示数据」
    - `admin@test.com` / `Agent123!` → 进入 **概览**（KPI + 近 7 日趋势非空）
@@ -89,6 +90,12 @@ Content-Type: application/json
 5. ISV 材料与口径见 [`ISV_APPLICATION_CHECKLIST.md`](./ISV_APPLICATION_CHECKLIST.md)（人审 draft-first，禁止宣称全自动 chatbot）
 
 本仓库**不会**也不应代申请 Shopee / TikTok 真实账号。
+
+---
+
+## 支付（本地 DEMO）
+
+未配置 `WeChatPay:*` / `Alipay:*` 证书与密钥时，Seller / Supervisor 调用 `POST /api/pay/create` 得到 **400** 结构化错误（`message`: 「未配置支付证书」，`code`: `PAYMENT_CERT_MISSING`），**不会**裸 500。Agent / support token → **403**。
 
 ---
 

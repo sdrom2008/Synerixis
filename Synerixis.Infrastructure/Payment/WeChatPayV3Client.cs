@@ -26,19 +26,40 @@ namespace Synerixis.Infrastructure.Payment
         private readonly HttpContext HttpContext; // 假设通过依赖注入获得
         private readonly AppDbContext _db; // 假设通过依赖注入获得
 
+        /// <summary>商户号 + 证书文件均就绪时可真实下单；否则 IsConfigured=false，勿调网关。</summary>
+        public bool IsConfigured { get; }
+
         public WeChatPayV3Client(string mchId, string appId, string apiV3Key, string certPath, string certPassword, AppDbContext _thisdb)
         {
-            _mchId = mchId ?? throw new ArgumentNullException(nameof(mchId));
-            _appId = appId ?? throw new ArgumentNullException(nameof(appId));
-            _apiV3Key = apiV3Key ?? throw new ArgumentNullException(nameof(apiV3Key));
-
-            _merchantCert = new X509Certificate2(certPath, certPassword, X509KeyStorageFlags.Exportable);
-            _serialNo = _merchantCert.GetSerialNumberString().ToUpperInvariant();
-
+            _mchId = mchId ?? "";
+            _appId = appId ?? "";
+            _apiV3Key = apiV3Key ?? "";
+            _db = _thisdb;
             _httpClient = new HttpClient();
             _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("Synerixis/1.0");
-            _db = _thisdb;
 
+            var pathOk = !string.IsNullOrWhiteSpace(certPath) && File.Exists(certPath);
+            var keysOk = !string.IsNullOrWhiteSpace(_mchId) && !string.IsNullOrWhiteSpace(_appId);
+            if (!pathOk || !keysOk)
+            {
+                IsConfigured = false;
+                _merchantCert = null!;
+                _serialNo = "";
+                return;
+            }
+
+            try
+            {
+                _merchantCert = new X509Certificate2(certPath, certPassword ?? "", X509KeyStorageFlags.Exportable);
+                _serialNo = _merchantCert.GetSerialNumberString().ToUpperInvariant();
+                IsConfigured = true;
+            }
+            catch
+            {
+                IsConfigured = false;
+                _merchantCert = null!;
+                _serialNo = "";
+            }
         }
 
         /// <summary>
@@ -52,6 +73,9 @@ namespace Synerixis.Infrastructure.Payment
             string notifyUrl,
             string spbillCreateIp = "127.0.0.1")
         {
+            if (!IsConfigured || _merchantCert == null)
+                throw new InvalidOperationException("未配置支付证书");
+
             var nonceStr = Guid.NewGuid().ToString("N");
             var timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString();
 

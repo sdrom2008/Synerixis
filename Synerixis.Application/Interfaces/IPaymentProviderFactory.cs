@@ -9,6 +9,6 @@ namespace Synerixis.Application.Interfaces
 {
     public interface IPaymentProviderFactory
     {
-        IPaymentProvider GetProvider(string channel);
+        IPaymentProvider? GetProvider(string channel);
     }
 }

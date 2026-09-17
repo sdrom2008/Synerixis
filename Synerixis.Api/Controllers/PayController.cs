@@ -36,30 +36,86 @@ namespace Synerixis.Api.Controllers
         public async Task<IActionResult> Create([FromBody] PaymentCreateRequest request)
         {
             if (string.IsNullOrEmpty(request.Channel))
-                return BadRequest("缺少支付渠道 (wechat/alipay)");
+                return BadRequest(new { message = "缺少支付渠道 (wechat/alipay)" });
 
             var (seller, err) = await ResolvePayingSellerAsync();
             if (err != null) return err;
             var sellerId = seller!.Id;
 
+            IPaymentProvider? provider;
+            try
+            {
+                provider = _factory.GetProvider(request.Channel);
+            }
+            catch (ArgumentException)
+            {
+                return BadRequest(new { message = $"不支持渠道: {request.Channel}" });
+            }
+
+            if (provider == null)
+                return BadRequest(new { message = $"不支持渠道: {request.Channel}" });
+
+            // DEMO / 本地：未配置商户证书时返回明确 4xx，避免证书加载抛出裸 500
+            // （先于微信 OpenId 校验，保证无证书场景消息稳定为「未配置支付证书」）
+            if (!provider.IsConfigured)
+            {
+                return BadRequest(new
+                {
+                    message = "未配置支付证书",
+                    code = "PAYMENT_CERT_MISSING",
+                    channel = request.Channel,
+                    hint = "请配置 WeChatPay / Alipay 商户证书与密钥后再发起真实支付；演示环境可忽略本步。"
+                });
+            }
+
             if (request.Channel == "wechat")
             {
                 if (string.IsNullOrEmpty(seller.OpenId))
-                    return BadRequest("请先绑定微信账号");
+                    return BadRequest(new { message = "请先绑定微信账号" });
                 request.OpenId = seller.OpenId;
             }
 
-            var provider = _factory.GetProvider(request.Channel);
-            if (provider == null)
-                return BadRequest($"不支持渠道: {request.Channel}");
-
-            if (request.Channel == "wechat" && string.IsNullOrEmpty(seller.OpenId))
-                return BadRequest("请先绑定微信");
-
-            var result = await provider.CreateOrderAsync(request, sellerId);
+            PaymentCreateResult result;
+            try
+            {
+                result = await provider.CreateOrderAsync(request, sellerId);
+            }
+            catch (InvalidOperationException ex) when (
+                ex.Message.Contains("未配置支付证书", StringComparison.Ordinal) ||
+                ex.Message.Contains("证书", StringComparison.Ordinal))
+            {
+                return BadRequest(new
+                {
+                    message = "未配置支付证书",
+                    code = "PAYMENT_CERT_MISSING",
+                    channel = request.Channel
+                });
+            }
+            catch (System.Security.Cryptography.CryptographicException)
+            {
+                return BadRequest(new
+                {
+                    message = "未配置支付证书",
+                    code = "PAYMENT_CERT_MISSING",
+                    channel = request.Channel,
+                    hint = "商户证书无效或无法加载。"
+                });
+            }
 
             if (!result.Success)
-                return BadRequest(result.Message);
+            {
+                var msg = string.IsNullOrWhiteSpace(result.Message) ? "支付创建失败" : result.Message;
+                if (msg.Contains("未配置支付证书", StringComparison.Ordinal) || msg.Contains("证书", StringComparison.Ordinal))
+                {
+                    return BadRequest(new
+                    {
+                        message = "未配置支付证书",
+                        code = "PAYMENT_CERT_MISSING",
+                        channel = request.Channel
+                    });
+                }
+                return BadRequest(new { message = msg });
+            }
 
             return Ok(result);
         }

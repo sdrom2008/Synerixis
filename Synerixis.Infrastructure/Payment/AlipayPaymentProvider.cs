@@ -17,6 +17,9 @@ namespace Synerixis.Infrastructure.Payment
     {
         public string Channel => "alipay";
 
+        public bool IsConfigured =>
+            !string.IsNullOrWhiteSpace(_appId) && !string.IsNullOrWhiteSpace(_privateKey);
+
         private readonly AppDbContext _db;
         private readonly IConfiguration _config;
         private readonly string _appId;
@@ -38,6 +41,15 @@ namespace Synerixis.Infrastructure.Payment
 
         public async Task<PaymentCreateResult> CreateOrderAsync(PaymentCreateRequest request, Guid sellerId)
         {
+            if (!IsConfigured)
+            {
+                return new PaymentCreateResult
+                {
+                    Success = false,
+                    Message = "未配置支付证书"
+                };
+            }
+
             var parameters = new Dictionary<string, string>
             {
                 ["app_id"] = _appId,

@@ -18,6 +18,7 @@ namespace Synerixis.Api.Controllers
         public const string DemoPhoneE164 = "+8613800138000";
         public const string DemoPhoneLocal = "13800138000";
         public const string DemoAgentEmail = "agent@demo.synerixis.local";
+        public const string DemoSupervisorEmail = "supervisor@demo.synerixis.local";
         public const string DemoAdminEmail = "admin@test.com";
         public const string DemoPassword = "Agent123!";
 
@@ -51,7 +52,7 @@ namespace Synerixis.Api.Controllers
         }
 
         /// <summary>
-        /// 一键演示种子：固定商家 / 模拟店 / 会话 / 订单 / 坐席 / 快捷回复 / Admin。
+        /// 一键演示种子：固定商家 / 模拟店 / 会话 / 订单 / 坐席 / Supervisor / 快捷回复 / Admin。
         /// 幂等：重复调用跳过或刷新已存在演示数据。
         /// </summary>
         [HttpPost("seed-demo")]
@@ -160,12 +161,22 @@ namespace Synerixis.Api.Controllers
                 skipped.Add("platformConnection.tiktok");
             }
 
-            // 4) 坐席（店铺 Agent）+ Admin（控制台）
+            // 4) 坐席（店铺 Agent）+ Supervisor + Admin（控制台）
             var shopAgent = await EnsureAgentAsync(
                 seller.Id,
                 DemoAgentEmail,
                 "演示坐席小美",
                 AgentRole.Agent,
+                created,
+                skipped,
+                updated,
+                cancellationToken);
+
+            await EnsureAgentAsync(
+                seller.Id,
+                DemoSupervisorEmail,
+                "演示主管",
+                AgentRole.Supervisor,
                 created,
                 skipped,
                 updated,
@@ -345,6 +356,7 @@ namespace Synerixis.Api.Controllers
                 phoneE164 = DemoPhoneE164,
                 phoneLoginHint = $"手机号 {DemoPhoneLocal}，验证码 123456",
                 agent = new { email = DemoAgentEmail, password = DemoPassword },
+                supervisor = new { email = DemoSupervisorEmail, password = DemoPassword, hint = "merchant-web 坐席登录；可充值/团队（Seller 亦可在团队页创建 Supervisor）" },
                 admin = new { email = DemoAdminEmail, password = DemoPassword, hint = "Admin 控制台 agent-login；亦可 POST /api/auth/init-agent" },
                 connection = new
                 {
@@ -376,6 +388,7 @@ namespace Synerixis.Api.Controllers
                     "收件箱：待发草稿 → 审核发送（SIM 店 mock 出站）",
                     "收件箱：超时告警 → 已超时 / 即将超时；待人工 → 旧草稿仍可发；可手动起草发送",
                     "坐席登录 " + DemoAgentEmail + " / " + DemoPassword,
+                    "主管登录 " + DemoSupervisorEmail + " / " + DemoPassword,
                     "admin-console：" + DemoAdminEmail + " / " + DemoPassword,
                     "POST /api/dev/simulate-inbound 给当前商家再注入一条"
                 }
@@ -659,6 +672,12 @@ namespace Synerixis.Api.Controllers
             if (agent.Role != role && role == AgentRole.Admin && agent.Role != AgentRole.Admin)
             {
                 agent.UpdateRole(AgentRole.Admin);
+                dirty = true;
+                updated.Add($"agent:{email}:role");
+            }
+            else if (agent.Role != role && role == AgentRole.Supervisor && agent.Role != AgentRole.Admin)
+            {
+                agent.UpdateRole(AgentRole.Supervisor);
                 dirty = true;
                 updated.Add($"agent:{email}:role");
             }

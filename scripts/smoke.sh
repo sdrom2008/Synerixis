@@ -182,4 +182,4 @@ if [[ "$fail" -ne 0 ]]; then
   exit 1
 fi
 green "Smoke PASSED"
-echo "Demo accounts: merchant 13800138000/123456 · agent agent@demo.synerixis.local/Agent123! · admin admin@test.com/Agent123!"
+echo "Demo accounts: merchant 13800138000/123456 · agent agent@demo.synerixis.local/Agent123! · supervisor supervisor@demo.synerixis.local/Agent123! · admin admin@test.com/Agent123!"

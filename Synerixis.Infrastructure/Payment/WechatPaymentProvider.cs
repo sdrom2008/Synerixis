@@ -14,6 +14,8 @@ namespace Synerixis.Infrastructure.Payment
     {
         public string Channel => "wechat";
 
+        public bool IsConfigured => _client.IsConfigured;
+
         private readonly WeChatPayV3Client _client;
         private readonly AppDbContext _db;
         private readonly IConfiguration _config;
@@ -27,6 +29,15 @@ namespace Synerixis.Infrastructure.Payment
 
         public async Task<PaymentCreateResult> CreateOrderAsync(PaymentCreateRequest request, Guid sellerId)
         {
+            if (!IsConfigured)
+            {
+                return new PaymentCreateResult
+                {
+                    Success = false,
+                    Message = "未配置支付证书"
+                };
+            }
+
             // 金额转分
             int amountInFen = (int)(request.Amount * 100);
 

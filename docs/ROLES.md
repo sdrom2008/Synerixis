@@ -140,7 +140,7 @@ public enum AgentRole
 |-------------|----------|
 | `AgentRole.Admin` 注释「跨店铺」 | 实体必有 `ShopId`；跨店能力主要靠 `/api/admin/*`，不是 merchant 多店切换 |
 | MERCHANT_WEB「计费 API 仍可仅 Seller」 | `GET /api/merchant/usage*` 用 `GetMerchantShopId` → **Supervisor/Admin/Agent 均可读本店用量** |
-| README「Seller/Supervisor/Admin 全菜单」 | 与前端一致；**Pay 支付仍仅 Seller Id** |
+| README「Seller/Supervisor/Admin 全菜单」 | 与前端一致；Pay：**Seller + Supervisor**；无证书 → 400「未配置支付证书」 |
 | Support 注释「Supervisor 可看全店」 | 列表按店过滤 ✓；`GET tickets/{id}/messages` **已修**：强制 `session.ShopId == agent.ShopId` + Agent seat 规则 |
 | Reports「Admin 可看所有店铺」 | `agent-performance` 注释如此；`dashboard` 对 Admin **Forbid** |
 | 团队 UI 文案常写 Agent\|Supervisor | **已修**：商家 `POST/PUT /api/seller/team*` 拒绝 `Role=Admin`；仅平台种子/`init-agent` 可建 |
@@ -199,4 +199,6 @@ public enum AgentRole
 
 - `/api/pay/create` / `query`：Seller 用自身 Id；Supervisor 用 JWT `shopId` 或 `Agents.ShopId` 解析所属 `Sellers` 行
 - Agent → 403；support token → 403
+- 未配置支付证书 / 商户密钥：返回 **400**「未配置支付证书」（`PAYMENT_CERT_MISSING`），不抛裸 500
 - merchant-web 计费菜单：`canViewBilling` = Seller | Supervisor（非 Agent、非 support）
+- **DEMO**：`seed-demo` 预置 `supervisor@demo.synerixis.local` / `Agent123!`；商家团队 UI 亦可创建角色 Supervisor

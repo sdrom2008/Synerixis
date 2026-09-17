@@ -26,7 +26,8 @@
 | 角色 | 凭证 |
 |------|------|
 | **商家（主路径）** | `13800138000` / 验证码 `123456` |
-| 坐席 | `agent@demo.synerixis.local` / `Agent123!` |
+| 坐席（Agent） | `agent@demo.synerixis.local` / `Agent123!` |
+| **主管（Supervisor）** | `supervisor@demo.synerixis.local` / `Agent123!` |
 | Admin | `admin@test.com` / `Agent123!` |
 
 ---
@@ -87,7 +88,9 @@ curl -sS -X POST http://127.0.0.1:7092/api/dev/seed-demo | head
 | Admin | `http://localhost:3000` → `admin@test.com` / `Agent123!` |
 
 **出站**：seed 强制 `DraftFirst`；AutoSend 默认关。「人审发送」≠ chatbot。  
-**营业时间**：演示店 `00:00–23:59` 且关「营业外转人工」，避免晚间被闸打断。
+**营业时间**：演示店 `00:00–23:59` 且关「营业外转人工」，避免晚间被闸打断。  
+**支付**：本地未配微信/支付宝证书时，`POST /api/pay/create` 返回 **400** `未配置支付证书`（非 500）；Agent / support → **403**；Seller / Supervisor 可发起。  
+**主管**：seed 含 Supervisor；商家亦可在「团队」页创建角色 Supervisor。
 
 ---
 
