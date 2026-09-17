@@ -55,3 +55,9 @@ merchant-web/dist/
 
 !.env.development.example
 !merchant-web/.env.development.example
+/admin-console/auto-imports.d.ts
+/admin-console/components.d.ts
+/admin-console/package-lock.json
+/admin-console/package.json
+/admin-console/vite.config.ts
+/.github/copilot-instructions.md
