@@ -1711,6 +1711,7 @@ namespace Synerixis.Api.Controllers
             {
                 var shopId = GetMerchantShopId();
                 var now = DateTime.UtcNow;
+                // Materialize DateTime columns first — EF cannot translate TimeSpan/TotalHours/Math.Round in SQL.
                 var rows = await (
                     from d in _db.DraftMessages
                     join s in _db.ChatSessions on d.ChatSessionId equals s.Id
@@ -1729,14 +1730,34 @@ namespace Synerixis.Api.Controllers
                         platform = s.Platform,
                         pendingHumanHandoff = s.PendingHumanHandoff,
                         lastBuyerMessageAt = s.LastBuyerMessageAt,
-                        hoursSinceLastBuyerMsg = s.LastBuyerMessageAt.HasValue
-                            ? (double?)Math.Round((now - s.LastBuyerMessageAt.Value).TotalHours, 2)
-                            : null,
-                        needsResponseBy = (s.LastBuyerMessageAt ?? s.LastActiveAt ?? s.CreatedAt).AddHours(12)
+                        lastActiveAt = s.LastActiveAt,
+                        sessionCreatedAt = s.CreatedAt
                     }
                 ).ToListAsync();
 
-                return Ok(new { items = rows, total = rows.Count });
+                var items = rows.Select(s =>
+                {
+                    var anchor = s.lastBuyerMessageAt ?? s.lastActiveAt ?? s.sessionCreatedAt;
+                    return new
+                    {
+                        s.draftId,
+                        s.content,
+                        s.status,
+                        s.createdAt,
+                        s.sessionId,
+                        s.sessionBizId,
+                        s.customerName,
+                        s.platform,
+                        s.pendingHumanHandoff,
+                        s.lastBuyerMessageAt,
+                        hoursSinceLastBuyerMsg = s.lastBuyerMessageAt.HasValue
+                            ? (double?)Math.Round((now - s.lastBuyerMessageAt.Value).TotalHours, 2)
+                            : null,
+                        needsResponseBy = anchor.AddHours(12)
+                    };
+                }).ToList();
+
+                return Ok(new { items, total = items.Count });
             }
             catch (Exception ex)
             {
