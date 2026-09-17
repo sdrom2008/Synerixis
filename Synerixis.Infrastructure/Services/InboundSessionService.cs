@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Synerixis.Application.Helpers;
 using Synerixis.Application.Interfaces;
 using Synerixis.Domain.Entities;
 using Synerixis.Infrastructure.Data;
@@ -96,6 +97,8 @@ namespace Synerixis.Infrastructure.Services
 
             var userMsg = ChatMessage.FromUser(msg.Content ?? string.Empty, tracked.Id);
             userMsg.PlatformMsgId = msg.MsgId;
+            userMsg.Metadata = MessageI18nMetadata.WithDetectedLang(
+                null, CbecLanguageHelper.Detect(msg.Content));
             _db.ChatMessages.Add(userMsg);
             tracked.AddUserMessage();
             try
@@ -110,6 +113,8 @@ namespace Synerixis.Infrastructure.Services
                 tracked.UpdatePlatformReplyContext(msg.ConversationId, msg.OpenId);
                 userMsg = ChatMessage.FromUser(msg.Content ?? string.Empty, tracked.Id);
                 userMsg.PlatformMsgId = msg.MsgId;
+                userMsg.Metadata = MessageI18nMetadata.WithDetectedLang(
+                    null, CbecLanguageHelper.Detect(msg.Content));
                 _db.ChatMessages.Add(userMsg);
                 tracked.AddUserMessage();
                 await _db.SaveChangesAsync(cancellationToken);

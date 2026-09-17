@@ -7,6 +7,8 @@
 
 角色与权限（JWT / 路由 / 数据范围，以代码为准）→ [`ROLES.md`](./ROLES.md)
 
+CBEC 多语（ID/TH/VN/EN/ZH，一键翻译 + 草稿改写）→ [`I18N.md`](./I18N.md)
+
 ---
 
 ## ✅ 前置（已有本仓库）
@@ -94,6 +96,16 @@ curl -sS -X POST http://127.0.0.1:7092/api/dev/seed-demo | head
 
 ---
 
+## CBEC 多语（可选，约 1 分钟）
+
+1. seed 后收件箱打开 **演示买家·印尼语**
+2. 买家气泡点 **「译为工作语」**（无 Key → 能力边界提示，不假翻译）
+3. 草稿区切换语种 → **「按目标语重写」** → 人审发送
+
+详见 [`I18N.md`](./I18N.md)。
+
+---
+
 ## LLM Key（演示不强制）
 
 | 来源 | 怎么配 |
@@ -124,6 +136,8 @@ curl -sS -X POST http://127.0.0.1:7092/api/dev/seed-demo | head
 | PUT | `/api/merchant/sessions/{id}/draft` | 保存草稿；无草稿时创建 Pending |
 | POST | `/api/merchant/sessions/{id}/draft/edit-send` | 编辑（或新建）后发送 |
 | POST | `/api/merchant/sessions/{id}/draft/approve` | 人审发送（SIM 店 mock） |
+| POST | `/api/merchant/sessions/{sid}/messages/{mid}/translate` | 入站译工作语 |
+| POST | `/api/merchant/sessions/{id}/draft/rewrite` | 草稿按目标语重写 |
 
 ---
 

@@ -136,6 +136,23 @@ DEALLOCATE PREPARE stmt;
             await db.Database.ExecuteSqlRawAsync(llmKeySql);
             logger?.LogInformation("[SchemaPatcher] seller_configs.LlmApiKey ensured (MySQL)");
 
+            const string supportedLangSql = @"
+SET @db := DATABASE();
+SET @col := (
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = @db AND TABLE_NAME = 'seller_configs' AND COLUMN_NAME = 'SupportedLanguages'
+);
+SET @ddl := IF(@col = 0,
+  'ALTER TABLE `seller_configs` ADD COLUMN `SupportedLanguages` VARCHAR(64) NOT NULL DEFAULT ''ID,TH,VN,EN,ZH''',
+  'SELECT 1');
+PREPARE stmt FROM @ddl;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+";
+            await db.Database.ExecuteSqlRawAsync(supportedLangSql);
+            logger?.LogInformation("[SchemaPatcher] seller_configs.SupportedLanguages ensured (MySQL)");
+
+
 
             const string draftSql = @"
 CREATE TABLE IF NOT EXISTS `draft_messages` (
@@ -366,6 +383,7 @@ CREATE TABLE IF NOT EXISTS `system_settings` (
                 )",
                 @"CREATE INDEX IF NOT EXISTS IX_ai_usage_logs_SellerId_CreatedAt ON ai_usage_logs (SellerId, CreatedAt)",
                 "ALTER TABLE ai_usage_logs ADD COLUMN IsEstimated INTEGER NOT NULL DEFAULT 0",
+                "ALTER TABLE seller_configs ADD COLUMN SupportedLanguages TEXT NOT NULL DEFAULT 'ID,TH,VN,EN,ZH'",
                 @"CREATE UNIQUE INDEX IF NOT EXISTS IX_processed_webhook_events_Platform_EventKey ON processed_webhook_events (Platform, EventKey)",
                 @"CREATE TABLE IF NOT EXISTS audit_logs (
                     Id BLOB NOT NULL PRIMARY KEY,

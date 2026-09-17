@@ -94,6 +94,9 @@ namespace Synerixis.Api.Controllers
                         cfg.TargetCustomerDesc,
                         cfg.DefaultReplyTone,
                         cfg.PreferredLanguage,
+                        WorkingLanguage = string.IsNullOrWhiteSpace(cfg.PreferredLanguage) ? "zh" : cfg.PreferredLanguage,
+                        cfg.SupportedLanguages,
+                        SupportedLanguageList = Synerixis.Application.Helpers.CbecLanguageHelper.ParseSupportedList(cfg.SupportedLanguages),
                         cfg.EnableAutoMarketingReminder,
                         cfg.MemoryRetentionDays,
                         cfg.EnableAutoReply,
@@ -170,7 +173,13 @@ namespace Synerixis.Api.Controllers
             config.MainCategory = dto.MainCategory ?? config.MainCategory;
             config.TargetCustomerDesc = dto.TargetCustomerDesc ?? config.TargetCustomerDesc;
             config.DefaultReplyTone = dto.DefaultReplyTone ?? config.DefaultReplyTone;
-            config.PreferredLanguage = dto.PreferredLanguage ?? config.PreferredLanguage;
+            if (!string.IsNullOrWhiteSpace(dto.WorkingLanguage))
+                config.PreferredLanguage = Synerixis.Application.Helpers.CbecLanguageHelper.Normalize(dto.WorkingLanguage).ToLowerInvariant();
+            else if (!string.IsNullOrWhiteSpace(dto.PreferredLanguage))
+                config.PreferredLanguage = Synerixis.Application.Helpers.CbecLanguageHelper.Normalize(dto.PreferredLanguage).ToLowerInvariant();
+            if (!string.IsNullOrWhiteSpace(dto.SupportedLanguages))
+                config.SupportedLanguages = Synerixis.Application.Helpers.CbecLanguageHelper.ToCsv(
+                    Synerixis.Application.Helpers.CbecLanguageHelper.ParseSupportedList(dto.SupportedLanguages));
             config.EnableAutoMarketingReminder = dto.EnableAutoMarketingReminder ?? config.EnableAutoMarketingReminder;
             config.MemoryRetentionDays = dto.MemoryRetentionDays.HasValue && dto.MemoryRetentionDays.Value > 0
                 ? dto.MemoryRetentionDays.Value
@@ -712,6 +721,8 @@ namespace Synerixis.Api.Controllers
         public string? TargetCustomerDesc { get; set; }
         public string? DefaultReplyTone { get; set; }
         public string? PreferredLanguage { get; set; }
+        public string? WorkingLanguage { get; set; }
+        public string? SupportedLanguages { get; set; }
         public bool? EnableAutoMarketingReminder { get; set; }
         public int? MemoryRetentionDays { get; set; }
         public bool? EnableAutoReply { get; set; }

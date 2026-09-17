@@ -18,7 +18,12 @@ namespace Synerixis.Domain.Entities
 
         // AI 偏好设置（影响 prompt）
         public string DefaultReplyTone { get; set; } = "professional"; // professional / friendly / humorous / concise
-        public string PreferredLanguage { get; set; } = "zh";          // zh / en / bilingual
+        /// <summary>坐席工作语（默认 ZH）。API 亦作 workingLanguage；历史字段 PreferredLanguage。</summary>
+        public string PreferredLanguage { get; set; } = "zh";          // ZH / EN / ID / TH / VN
+
+        /// <summary>本店支持的买家语种 CSV，优先级 ID,TH,VN,EN,ZH。</summary>
+        public string SupportedLanguages { get; set; } = "ID,TH,VN,EN,ZH";
+
         public bool EnableAutoMarketingReminder { get; set; } = true;  // 是否开启主动营销提醒
         public int MemoryRetentionDays { get; set; } = 180;            // 记忆保留天数，0=永久
 

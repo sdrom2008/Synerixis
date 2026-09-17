@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Synerixis.Application.Helpers;
 using Synerixis.Application.Interfaces;
 using Synerixis.Domain.Entities;
 using Synerixis.Infrastructure.Data;
@@ -28,7 +29,8 @@ namespace Synerixis.Api.Controllers
             "demo-buyer-handoff",
             "demo-buyer-normal",
             "demo-buyer-overdue",
-            "demo-buyer-soon"
+            "demo-buyer-soon",
+            "demo-buyer-id"
         };
 
         private readonly AppDbContext _db;
@@ -99,6 +101,7 @@ namespace Synerixis.Api.Controllers
                     ShopName = "演示商家 Synerixis",
                     DefaultReplyTone = "professional",
                     PreferredLanguage = "zh",
+                    SupportedLanguages = CbecLanguageHelper.DefaultSupportedCsv,
                     EnableAutoReply = true,
                     OutboundMode = OutboundModes.DraftFirst,
                     BusinessHoursStart = "00:00",
@@ -121,6 +124,12 @@ namespace Synerixis.Api.Controllers
                     config.OutboundMode = OutboundModes.DraftFirst;
                     cfgChanged = true;
                     updated.Add("sellerConfig.outboundMode");
+                }
+                if (string.IsNullOrWhiteSpace(config.SupportedLanguages))
+                {
+                    config.SupportedLanguages = CbecLanguageHelper.DefaultSupportedCsv;
+                    cfgChanged = true;
+                    updated.Add("sellerConfig.supportedLanguages");
                 }
                 // 全天营业，避免晚间演示被「营业外转人工」打断
                 if (config.BusinessHoursStart != "00:00" || config.BusinessHoursEnd != "23:59"
@@ -277,6 +286,20 @@ namespace Synerixis.Api.Controllers
                 updated,
                 cancellationToken);
 
+            // CBEC 多语样例：印尼语买家（坐席工作语 ZH）
+            var idLangSession = await EnsureSessionBundleAsync(
+                seller.Id,
+                connection,
+                shopAgent.Id,
+                kind: "idlang",
+                customerId: DemoCustomerIds[5],
+                customerName: "演示买家·印尼语",
+                platform: "SHOPEE",
+                created,
+                skipped,
+                updated,
+                cancellationToken);
+
             // 7) 本地订单（挂 draft / normal 买家，便于 Inbox 侧栏）
             await EnsureOrderAsync(
                 seller.Id,
@@ -372,7 +395,8 @@ namespace Synerixis.Api.Controllers
                     normal = normalSession.Id,
                     tiktokDraft = tiktokDraftSession.Id,
                     overdue = overdueSession.Id,
-                    soon = soonSession.Id
+                    soon = soonSession.Id,
+                    idLang = idLangSession.Id
                 },
                 shops = new
                 {
@@ -769,6 +793,24 @@ namespace Synerixis.Api.Controllers
                     });
                     session.AddAiMessage();
                 }
+                else if (kind == "idlang")
+                {
+                    var buyer = ChatMessage.FromUser(
+                        "Halo, pesanan saya belum dikirim. Kapan barangnya bisa dikirim? Tolong cek tracking ya.",
+                        session.Id);
+                    buyer.Metadata = MessageI18nMetadata.WithDetectedLang(null, "ID");
+                    _db.ChatMessages.Add(buyer);
+                    session.AddUserMessage();
+
+                    _db.DraftMessages.Add(new DraftMessage
+                    {
+                        ChatSessionId = session.Id,
+                        Content = "Halo! Terima kasih sudah menghubungi kami. Mohon kirim nomor pesanan, kami bantu cek status pengiriman segera. (demo draft ID)",
+                        Status = DraftStatuses.Pending,
+                        CreatedAt = DateTime.UtcNow
+                    });
+                    session.AddAiMessage();
+                }
                 else if (kind == "handoff")
                 {
                     var buyer = ChatMessage.FromUser("我要退款！已经投诉了，请马上处理！", session.Id);
@@ -873,7 +915,7 @@ namespace Synerixis.Api.Controllers
                         skipped.Add($"session:{kind}");
                     }
                 }
-                else if (kind == "draft" || kind == "overdue" || kind == "soon")
+                else if (kind == "draft" || kind == "overdue" || kind == "soon" || kind == "idlang")
                 {
                     var hasPending = await _db.DraftMessages.AnyAsync(
                         d => d.ChatSessionId == session.Id && d.Status == DraftStatuses.Pending,
@@ -884,7 +926,9 @@ namespace Synerixis.Api.Controllers
                             ? "（演示·超时待审）您好，已帮您催促承运商，最新轨迹预计今日更新；如仍无进展请回复本会话，我们继续跟进。"
                             : kind == "soon"
                                 ? "（演示·即将超时）您好，今天下单可当天发出，一般 24 小时内揽收，请人审后尽快回复以免超时。"
-                                : "（演示）您好，这是刷新后的待审草稿，请确认后发送。";
+                                : kind == "idlang"
+                                    ? "Halo! Terima kasih sudah menghubungi kami. Mohon kirim nomor pesanan, kami bantu cek status pengiriman segera. (demo draft ID)"
+                                    : "（演示）您好，这是刷新后的待审草稿，请确认后发送。";
                         var createdAt = kind == "overdue"
                             ? DateTime.UtcNow.AddHours(-13)
                             : kind == "soon"

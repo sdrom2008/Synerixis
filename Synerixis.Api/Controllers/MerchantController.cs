@@ -4,10 +4,12 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Synerixis.Api.Helpers;
 using Synerixis.Domain.Entities;
+using Synerixis.Application.Helpers;
 using Synerixis.Application.Interfaces;
 using Synerixis.Application.DTOs;
 using Synerixis.Infrastructure.Data;
 using Synerixis.Infrastructure.Repositories;
+using Synerixis.Infrastructure.AI;
 using Synerixis.Infrastructure.Services;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -36,6 +38,8 @@ namespace Synerixis.Api.Controllers
         private readonly IPlatformClientRouter _platformRouter;
         private readonly ILogger<MerchantController> _logger;
         private readonly IAuditLogger _audit;
+        private readonly ICbecI18nService _i18n;
+        private readonly LlmRuntime _llm;
 
         public MerchantController(
             AppDbContext db, 
@@ -46,7 +50,9 @@ namespace Synerixis.Api.Controllers
             IConfiguration config,
             IPlatformClientRouter platformRouter,
             ILogger<MerchantController> logger,
-            IAuditLogger audit)
+            IAuditLogger audit,
+            ICbecI18nService i18n,
+            LlmRuntime llm)
         {
             _db = db;
             _sessionRepo = sessionRepo;
@@ -57,6 +63,8 @@ namespace Synerixis.Api.Controllers
             _platformRouter = platformRouter;
             _logger = logger;
             _audit = audit;
+            _i18n = i18n;
+            _llm = llm;
         }
 
         /// <summary>
@@ -674,20 +682,33 @@ namespace Synerixis.Api.Controllers
                 if (session == null)
                     return NotFound(new { message = "会话不存在" });
 
-                var messages = await _db.ChatMessages
+                var refreshed = await _db.ChatMessages
+                    .AsNoTracking()
                     .Where(m => m.ChatSessionId == id)
                     .OrderBy(m => m.CreatedAt)
-                    .Select(m => new
+                    .ToListAsync();
+
+                var messages = refreshed.Select(m =>
+                {
+                    var meta = MessageI18nMetadata.Parse(m.Metadata);
+                    var lang = meta.Lang
+                        ?? (m.SenderType == 1 ? CbecLanguageHelper.Detect(m.Content) : null);
+                    return new
                     {
                         id = m.Id,
                         content = m.Content,
                         senderType = m.SenderType == 1 ? "Customer" : (m.SenderType == 2 ? "Agent" : "System"),
                         messageType = m.MessageType == 1 ? "text" : "other",
-                        metadata = m.Metadata != null ? m.Metadata : null,
+                        metadata = m.Metadata,
                         platformMsgId = m.PlatformMsgId,
-                        createdAt = m.CreatedAt
-                    })
-                    .ToListAsync();
+                        createdAt = m.CreatedAt,
+                        lang,
+                        translation = meta.Translation,
+                        translatedTo = meta.TranslatedTo,
+                        translationMode = meta.TranslationMode,
+                        translationWarning = meta.TranslationWarning
+                    };
+                }).ToList();
 
                 var draft = await _db.DraftMessages
                     .Where(d => d.ChatSessionId == id
@@ -709,6 +730,23 @@ namespace Synerixis.Api.Controllers
                 else if ((needsBy - now).TotalHours <= Math.Max(0.5, slaHours * 0.25)) slaUrgency = "soon";
                 else slaUrgency = "ok";
 
+                var workingLang = CbecLanguageHelper.Normalize(
+                    string.IsNullOrWhiteSpace(sellerConfig?.PreferredLanguage)
+                        ? CbecLanguageHelper.DefaultWorkingLanguage
+                        : sellerConfig!.PreferredLanguage);
+                var supported = CbecLanguageHelper.ParseSupportedList(sellerConfig?.SupportedLanguages);
+                string? buyerLang = null;
+                foreach (var m in refreshed.Where(x => x.SenderType == 1).OrderByDescending(x => x.CreatedAt))
+                {
+                    buyerLang = MessageI18nMetadata.Parse(m.Metadata).Lang
+                        ?? CbecLanguageHelper.Detect(m.Content);
+                    break;
+                }
+
+                bool llmOk;
+                using (_llm.UseSellerKey(sellerConfig?.LlmApiKey))
+                    llmOk = _llm.IsConfigured;
+
                 return Ok(new
                 {
                     sessionStatus = session.Status.ToString(),
@@ -728,6 +766,16 @@ namespace Synerixis.Api.Controllers
                     slaUrgency,
                     pendingDraft = draft,
                     items = messages,
+                    i18n = new
+                    {
+                        workingLanguage = workingLang,
+                        supportedLanguages = supported,
+                        buyerLanguage = buyerLang,
+                        llmConfigured = llmOk,
+                        capability = llmOk
+                            ? "llm"
+                            : "degrade — 无 Key 不做假流利翻译；一键翻译/改写返回能力边界提示"
+                    }
                 });
             }
             catch (Exception ex)
@@ -1765,6 +1813,162 @@ namespace Synerixis.Api.Controllers
             }
         }
 
+
+        /// <summary>
+        /// 一键翻译入站消息到坐席工作语（默认 ZH）。无 LLM Key → 明确降级，不假流利翻译。
+        /// </summary>
+        [HttpPost("sessions/{sessionId}/messages/{messageId}/translate")]
+        public async Task<IActionResult> TranslateMessage(
+            Guid sessionId,
+            Guid messageId,
+            [FromBody] TranslateMessageRequest? body)
+        {
+            try
+            {
+                var shopId = GetMerchantShopId();
+                var session = await _db.ChatSessions.FirstOrDefaultAsync(s => s.Id == sessionId && s.ShopId == shopId);
+                if (session == null)
+                    return NotFound(new { message = "会话不存在" });
+
+                var msg = await _db.ChatMessages.FirstOrDefaultAsync(m => m.Id == messageId && m.ChatSessionId == sessionId);
+                if (msg == null)
+                    return NotFound(new { message = "消息不存在" });
+                if (msg.SenderType != 1)
+                    return BadRequest(new { message = "仅支持翻译买家入站消息" });
+
+                var cfg = await _db.SellerConfigs.AsNoTracking()
+                    .FirstOrDefaultAsync(c => c.SellerId == shopId);
+                var target = CbecLanguageHelper.Normalize(
+                    !string.IsNullOrWhiteSpace(body?.TargetLang)
+                        ? body!.TargetLang!
+                        : (cfg?.PreferredLanguage ?? CbecLanguageHelper.DefaultWorkingLanguage));
+
+                var meta = MessageI18nMetadata.Parse(msg.Metadata);
+                var sourceHint = meta.Lang;
+                var result = await _i18n.TranslateAsync(
+                    msg.Content, target, sourceHint, cfg?.LlmApiKey);
+
+                msg.Metadata = MessageI18nMetadata.Merge(msg.Metadata, new MessageI18nMetadata.Payload
+                {
+                    Lang = result.SourceLang,
+                    Translation = result.Mode == "degrade" ? null : result.Translated,
+                    TranslatedTo = target,
+                    TranslationMode = result.Mode,
+                    TranslationWarning = result.Warning
+                });
+                // degrade：仍写入 warning，translation 空表示未生成流利译文；原文不变
+                if (result.Mode == "llm" || result.Mode == "identity")
+                {
+                    msg.Metadata = MessageI18nMetadata.Merge(msg.Metadata, new MessageI18nMetadata.Payload
+                    {
+                        Translation = result.Translated,
+                        TranslationWarning = result.Warning
+                    });
+                }
+                await _db.SaveChangesAsync();
+
+                return Ok(new
+                {
+                    messageId = msg.Id,
+                    original = result.Original,
+                    translation = result.Mode == "degrade" ? (string?)null : result.Translated,
+                    sourceLang = result.SourceLang,
+                    targetLang = result.TargetLang,
+                    mode = result.Mode,
+                    warning = result.Warning,
+                    llmConfigured = result.LlmConfigured,
+                    metadata = msg.Metadata
+                });
+            }
+            catch (Exception ex)
+            {
+                return HandleError(ex);
+            }
+        }
+
+        /// <summary>
+        /// 按目标语重写草稿（默认买家语）。可切换 targetLang 后再次调用。无 Key → 原文不动 + 能力边界提示。
+        /// </summary>
+        [HttpPost("sessions/{id}/draft/rewrite")]
+        public async Task<IActionResult> RewriteDraft(Guid id, [FromBody] DraftRewriteRequest? body)
+        {
+            try
+            {
+                var shopId = GetMerchantShopId();
+                var session = await _db.ChatSessions.FirstOrDefaultAsync(s => s.Id == id && s.ShopId == shopId);
+                if (session == null)
+                    return NotFound(new { message = "会话不存在" });
+
+                var cfg = await _db.SellerConfigs.AsNoTracking()
+                    .FirstOrDefaultAsync(c => c.SellerId == shopId);
+
+                var lastBuyer = await _db.ChatMessages
+                    .Where(m => m.ChatSessionId == id && m.SenderType == 1)
+                    .OrderByDescending(m => m.CreatedAt)
+                    .FirstOrDefaultAsync();
+                var buyerLang = lastBuyer == null
+                    ? CbecLanguageHelper.DefaultWorkingLanguage
+                    : (MessageI18nMetadata.Parse(lastBuyer.Metadata).Lang
+                       ?? CbecLanguageHelper.Detect(lastBuyer.Content));
+
+                var target = CbecLanguageHelper.Normalize(
+                    !string.IsNullOrWhiteSpace(body?.TargetLang) ? body!.TargetLang! : buyerLang);
+
+                var draft = await _db.DraftMessages
+                    .Where(d => d.ChatSessionId == id
+                        && (d.Status == DraftStatuses.Pending || d.Status == DraftStatuses.Superseded))
+                    .OrderByDescending(d => d.Status == DraftStatuses.Pending)
+                    .ThenByDescending(d => d.CreatedAt)
+                    .FirstOrDefaultAsync();
+
+                var sourceContent = !string.IsNullOrWhiteSpace(body?.Content)
+                    ? body!.Content!.Trim()
+                    : (draft?.Content ?? string.Empty);
+                if (string.IsNullOrWhiteSpace(sourceContent))
+                    return BadRequest(new { message = "无草稿内容可改写" });
+
+                var result = await _i18n.RewriteDraftAsync(
+                    sourceContent, target, lastBuyer?.Content, cfg?.LlmApiKey);
+
+                if (result.Mode == "llm")
+                {
+                    if (draft == null)
+                    {
+                        draft = new DraftMessage
+                        {
+                            ChatSessionId = id,
+                            Content = result.Content,
+                            Status = DraftStatuses.Pending,
+                            CreatedAt = DateTime.UtcNow
+                        };
+                        _db.DraftMessages.Add(draft);
+                    }
+                    else
+                    {
+                        draft.Content = result.Content;
+                        draft.UpdatedAt = DateTime.UtcNow;
+                    }
+                    await _db.SaveChangesAsync();
+                }
+
+                return Ok(new
+                {
+                    draftId = draft?.Id,
+                    content = result.Mode == "llm" ? result.Content : sourceContent,
+                    targetLang = result.TargetLang,
+                    buyerLanguage = buyerLang,
+                    mode = result.Mode,
+                    warning = result.Warning,
+                    llmConfigured = result.LlmConfigured,
+                    updated = result.Mode == "llm"
+                });
+            }
+            catch (Exception ex)
+            {
+                return HandleError(ex);
+            }
+        }
+
         /// <summary>
         /// 获取会话当前待发送草稿
         /// </summary>
@@ -2323,6 +2527,17 @@ namespace Synerixis.Api.Controllers
         public string Platform { get; set; } = string.Empty;
         public string Code { get; set; } = string.Empty;
         public string? Region { get; set; }
+    }
+
+    public class TranslateMessageRequest
+    {
+        public string? TargetLang { get; set; }
+    }
+
+    public class DraftRewriteRequest
+    {
+        public string? TargetLang { get; set; }
+        public string? Content { get; set; }
     }
 
     public class DraftEditRequest

@@ -51,8 +51,10 @@ namespace Synerixis.Application.Agents
                     }
                 }
 
+                var buyerLang = CbecLanguageHelper.Detect(input);
                 var prompt = $"""
-你是 Synerixis 的智能小二，友好亲切，用口语回复。
+你是 Synerixis 的跨境客服助手，友好亲切。
+请用买家语言回复：{CbecLanguageHelper.PromptLanguageName(buyerLang)}（code={buyerLang}）。
 {kb}
 历史：{historyText}
 用户：{input}

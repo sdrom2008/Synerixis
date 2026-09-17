@@ -2,8 +2,8 @@
   <div>
     <h2 class="page-title">AI 设置</h2>
     <p class="page-desc">
-      语气、LLM Key、营业时段、转人工、出站模式与 SLA。默认 DraftFirst：AI/规则只写草稿，由人工「人审发送」。
-      无 Key 时自动降级为规则草稿，演示不依赖真实模型。
+      语气、多语工作语、LLM Key、营业时段、转人工、出站模式与 SLA。默认 DraftFirst：AI/规则只写草稿，由人工「人审发送」。
+      无 Key 时自动降级为规则草稿（不做假流利翻译），演示不依赖真实模型。
     </p>
 
     <el-card shadow="never" class="sx-card" v-loading="loading">
@@ -14,6 +14,28 @@
             <el-option label="亲切友好" value="friendly" />
             <el-option label="简洁直接" value="concise" />
           </el-select>
+        </el-form-item>
+
+        <el-divider content-position="left">多语（CBEC）</el-divider>
+        <el-form-item label="坐席工作语">
+          <el-select v-model="form.workingLanguage" placeholder="默认 ZH" style="width: 100%">
+            <el-option label="中文 ZH" value="ZH" />
+            <el-option label="英语 EN" value="EN" />
+            <el-option label="印尼语 ID" value="ID" />
+            <el-option label="泰语 TH" value="TH" />
+            <el-option label="越南语 VN" value="VN" />
+          </el-select>
+          <div class="field-hint">入站一键翻译目标语；默认中文。对应 PreferredLanguage / workingLanguage。</div>
+        </el-form-item>
+        <el-form-item label="支持语种">
+          <el-checkbox-group v-model="form.supportedLanguages">
+            <el-checkbox label="ID">ID</el-checkbox>
+            <el-checkbox label="TH">TH</el-checkbox>
+            <el-checkbox label="VN">VN</el-checkbox>
+            <el-checkbox label="EN">EN</el-checkbox>
+            <el-checkbox label="ZH">ZH</el-checkbox>
+          </el-checkbox-group>
+          <div class="field-hint">买家语优先级 ID → TH → VN → EN → ZH；草稿可切换目标语重写。</div>
         </el-form-item>
 
         <el-form-item label="出站模式">
@@ -153,6 +175,8 @@ const loading = ref(false)
 const saving = ref(false)
 const form = reactive({
   defaultReplyTone: 'professional',
+  workingLanguage: 'ZH',
+  supportedLanguages: ['ID', 'TH', 'VN', 'EN', 'ZH'] as string[],
   outboundMode: 'DraftFirst',
   enableAutoReply: true,
   businessHoursStart: '09:00',
@@ -199,6 +223,14 @@ onMounted(async () => {
     const cfg = (profile.Config || profile.config || profile) as Record<string, unknown>
     const tone = pick(cfg, 'DefaultReplyTone', 'defaultReplyTone')
     if (tone) form.defaultReplyTone = String(tone)
+    const wl = pick(cfg, 'WorkingLanguage', 'workingLanguage', 'PreferredLanguage', 'preferredLanguage')
+    if (wl) form.workingLanguage = String(wl).toUpperCase()
+    const sl = pick(cfg, 'SupportedLanguageList', 'supportedLanguageList')
+    if (Array.isArray(sl) && sl.length) form.supportedLanguages = sl.map((x: unknown) => String(x).toUpperCase())
+    else {
+      const csv = pick(cfg, 'SupportedLanguages', 'supportedLanguages')
+      if (csv) form.supportedLanguages = String(csv).split(',').map((s) => s.trim().toUpperCase()).filter(Boolean)
+    }
     const mode = pick(cfg, 'OutboundMode', 'outboundMode')
     if (mode) form.outboundMode = String(mode) === 'AutoSend' ? 'AutoSend' : 'DraftFirst'
     const auto = pick(cfg, 'EnableAutoReply', 'enableAutoReply', 'AutoReplyEnabled', 'autoReplyEnabled')
@@ -250,6 +282,12 @@ async function save() {
     const payload: Record<string, unknown> = {
       DefaultReplyTone: form.defaultReplyTone,
       defaultReplyTone: form.defaultReplyTone,
+      WorkingLanguage: form.workingLanguage,
+      workingLanguage: form.workingLanguage,
+      PreferredLanguage: form.workingLanguage,
+      preferredLanguage: form.workingLanguage,
+      SupportedLanguages: form.supportedLanguages.join(','),
+      supportedLanguages: form.supportedLanguages.join(','),
       OutboundMode: form.outboundMode,
       outboundMode: form.outboundMode,
       EnableAutoReply: form.enableAutoReply,

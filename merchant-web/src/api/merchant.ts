@@ -34,6 +34,12 @@ export interface MessageItem {
   messageType?: string
   platformMsgId?: string | null
   createdAt: string
+  lang?: string | null
+  translation?: string | null
+  translatedTo?: string | null
+  translationMode?: string | null
+  translationWarning?: string | null
+  metadata?: string | null
 }
 
 export interface DraftSendResult {
@@ -52,6 +58,14 @@ export interface DraftInfo {
   updatedAt?: string
 }
 
+export interface SessionI18nInfo {
+  workingLanguage?: string
+  supportedLanguages?: string[]
+  buyerLanguage?: string | null
+  llmConfigured?: boolean
+  capability?: string
+}
+
 export interface SessionMessagesResult {
   sessionStatus?: string
   pendingHumanHandoff?: boolean
@@ -65,6 +79,7 @@ export interface SessionMessagesResult {
   slaUrgency?: SlaUrgency
   pendingDraft?: DraftInfo | null
   items: MessageItem[]
+  i18n?: SessionI18nInfo
 }
 
 export interface SessionsListResult {
@@ -297,6 +312,49 @@ export function discardDraft(id: string) {
   return request({
     url: `/api/merchant/sessions/${id}/draft/discard`,
     method: 'POST',
+  })
+}
+
+export interface TranslateMessageResult {
+  messageId?: string
+  original?: string
+  translation?: string | null
+  sourceLang?: string
+  targetLang?: string
+  mode?: string
+  warning?: string | null
+  llmConfigured?: boolean
+}
+
+export function translateMessage(sessionId: string, messageId: string, targetLang?: string) {
+  return request<TranslateMessageResult>({
+    url: `/api/merchant/sessions/${sessionId}/messages/${messageId}/translate`,
+    method: 'POST',
+    data: targetLang ? { targetLang, TargetLang: targetLang } : {},
+  })
+}
+
+export interface DraftRewriteResult {
+  draftId?: string
+  content?: string
+  targetLang?: string
+  buyerLanguage?: string
+  mode?: string
+  warning?: string | null
+  llmConfigured?: boolean
+  updated?: boolean
+}
+
+export function rewriteDraft(sessionId: string, targetLang: string, content?: string) {
+  return request<DraftRewriteResult>({
+    url: `/api/merchant/sessions/${sessionId}/draft/rewrite`,
+    method: 'POST',
+    data: {
+      targetLang,
+      TargetLang: targetLang,
+      content,
+      Content: content,
+    },
   })
 }
 

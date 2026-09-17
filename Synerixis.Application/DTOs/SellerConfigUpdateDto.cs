@@ -10,6 +10,9 @@ namespace Synerixis.Application.DTOs
         public string? TargetCustomerDesc { get; set; }
         public string? DefaultReplyTone { get; set; }
         public string? PreferredLanguage { get; set; }
+        /// <summary>坐席工作语别名，写入 PreferredLanguage</summary>
+        public string? WorkingLanguage { get; set; }
+        public string? SupportedLanguages { get; set; }
         public bool? EnableAutoMarketingReminder { get; set; }
         public int? MemoryRetentionDays { get; set; }
         public bool? EnableAutoReply { get; set; }

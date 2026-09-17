@@ -257,6 +257,23 @@
               <span>{{ formatTime(m.createdAt) }}</span>
             </div>
             <div class="bubble-body">{{ m.content }}</div>
+            <div v-if="m.senderType === 'Customer' || m.senderType === '1'" class="i18n-block">
+              <div class="i18n-row">
+                <el-tag v-if="m.lang" size="small" effect="plain">{{ langLabel(m.lang) }}</el-tag>
+                <el-button
+                  link
+                  type="primary"
+                  size="small"
+                  :loading="translatingId === m.id"
+                  @click="onTranslateMessage(m)"
+                >译为工作语</el-button>
+              </div>
+              <div v-if="m.translation" class="i18n-translation">
+                <span class="i18n-label">译文（{{ m.translatedTo || 'ZH' }}）</span>
+                {{ m.translation }}
+              </div>
+              <div v-else-if="m.translationWarning" class="i18n-warn">{{ m.translationWarning }}</div>
+            </div>
           </div>
         </div>
 
@@ -312,6 +329,20 @@
               {{ qr.title }}
             </el-button>
           </div>
+          <div class="i18n-draft-bar">
+            <span class="qr-label">回复语种</span>
+            <el-select v-model="draftTargetLang" size="small" style="width: 140px">
+              <el-option v-for="l in supportedLangs" :key="l" :label="langLabel(l)" :value="l" />
+            </el-select>
+            <el-button
+              size="small"
+              :loading="rewriting"
+              :disabled="!selectedId || !draftContent.trim()"
+              @click="onRewriteDraft"
+            >按目标语重写</el-button>
+            <span v-if="sessionI18n.buyerLanguage" class="muted">买家语 {{ langLabel(sessionI18n.buyerLanguage) }}</span>
+          </div>
+          <p v-if="rewriteHint" class="i18n-warn">{{ rewriteHint }}</p>
           <el-input
             v-model="draftContent"
             type="textarea"
@@ -459,6 +490,8 @@ import {
   approveDraft,
   discardDraft,
   editAndSendDraft,
+  rewriteDraft,
+  translateMessage,
   getMerchantAlerts,
   getSessionMessages,
   getSessionOrders,
@@ -966,6 +999,15 @@ async function selectSession(id: string) {
     assignAgentId.value = res.assignedAgent?.id || ''
     draft.value = res.pendingDraft || null
     draftContent.value = res.pendingDraft?.content || ''
+    sessionI18n.value = res.i18n || {}
+    if (res.i18n?.supportedLanguages?.length) {
+      supportedLangs.value = res.i18n.supportedLanguages
+    }
+    draftTargetLang.value = (res.i18n?.buyerLanguage || 'ID').toUpperCase()
+    if (typeof res.i18n?.llmConfigured === 'boolean') {
+      llmConfigured.value = res.i18n.llmConfigured
+    }
+    rewriteHint.value = ''
     await loadOrders(id)
     await nextTick()
     if (timelineEl.value) {
@@ -979,6 +1021,74 @@ async function selectSession(id: string) {
     ElMessage.error('加载消息失败')
   } finally {
     detailLoading.value = false
+  }
+}
+
+
+const LANG_LABELS: Record<string, string> = {
+  ID: '印尼语 ID',
+  TH: '泰语 TH',
+  VN: '越南语 VN',
+  EN: '英语 EN',
+  ZH: '中文 ZH',
+}
+
+function langLabel(code?: string | null) {
+  if (!code) return '?'
+  const c = String(code).toUpperCase()
+  return LANG_LABELS[c] || c
+}
+
+async function onTranslateMessage(m: MessageItem) {
+  if (!selectedId.value || !m?.id) return
+  translatingId.value = m.id
+  try {
+    const target = (sessionI18n.value.workingLanguage || 'ZH').toUpperCase()
+    const res = await translateMessage(selectedId.value, m.id, target)
+    if (res.mode === 'degrade') {
+      ElMessage.warning(res.warning || '未配置 AI，无法流利翻译')
+      m.translationWarning = res.warning || undefined
+      m.lang = res.sourceLang || m.lang
+      m.translationMode = res.mode
+    } else {
+      m.translation = res.translation || undefined
+      m.translatedTo = res.targetLang
+      m.lang = res.sourceLang || m.lang
+      m.translationMode = res.mode
+      m.translationWarning = res.warning || undefined
+      ElMessage.success(res.mode === 'identity' ? '已是工作语，无需翻译' : '已翻译')
+    }
+  } catch {
+    ElMessage.error('翻译失败')
+  } finally {
+    translatingId.value = null
+  }
+}
+
+async function onRewriteDraft() {
+  if (!selectedId.value || !draftContent.value.trim()) return
+  rewriting.value = true
+  rewriteHint.value = ''
+  try {
+    const res = await rewriteDraft(selectedId.value, draftTargetLang.value, draftContent.value)
+    if (res.mode === 'degrade') {
+      rewriteHint.value = res.warning || '未配置 AI，无法流利改写'
+      ElMessage.warning(rewriteHint.value)
+    } else if (res.content) {
+      draftContent.value = res.content
+      if (res.draftId) {
+        draft.value = {
+          id: res.draftId,
+          content: res.content,
+          status: draft.value?.status || 'Pending',
+        }
+      }
+      ElMessage.success(`已重写为 ${langLabel(res.targetLang)}`)
+    }
+  } catch {
+    ElMessage.error('重写失败')
+  } finally {
+    rewriting.value = false
   }
 }
 
@@ -1689,5 +1799,43 @@ onUnmounted(() => {
   flex-wrap: wrap;
   gap: 4px;
   justify-content: flex-end;
+}
+
+.i18n-block {
+  margin-top: 6px;
+  font-size: 12px;
+}
+.i18n-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.i18n-translation {
+  margin-top: 4px;
+  padding: 6px 8px;
+  background: var(--el-fill-color-light);
+  border-radius: 6px;
+  color: var(--el-text-color-regular);
+  white-space: pre-wrap;
+}
+.i18n-label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 2px;
+  color: var(--el-color-primary);
+}
+.i18n-warn {
+  margin-top: 4px;
+  color: var(--el-color-warning-dark-2);
+  font-size: 12px;
+  line-height: 1.4;
+}
+.i18n-draft-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
 }
 </style>
