@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Synerixis.Domain.Entities;
@@ -86,7 +87,7 @@ namespace Synerixis.Api.Controllers
             var targetAgent = await _db.Agents.FirstOrDefaultAsync(a => a.Id == agentId);
             if (targetAgent == null) return NotFound("Agent not found");
             if (targetAgent.ShopId != currentAgent.ShopId)
-                return Forbid("Cannot view stats of agents from other shops");
+                return StatusCode(StatusCodes.Status403Forbidden, new { message = "Cannot view stats of agents from other shops" });
 
             var statDate = date?.Date ?? DateTime.UtcNow.Date;
 

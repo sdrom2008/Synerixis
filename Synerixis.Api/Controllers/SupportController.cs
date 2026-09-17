@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Synerixis.Application.DTOs;
@@ -143,7 +144,7 @@ namespace Synerixis.Api.Controllers
             var agent = await _db.Agents.FirstOrDefaultAsync(a => a.Id == userId.Value);
             if (agent == null) return NotFound("Agent not found");
             if (agent.ShopId != session.ShopId)
-                return Forbid("You are not authorized to take this session");
+                return StatusCode(StatusCodes.Status403Forbidden, new { message = "You are not authorized to take this session" });
 
             session.AssignToAgent(userId.Value);
             await _db.SaveChangesAsync();
@@ -183,7 +184,7 @@ namespace Synerixis.Api.Controllers
             if (session.Status != SessionStatus.Active)
                 return BadRequest($"Cannot reply to a session with status {session.Status}");
             if (session.AssignedAgentId != userId.Value)
-                return Forbid("You are not assigned to this session");
+                return StatusCode(StatusCodes.Status403Forbidden, new { message = "You are not assigned to this session" });
 
             var message = ChatMessage.FromAgent(dto.Content, session.Id);
             _db.ChatMessages.Add(message);
@@ -214,12 +215,12 @@ namespace Synerixis.Api.Controllers
 
             // 强制同店：杜绝跨店 IDOR（Supervisor/Admin 亦不可凭 SessionId 读他店）
             if (session.ShopId != agent.ShopId)
-                return Forbid("Not authorized to view this session");
+                return StatusCode(StatusCodes.Status403Forbidden, new { message = "Not authorized to view this session" });
 
             // 权限：Agent 只能看分配到自己的会话；Supervisor/Admin 可看本店所有
             if (agent.Role == AgentRole.Agent && session.AssignedAgentId != agent.Id)
             {
-                return Forbid("Not authorized to view this session");
+                return StatusCode(StatusCodes.Status403Forbidden, new { message = "Not authorized to view this session" });
             }
 
             var messages = await _db.ChatMessages
@@ -255,7 +256,7 @@ namespace Synerixis.Api.Controllers
             if (session.Status != SessionStatus.Active)
                 return BadRequest($"Cannot resolve a session with status {session.Status}");
             if (session.AssignedAgentId != userId.Value)
-                return Forbid("You are not assigned to this session");
+                return StatusCode(StatusCodes.Status403Forbidden, new { message = "You are not assigned to this session" });
 
             byte? satisfaction = null;
             if (dto?.Satisfaction != null && dto.Satisfaction >= 1 && dto.Satisfaction <= 5)

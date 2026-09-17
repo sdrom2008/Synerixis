@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Synerixis.Domain.Entities;
@@ -63,7 +64,7 @@ namespace Synerixis.Api.Controllers
             }
             else
             {
-                return Forbid("Invalid role");
+                return StatusCode(StatusCodes.Status403Forbidden, new { message = "Invalid role" });
             }
 
             var now = DateTime.UtcNow;
@@ -167,7 +168,7 @@ namespace Synerixis.Api.Controllers
             if (shopId.HasValue)
             {
                 if (currentShopId.HasValue && shopId.Value != currentShopId.Value)
-                    return Forbid("Cannot view other shops' data");
+                    return StatusCode(StatusCodes.Status403Forbidden, new { message = "Cannot view other shops' data" });
             }
             else
             {
