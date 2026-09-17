@@ -210,6 +210,22 @@ namespace Synerixis.Domain.Entities
         }
 
         /// <summary>
+        /// 人工审发/坐席出站统计。Pending（含转人工后）可升为 Active；
+        /// 不清除 PendingHumanHandoff（恢复 AI 草稿需 Resolve/Close/Reopen 或显式 Clear）。
+        /// </summary>
+        public void RecordHumanOutbound()
+        {
+            if (Status == SessionStatus.Closed || Status == SessionStatus.Resolved)
+                throw new InvalidOperationException("已结束的会话不能发送消息");
+            if (Status == SessionStatus.Pending)
+                Status = SessionStatus.Active;
+            AgentMessageCount++;
+            MessageCount++;
+            LastActiveAt = DateTime.UtcNow;
+            UpdatedAt = DateTime.UtcNow;
+        }
+
+        /// <summary>
         /// AI回复消息（用于统计）
         /// </summary>
         public void AddAiMessage()

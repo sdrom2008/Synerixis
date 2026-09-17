@@ -133,8 +133,7 @@ namespace Synerixis.Infrastructure.Services
                 var outboundMode = OutboundModes.Normalize(sellerConfig?.OutboundMode);
                 var allowAutoSend = OutboundModes.IsAutoSend(outboundMode)
                     && !session.PendingHumanHandoff
-                    && session.Status != SessionStatus.Pending
-                    && withinHours;
+                    && withinHours; // 新建会话亦为 Pending，不能用 Status 挡 AutoSend；停 AI 看 PendingHumanHandoff
 
                 var historyDtos = session.Messages
                     .OrderBy(m => m.CreatedAt)

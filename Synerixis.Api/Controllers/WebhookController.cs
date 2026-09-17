@@ -28,28 +28,25 @@ namespace Synerixis.Api.Controllers
     public class WebhookController : ControllerBase
     {
         private readonly IPlatformClientRouter _router;
-        private readonly IConversationRepository _conversationRepo;
         private readonly ILogger<WebhookController> _logger;
         private readonly AppDbContext _db;
-        private readonly IServiceScopeFactory _scopeFactory;
         private readonly ISystemSettingsService _ops;
         private readonly IInboundSessionService _inbound;
+        private readonly IInboundAiReplyService _inboundAi;
 
         public WebhookController(
             IPlatformClientRouter router,
-            IConversationRepository conversationRepo,
             AppDbContext db,
-            IServiceScopeFactory scopeFactory,
             ISystemSettingsService ops,
             IInboundSessionService inbound,
+            IInboundAiReplyService inboundAi,
             ILogger<WebhookController> logger)
         {
             _router = router;
-            _conversationRepo = conversationRepo;
             _db = db;
-            _scopeFactory = scopeFactory;
             _ops = ops;
             _inbound = inbound;
+            _inboundAi = inboundAi;
             _logger = logger;
         }
 
@@ -150,7 +147,7 @@ namespace Synerixis.Api.Controllers
                 return Ok(new { code = 0, message = "empty_content_ignored" });
             }
 
-            // 查找或创建会话 + 追加买家消息（与 ConversationService 共享 IInboundSessionService）
+            // 查找或创建会话 + 追加买家消息（经 IInboundSessionService 落库）
             var session = await _inbound.FindOrCreateSessionAsync(msg);
             if (session == null)
             {
@@ -178,7 +175,7 @@ namespace Synerixis.Api.Controllers
             var userContent = msg.Content;
             _ = Task.Run(async () =>
             {
-                await ProcessInboundAiReplyAsync(sessionId, platformSnapshot, userContent);
+                await _inboundAi.ProcessAfterBuyerMessageAsync(sessionId, platformSnapshot, userContent);
             });
 
             return Ok(new { code = 0, message = "success" });
@@ -464,274 +461,6 @@ namespace Synerixis.Api.Controllers
         }
 
         // FindOrCreateSession / AppendBuyerMessage 已收拢至 IInboundSessionService（InboundSessionService）
-
-        /// <summary>
-        /// 已落库的用户消息 → IntentClassifier → IAgent / GeneralChat → 持久化为草稿（默认）。
-        /// 仅当 SellerConfig.OutboundMode=AutoSend 时才调用平台 SendReplyAsync。
-        /// 缺 AI Key / 平台 Token 时仅打日志，不向上抛（Webhook 已返回 200）。
-        /// </summary>
-        private async Task ProcessInboundAiReplyAsync(Guid sessionId, PlatformMessage msg, string userContent)
-        {
-            try
-            {
-                using var scope = _scopeFactory.CreateScope();
-                var sp = scope.ServiceProvider;
-                var db = sp.GetRequiredService<AppDbContext>();
-                var logger = sp.GetRequiredService<ILogger<WebhookController>>();
-
-                var session = await db.ChatSessions
-                    .Include(s => s.Messages)
-                    .FirstOrDefaultAsync(s => s.Id == sessionId);
-                if (session == null)
-                {
-                    logger.LogWarning("[Webhook] Session {SessionId} missing for AI reply", sessionId);
-                    return;
-                }
-
-                // EnableAutoReply=false：不生成草稿；默认仍生成 AI 草稿（DraftFirst）
-                var opsSvc = sp.GetRequiredService<ISystemSettingsService>();
-                var opsNow = await opsSvc.GetOpsAsync();
-                if (opsNow.MaintenanceMode)
-                {
-                    logger.LogInformation(
-                        "[Webhook] MaintenanceMode (async): skip AI draft/AutoSend Session={SessionId}",
-                        sessionId);
-                    return;
-                }
-
-                var sellerConfig = await db.SellerConfigs
-                    .AsNoTracking()
-                    .FirstOrDefaultAsync(c => c.SellerId == session.ShopId);
-                if (sellerConfig != null && !sellerConfig.EnableAutoReply)
-                {
-                    logger.LogInformation(
-                        "[Webhook] AI draft/reply disabled for shop {ShopId}; skipping",
-                        session.ShopId);
-                    return;
-                }
-
-                // 转人工硬闸：PendingHumanHandoff 时停止生成新草稿与 AutoSend（旧草稿保留可见）
-                // 注意：新建会话 Status 也是 Pending，不能单靠 Status 判断
-                if (session.BlocksAiDrafting)
-                {
-                    logger.LogInformation(
-                        "[Webhook] Handoff hard-gate: skip AI draft/AutoSend Session={SessionId} Shop={ShopId}",
-                        sessionId, session.ShopId);
-                    session.UpdatePlatformReplyContext(msg.ConversationId, msg.OpenId);
-                    await db.SaveChangesAsync();
-                    return;
-                }
-
-                session.UpdatePlatformReplyContext(msg.ConversationId, msg.OpenId);
-
-                // —— 敏感词自动 handoff：命中则转人工，不生成新草稿 ——
-                var sensitiveHit = OutboundPolicyHelper.FindSensitiveHit(
-                    userContent, sellerConfig?.SensitiveKeywords);
-                if (sensitiveHit != null)
-                {
-                    session.TransferToAgent();
-                    await SupersedePendingDraftsAsync(db, session.Id);
-                    await db.SaveChangesAsync();
-                    logger.LogWarning(
-                        "[Webhook] Auto-handoff by sensitive keyword '{Keyword}' Session={SessionId} Shop={ShopId}",
-                        sensitiveHit, sessionId, session.ShopId);
-                    return;
-                }
-
-                // —— 营业时间外：禁止 AutoSend；可系统提示草稿；默认直接 handoff ——
-                var withinHours = OutboundPolicyHelper.IsWithinBusinessHours(
-                    sellerConfig?.BusinessHoursStart,
-                    sellerConfig?.BusinessHoursEnd,
-                    sellerConfig?.TimeZoneId);
-                var handoffOutside = sellerConfig?.HandoffOutsideBusinessHours ?? true;
-                if (!withinHours)
-                {
-                    logger.LogInformation(
-                        "[Webhook] Outside business hours Shop={ShopId} Session={SessionId} Hours={Start}-{End} Tz={Tz}",
-                        session.ShopId, sessionId,
-                        sellerConfig?.BusinessHoursStart ?? "09:00",
-                        sellerConfig?.BusinessHoursEnd ?? "22:00",
-                        sellerConfig?.TimeZoneId ?? "Asia/Shanghai");
-
-                    if (handoffOutside)
-                    {
-                        session.TransferToAgent();
-                        await SupersedePendingDraftsAsync(db, session.Id);
-                        var tip = new DraftMessage
-                        {
-                            Id = Guid.NewGuid(),
-                            ChatSessionId = session.Id,
-                            Content = "【营业外】非营业时间，请人工稍后回复。",
-                            Status = DraftStatuses.Pending,
-                            CreatedAt = DateTime.UtcNow
-                        };
-                        db.DraftMessages.Add(tip);
-                        await db.SaveChangesAsync();
-                        logger.LogInformation(
-                            "[Webhook] Outside-hours handoff Session={SessionId}; tip draft saved (no AI / no AutoSend)",
-                            sessionId);
-                        return;
-                    }
-                }
-
-                var outboundMode = OutboundModes.Normalize(sellerConfig?.OutboundMode);
-                var allowAutoSend = OutboundModes.IsAutoSend(outboundMode)
-                    && !session.PendingHumanHandoff
-                    && session.Status != SessionStatus.Pending
-                    && withinHours; // 营业外永不 AutoSend
-
-                var historyDtos = session.Messages
-                    .OrderBy(m => m.CreatedAt)
-                    .Select(m => new ChatMessageDto
-                    {
-                        IsFromUser = m.SenderType == 1,
-                        Content = m.Content,
-                        MessageType = m.MessageType == 1 ? "text" : "other",
-                        Timestamp = m.CreatedAt
-                    })
-                    .ToList();
-
-                var chatContext = new ChatContext
-                {
-                    ConversationId = session.Id.ToString(),
-                    ShopId = session.ShopId,
-                    SellerId = session.ShopId.ToString(),
-                    Platform = session.Platform,
-                    CustomerId = session.CustomerId ?? msg.CustomerId ?? string.Empty,
-                    // Shopee ParseWebhook 把 to_shop_id 放在 OpenId，供 OrderAgent / SendReply 按店取 token
-                    PlatformShopId = msg.OpenId,
-                    Messages = historyDtos
-                };
-
-                ChatIntent intent = ChatIntent.Unknown;
-                double confidence = 0.15;
-                try
-                {
-                    var classifier = sp.GetRequiredService<IIntentClassifier>();
-                    var classified = await classifier.ClassifyWithConfidenceAsync(userContent, historyDtos, session.ShopId, session.Id);
-                    intent = classified.Intent;
-                    confidence = classified.Confidence;
-                    logger.LogInformation(
-                        "[Webhook] Intent={Intent} Confidence={Confidence:F2} Session={SessionId} Platform={Platform}",
-                        intent, confidence, sessionId, session.Platform);
-                }
-                catch (Exception ex)
-                {
-                    logger.LogWarning(ex, "[Webhook] Intent classify failed (missing AI key?); fallback Unknown");
-                    intent = ChatIntent.Unknown;
-                    confidence = 0.15;
-                }
-
-                // —— 低置信度自动 handoff ——
-                var autoLow = sellerConfig?.AutoHandoffOnLowConfidence ?? true;
-                var threshold = sellerConfig?.HandoffConfidenceThreshold ?? 0.45;
-                if (threshold < 0) threshold = 0;
-                if (threshold > 1) threshold = 1;
-                if (autoLow && confidence < threshold)
-                {
-                    session.TransferToAgent();
-                    await SupersedePendingDraftsAsync(db, session.Id);
-                    await db.SaveChangesAsync();
-                    logger.LogWarning(
-                        "[Webhook] Auto-handoff by low confidence {Confidence:F2}<{Threshold:F2} Intent={Intent} Session={SessionId} Shop={ShopId}",
-                        confidence, threshold, intent, sessionId, session.ShopId);
-                    return;
-                }
-
-                string replyContent;
-                try
-                {
-                    var agentRouter = sp.GetRequiredService<IAgentRouter>();
-                    var agent = agentRouter.GetAgent(intent);
-
-                    // 有匹配 Agent（如 OrderQuery→OrderAgent）则走专用路径；General/Unknown 走口语化 LLM
-                    if (agent != null && intent is not (ChatIntent.GeneralChat or ChatIntent.Unknown))
-                    {
-                        var agentResult = await agent.ProcessAsync(userContent, chatContext);
-                        replyContent = agentResult.Messages.LastOrDefault()?.Content
-                            ?? "抱歉，我暂时无法处理您的问题。";
-                    }
-                    else
-                    {
-                        var generalChat = sp.GetRequiredService<IGeneralChatAgent>();
-                        replyContent = await generalChat.GenerateReplyAsync(userContent, chatContext);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    logger.LogWarning(ex, "[Webhook] Agent/LLM reply failed; using local fallback");
-                    replyContent = "您好！您的消息已收到，我们会尽快为您处理。";
-                }
-
-                if (!withinHours)
-                    replyContent = "【营业外】" + replyContent;
-
-                await SupersedePendingDraftsAsync(db, session.Id);
-
-                if (allowAutoSend)
-                {
-                    // 合规风险路径：显式 AutoSend 才直接出站
-                    var aiMsg = ChatMessage.FromAI(replyContent, chatSessionId: session.Id);
-                    session.Messages.Add(aiMsg);
-                    session.AddAiMessage();
-                    await db.SaveChangesAsync();
-
-                    try
-                    {
-                        var platformRouter = sp.GetRequiredService<IPlatformClientRouter>();
-                        var client = platformRouter.GetClient(msg.Platform);
-                        var platformOutboundId = await client.SendReplyAsync(msg, replyContent);
-                        // 优先平台真实 message_id；无则 outbound:{localId} 兜底
-                        aiMsg.PlatformMsgId = !string.IsNullOrWhiteSpace(platformOutboundId)
-                            ? platformOutboundId
-                            : $"outbound:{aiMsg.Id:N}";
-                        await db.SaveChangesAsync();
-                        logger.LogWarning(
-                            "[Webhook] AutoSend used for shop {ShopId} platform {Platform} — compliance risk; prefer DraftFirst",
-                            session.ShopId, msg.Platform);
-                    }
-                    catch (Exception ex)
-                    {
-                        logger.LogWarning(ex,
-                            "[Webhook] SendReply skipped/failed for {Platform} (missing token/config?)",
-                            msg.Platform);
-                    }
-                }
-                else
-                {
-                    // 默认 DraftFirst：只落草稿，不调用平台 SendReply
-                    var draft = new DraftMessage
-                    {
-                        Id = Guid.NewGuid(),
-                        ChatSessionId = session.Id,
-                        Content = replyContent,
-                        Status = DraftStatuses.Pending,
-                        CreatedAt = DateTime.UtcNow
-                    };
-                    db.DraftMessages.Add(draft);
-                    await db.SaveChangesAsync();
-                    logger.LogInformation(
-                        "[Webhook] Draft saved Session={SessionId} DraftId={DraftId} Mode={Mode} OutsideHours={Outside} (no SendReply)",
-                        sessionId, draft.Id, outboundMode, !withinHours);
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "[Webhook] Async reply failed for session {SessionId}", sessionId);
-            }
-        }
-
-        private static async Task SupersedePendingDraftsAsync(AppDbContext db, Guid sessionId)
-        {
-            var oldDrafts = await db.DraftMessages
-                .Where(d => d.ChatSessionId == sessionId && d.Status == DraftStatuses.Pending)
-                .ToListAsync();
-            foreach (var d in oldDrafts)
-            {
-                d.Status = DraftStatuses.Superseded;
-                d.UpdatedAt = DateTime.UtcNow;
-            }
-        }
 
 
         #endregion

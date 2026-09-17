@@ -464,11 +464,8 @@ namespace Synerixis.Api.Controllers
                 if (!string.IsNullOrEmpty(filterShopOpenId))
                 {
                     var oid = filterShopOpenId;
-                    query = query.Where(s =>
-                        s.PlatformShopOpenId == oid
-                        || (s.PlatformShopOpenId == null || s.PlatformShopOpenId == ""));
-                    // Prefer exact openId match when present; include legacy null for demo
-                    // Re-filter in memory below for precision when mixed.
+                    // 按店筛选必须精确匹配 PlatformShopOpenId；历史 null 会话只在「全部店」出现
+                    query = query.Where(s => s.PlatformShopOpenId == oid);
                 }
 
                 var sellerConfig = await _db.SellerConfigs
@@ -519,8 +516,7 @@ namespace Synerixis.Api.Controllers
                 {
                     var oid = filterShopOpenId;
                     raw = raw.Where(s =>
-                        string.IsNullOrEmpty(s.platformShopOpenId)
-                        || string.Equals(s.platformShopOpenId, oid, StringComparison.OrdinalIgnoreCase)
+                        string.Equals(s.platformShopOpenId, oid, StringComparison.OrdinalIgnoreCase)
                     ).ToList();
                     total = raw.Count;
                 }
@@ -1876,17 +1872,18 @@ namespace Synerixis.Api.Controllers
 
                 var platformOutboundId = await client.SendReplyAsync(platformMsg, draft.Content);
 
-                var aiMsg = ChatMessage.FromAI(draft.Content, chatSessionId: session.Id);
+                // 人审发送计为坐席消息（非 AI）；Pending/转人工后亦可出站
+                var agentMsg = ChatMessage.FromAgent(draft.Content, chatSessionId: session.Id);
                 // 优先写平台真实 message_id；无则 outbound:{localId} 兜底（见平台客户端注释）
-                aiMsg.PlatformMsgId = !string.IsNullOrWhiteSpace(platformOutboundId)
+                agentMsg.PlatformMsgId = !string.IsNullOrWhiteSpace(platformOutboundId)
                     ? platformOutboundId
-                    : $"outbound:{aiMsg.Id:N}";
-                _db.ChatMessages.Add(aiMsg);
-                session.AddAiMessage();
+                    : $"outbound:{agentMsg.Id:N}";
+                _db.ChatMessages.Add(agentMsg);
+                session.RecordHumanOutbound();
 
                 draft.Status = DraftStatuses.Sent;
                 draft.SentAt = DateTime.UtcNow;
-                draft.SentMessageId = aiMsg.Id;
+                draft.SentMessageId = agentMsg.Id;
                 draft.UpdatedAt = DateTime.UtcNow;
 
                 await _db.SaveChangesAsync();
@@ -1896,7 +1893,7 @@ namespace Synerixis.Api.Controllers
                     var actor = GetCurrentUser();
                     await _audit.LogAsync(actor.UserId, actor.UserType, AuditActions.DraftApprove,
                         "DraftMessage", draft.Id.ToString(),
-                        new { sessionId = session.Id, messageId = aiMsg.Id },
+                        new { sessionId = session.Id, messageId = agentMsg.Id },
                         shopId);
                 }
                 catch { }
@@ -1905,7 +1902,7 @@ namespace Synerixis.Api.Controllers
                 {
                     message = "已发送到平台",
                     draftId = draft.Id,
-                    messageId = aiMsg.Id
+                    messageId = agentMsg.Id
                 });
             }
             catch (Exception ex)
