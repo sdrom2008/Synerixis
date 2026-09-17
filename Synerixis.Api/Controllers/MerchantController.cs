@@ -623,6 +623,7 @@ namespace Synerixis.Api.Controllers
                         senderType = m.SenderType == 1 ? "Customer" : (m.SenderType == 2 ? "Agent" : "System"),
                         messageType = m.MessageType == 1 ? "text" : "other",
                         metadata = m.Metadata != null ? m.Metadata : null,
+                        platformMsgId = m.PlatformMsgId,
                         createdAt = m.CreatedAt
                     })
                     .ToListAsync();

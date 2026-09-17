@@ -32,7 +32,16 @@ export interface MessageItem {
   content: string
   senderType: string
   messageType?: string
+  platformMsgId?: string | null
   createdAt: string
+}
+
+export interface DraftSendResult {
+  message?: string
+  draftId?: string
+  messageId?: string
+  platformMsgId?: string
+  mocked?: boolean
 }
 
 export interface DraftInfo {
@@ -262,14 +271,14 @@ export function updateDraft(id: string, content: string) {
 }
 
 export function approveDraft(id: string) {
-  return request({
+  return request<DraftSendResult>({
     url: `/api/merchant/sessions/${id}/draft/approve`,
     method: 'POST',
   })
 }
 
 export function editAndSendDraft(id: string, content: string) {
-  return request({
+  return request<DraftSendResult>({
     url: `/api/merchant/sessions/${id}/draft/edit-send`,
     method: 'POST',
     data: { content },

@@ -66,7 +66,10 @@
       </div>
 
       <div v-if="displaySessions.length === 0 && !listLoading" class="list-empty">
-        <EmptyState title="暂无会话" desc="绑定店铺并有买家消息后，会话会出现在这里。AI 会生成草稿，需人工确认后才会发到平台。" />
+        <EmptyState :title="listEmptyTitle" :desc="listEmptyDesc" />
+        <div v-if="statusFilter || shopFilter || assignmentFilter" class="empty-actions">
+          <el-button size="small" @click="clearFilters">清除筛选</el-button>
+        </div>
       </div>
       <div v-else class="session-list">
         <button
@@ -216,6 +219,13 @@
           >
             <div class="bubble-meta">
               <span>{{ senderLabel(m.senderType) }}</span>
+              <el-tag
+                v-if="isMockOutbound(m)"
+                size="small"
+                type="info"
+                effect="plain"
+                class="mock-tag"
+              >演示·模拟出站</el-tag>
               <span>{{ formatTime(m.createdAt) }}</span>
             </div>
             <div class="bubble-body">{{ m.content }}</div>
@@ -229,8 +239,20 @@
             <el-tag v-else-if="isSupersededDraft" size="small" type="info" effect="plain">已停用但仍可发送</el-tag>
             <el-tag v-else size="small" type="info" effect="plain">无草稿</el-tag>
           </div>
+          <el-alert
+            v-if="lastSendHint"
+            :title="lastSendHint"
+            type="success"
+            :closable="true"
+            show-icon
+            class="send-hint"
+            @close="lastSendHint = ''"
+          />
           <p class="draft-hint">
-            确认无误后再发送。自动生成的草稿不计入平台「真人坐席响应率」；请勿宣称无人值守自动回信。
+            确认无误后再<strong>审核发送</strong>。自动生成的草稿不计入平台「真人坐席响应率」；请勿宣称无人值守自动回信。演示店为模拟出站，不调用真实 Shopee/TikTok。
+          </p>
+          <p v-if="!draft" class="draft-empty-hint">
+            当前无待发草稿。可筛选「待发草稿 / 超时告警 / 待人工」，或到「上手指南」注入测试消息生成新草稿。
           </p>
           <div v-if="quickReplies.length" class="qr-bar">
             <span class="qr-label">快捷回复</span>
@@ -255,7 +277,7 @@
             <el-button :disabled="!draft || saving" @click="onSave" :loading="saving">保存</el-button>
             <el-button :disabled="!draft || sending" @click="onDiscard" :loading="discarding">丢弃</el-button>
             <el-button type="primary" :disabled="!draft || sending" :loading="sending" @click="onApprove">
-              批准发送
+              审核发送
             </el-button>
             <el-button type="success" :disabled="!draft || sending" :loading="sending" @click="onEditSend">
               编辑并发送
@@ -284,7 +306,7 @@
           <el-descriptions-item label="优先级">{{ currentSession.priority || '—' }}</el-descriptions-item>
           <el-descriptions-item label="消息数">{{ currentSession.messageCount ?? '—' }}</el-descriptions-item>
           <el-descriptions-item label="SLA 状态">
-            {{ slaLabel(currentSession) || '正常' }}
+            <span :class="slaTextClass(currentSession)">{{ slaDetailLabel(currentSession) }}</span>
           </el-descriptions-item>
           <el-descriptions-item label="转人工">
             {{ isHandoff(currentSession) || messagesMeta.pendingHumanHandoff ? '是（已停 AI 新草稿）' : '否' }}
@@ -395,6 +417,7 @@ import {
   type ShopOption,
   type ShopAgentItem,
   type DraftInfo,
+  type DraftSendResult,
   type SlaUrgency,
 } from '@/api/merchant'
 import { useAuthStore } from '@/stores/auth'
@@ -434,6 +457,7 @@ const selectedId = ref<string | null>(null)
 const messages = ref<MessageItem[]>([])
 const draft = ref<DraftInfo | null>(null)
 const draftContent = ref('')
+const lastSendHint = ref('')
 const quickReplies = ref<QuickReplyItem[]>([])
 const timelineEl = ref<HTMLElement | null>(null)
 const messagesMeta = ref<{
@@ -515,6 +539,65 @@ const displaySessions = computed(() => {
     return ta - tb
   })
 })
+
+
+const listEmptyTitle = computed(() => {
+  if (statusFilter.value === 'draft') return '当前无待发草稿'
+  if (statusFilter.value === 'alerts') return '当前无超时告警'
+  if (statusFilter.value === 'handoff') return '当前无待人工会话'
+  if (statusFilter.value === 'Active') return '当前无进行中会话'
+  if (statusFilter.value === 'Pending') return '当前无待处理会话'
+  if (assignmentFilter.value === 'unassigned') return '没有未分配会话'
+  if (assignmentFilter.value === 'mine') return '没有分配给你的会话'
+  if (shopFilter.value) return '该店铺暂无会话'
+  return '暂无会话'
+})
+
+const listEmptyDesc = computed(() => {
+  if (statusFilter.value || shopFilter.value || assignmentFilter.value) {
+    return '试试清除筛选，或到登录页 / 上手指南「加载演示数据」注入样例会话。'
+  }
+  return '绑定店铺并有买家消息后，会话会出现在这里。AI 会生成草稿，需人工确认后才会发到平台。'
+})
+
+function clearFilters() {
+  statusFilter.value = ''
+  shopFilter.value = ''
+  assignmentFilter.value = ''
+  onFilterChange()
+}
+
+function isMockOutbound(m: MessageItem) {
+  const id = (m.platformMsgId || '').toLowerCase()
+  return id.startsWith('mock:') || id.startsWith('outbound:mock')
+}
+
+function slaDetailLabel(conv: SessionItem | null | undefined) {
+  if (!conv) return '—'
+  const u = computeUrgency(conv)
+  const h = Number(conv.hoursSinceLastBuyerMsg)
+  const sla = Number(conv.responseSlaHours || responseSlaHours.value || 12)
+  if (u === 'overdue') {
+    const over = Number.isNaN(h) ? '' : ` · 已超 ${formatHours(Math.max(0, h - sla))}`
+    return `已超时${over}`
+  }
+  if (u === 'soon') {
+    const left = Number.isNaN(h) ? '' : ` · 约剩 ${formatHours(Math.max(0, sla - h))}`
+    return `即将超时${left}`
+  }
+  if (!Number.isNaN(h) && sla > 0) {
+    return `正常 · 约剩 ${formatHours(Math.max(0, sla - h))}`
+  }
+  return '正常'
+}
+
+function slaTextClass(conv: SessionItem | null | undefined) {
+  if (!conv) return ''
+  const u = computeUrgency(conv)
+  if (u === 'overdue') return 'sla-text-overdue'
+  if (u === 'soon') return 'sla-text-soon'
+  return 'sla-text-ok'
+}
 
 function formatTime(v?: string | null) {
   if (!v) return '—'
@@ -899,17 +982,26 @@ async function onSave() {
   }
 }
 
+function applySendResult(res?: DraftSendResult | null, fallback = '已发送') {
+  const mocked = !!res?.mocked
+  const msg = res?.message || (mocked ? '已模拟发送（演示店，未调用真实平台）' : fallback)
+  ElMessage.success(msg)
+  lastSendHint.value = mocked
+    ? '✓ 演示闭环完成：已模拟出站，时间线出现坐席消息，草稿标记为已发送。'
+    : '✓ 已发送到平台，时间线已更新。'
+}
+
 async function onApprove() {
   if (!selectedId.value || !draft.value) return
   sending.value = true
   try {
-    let res: { message?: string; mocked?: boolean } | undefined
+    let res: DraftSendResult
     if (draftContent.value.trim() !== (draft.value.content || '').trim()) {
-      res = (await editAndSendDraft(selectedId.value, draftContent.value)) as typeof res
+      res = await editAndSendDraft(selectedId.value, draftContent.value)
     } else {
-      res = (await approveDraft(selectedId.value)) as typeof res
+      res = await approveDraft(selectedId.value)
     }
-    ElMessage.success(res?.message || (res?.mocked ? '已模拟发送（演示）' : '已发送'))
+    applySendResult(res, '已审核发送')
     await selectSession(selectedId.value)
     await loadSessions()
   } catch {
@@ -927,11 +1019,8 @@ async function onEditSend() {
   }
   sending.value = true
   try {
-    const res = (await editAndSendDraft(selectedId.value, draftContent.value)) as {
-      message?: string
-      mocked?: boolean
-    }
-    ElMessage.success(res?.message || (res?.mocked ? '已模拟发送（演示）' : '已编辑并发送'))
+    const res = await editAndSendDraft(selectedId.value, draftContent.value)
+    applySendResult(res, '已编辑并发送')
     await selectSession(selectedId.value)
     await loadSessions()
   } catch {
@@ -1373,5 +1462,35 @@ onUnmounted(() => {
 }
 .logistics-fallback {
   color: var(--el-color-warning);
+}
+
+.empty-actions {
+  display: flex;
+  justify-content: center;
+  margin-top: -8px;
+  padding-bottom: 12px;
+}
+.send-hint {
+  margin: 0 12px 8px;
+}
+.draft-empty-hint {
+  margin: 0 14px 8px;
+  font-size: 12px;
+  color: #64748b;
+  line-height: 1.45;
+}
+.mock-tag {
+  margin: 0 4px;
+}
+.sla-text-overdue {
+  color: #b91c1c;
+  font-weight: 600;
+}
+.sla-text-soon {
+  color: #b45309;
+  font-weight: 600;
+}
+.sla-text-ok {
+  color: #047857;
 }
 </style>

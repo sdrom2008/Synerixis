@@ -181,6 +181,17 @@ namespace Synerixis.Domain.Entities
             UpdatedAt = DateTime.UtcNow;
         }
 
+        /// <summary>
+        /// Dev/演示种子：回拨买家最后活跃时间，用于 SLA「已超时 / 即将超时」样例。
+        /// 生产路径勿调用。
+        /// </summary>
+        public void SeedBackdateBuyerActivity(DateTime utcBuyerAt)
+        {
+            LastBuyerMessageAt = utcBuyerAt;
+            LastActiveAt = utcBuyerAt;
+            UpdatedAt = DateTime.UtcNow;
+        }
+
         /// <summary>SLA 提示：距买家最后消息已过小时数（UTC）</summary>
         public double HoursSinceLastBuyerMessage(DateTime? utcNow = null)
         {

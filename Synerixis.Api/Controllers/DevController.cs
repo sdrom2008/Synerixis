@@ -25,7 +25,8 @@ namespace Synerixis.Api.Controllers
         {
             "demo-buyer-draft",
             "demo-buyer-handoff",
-            "demo-buyer-normal"
+            "demo-buyer-normal",
+            "demo-buyer-overdue"
         };
 
         private readonly AppDbContext _db;
@@ -224,6 +225,20 @@ namespace Synerixis.Api.Controllers
                 updated,
                 cancellationToken);
 
+            // SLA 已超时样例：收件箱「超时告警」可点开演示
+            var overdueSession = await EnsureSessionBundleAsync(
+                seller.Id,
+                connection,
+                shopAgent.Id,
+                kind: "overdue",
+                customerId: DemoCustomerIds[3],
+                customerName: "演示买家·已超时",
+                platform: "SHOPEE",
+                created,
+                skipped,
+                updated,
+                cancellationToken);
+
             // 7) 本地订单（挂 draft / normal 买家，便于 Inbox 侧栏）
             await EnsureOrderAsync(
                 seller.Id,
@@ -316,7 +331,8 @@ namespace Synerixis.Api.Controllers
                     draft = draftSession.Id,
                     handoff = handoffSession.Id,
                     normal = normalSession.Id,
-                    tiktokDraft = tiktokDraftSession.Id
+                    tiktokDraft = tiktokDraftSession.Id,
+                    overdue = overdueSession.Id
                 },
                 shops = new
                 {
@@ -329,6 +345,8 @@ namespace Synerixis.Api.Controllers
                 next = new[]
                 {
                     "merchant-web：手机登录 " + DemoPhoneLocal + " / 123456",
+                    "收件箱：待发草稿 → 审核发送（SIM 店 mock 出站）",
+                    "收件箱：超时告警 → 演示买家·已超时；待人工 → 旧草稿仍可发",
                     "坐席登录 " + DemoAgentEmail + " / " + DemoPassword,
                     "admin-console：" + DemoAdminEmail + " / " + DemoPassword,
                     "POST /api/dev/simulate-inbound 给当前商家再注入一条"
@@ -713,6 +731,33 @@ namespace Synerixis.Api.Controllers
                         "已触发转人工（演示）：敏感意图/投诉，请坐席接手。",
                         chatSessionId: session.Id));
                     session.AddAiMessage();
+                    // 旧草稿保留：演示「转人工后仍可人审发送」
+                    _db.DraftMessages.Add(new DraftMessage
+                    {
+                        ChatSessionId = session.Id,
+                        Content = "（演示·转人工前草稿）非常抱歉给您带来不便，我们已安排专人跟进退款，请提供订单号后优先处理。",
+                        Status = DraftStatuses.Pending,
+                        CreatedAt = DateTime.UtcNow.AddMinutes(-8)
+                    });
+                }
+                else if (kind == "overdue")
+                {
+                    var buyerAt = DateTime.UtcNow.AddHours(-14);
+                    var buyer = ChatMessage.FromUser(
+                        "你好，我的包裹已经两天没更新物流了，能帮忙催一下吗？",
+                        session.Id);
+                    buyer.CreatedAt = buyerAt;
+                    _db.ChatMessages.Add(buyer);
+                    session.AddUserMessage();
+                    session.SeedBackdateBuyerActivity(buyerAt);
+                    _db.DraftMessages.Add(new DraftMessage
+                    {
+                        ChatSessionId = session.Id,
+                        Content = "（演示·超时待审）您好，已帮您催促承运商，最新轨迹预计今日更新；如仍无进展请回复本会话，我们继续跟进。",
+                        Status = DraftStatuses.Pending,
+                        CreatedAt = DateTime.UtcNow.AddHours(-13)
+                    });
+                    session.AddAiMessage();
                 }
                 else // normal
                 {
@@ -733,33 +778,61 @@ namespace Synerixis.Api.Controllers
             {
                 // 幂等刷新：保证 handoff 闸 / 待审草稿存在
                 session.UpdatePlatformReplyContext($"demo-conv-{customerId}", shopOpenId);
-                if (kind == "handoff" && !session.PendingHumanHandoff)
+                if (kind == "handoff")
                 {
-                    if (session.Status != SessionStatus.Closed)
+                    if (!session.PendingHumanHandoff && session.Status != SessionStatus.Closed)
                     {
                         session.TransferToAgent();
                         updated.Add($"session:{kind}:handoff");
                     }
-                }
-                else if (kind == "draft")
-                {
                     var hasPending = await _db.DraftMessages.AnyAsync(
-                        d => d.ChatSessionId == session.Id && d.Status == DraftStatuses.Pending,
+                        d => d.ChatSessionId == session.Id
+                             && (d.Status == DraftStatuses.Pending || d.Status == DraftStatuses.Superseded),
                         cancellationToken);
                     if (!hasPending)
                     {
                         _db.DraftMessages.Add(new DraftMessage
                         {
                             ChatSessionId = session.Id,
-                            Content = "（演示）您好，这是刷新后的待审草稿，请确认后发送。",
+                            Content = "（演示·转人工前草稿）非常抱歉给您带来不便，我们已安排专人跟进退款，请提供订单号后优先处理。",
                             Status = DraftStatuses.Pending,
-                            CreatedAt = DateTime.UtcNow
+                            CreatedAt = DateTime.UtcNow.AddMinutes(-8)
+                        });
+                        updated.Add($"session:{kind}:draft");
+                    }
+                    else if (!updated.Any(u => u.StartsWith($"session:{kind}:")))
+                    {
+                        skipped.Add($"session:{kind}");
+                    }
+                }
+                else if (kind == "draft" || kind == "overdue")
+                {
+                    var hasPending = await _db.DraftMessages.AnyAsync(
+                        d => d.ChatSessionId == session.Id && d.Status == DraftStatuses.Pending,
+                        cancellationToken);
+                    if (!hasPending)
+                    {
+                        var content = kind == "overdue"
+                            ? "（演示·超时待审）您好，已帮您催促承运商，最新轨迹预计今日更新；如仍无进展请回复本会话，我们继续跟进。"
+                            : "（演示）您好，这是刷新后的待审草稿，请确认后发送。";
+                        _db.DraftMessages.Add(new DraftMessage
+                        {
+                            ChatSessionId = session.Id,
+                            Content = content,
+                            Status = DraftStatuses.Pending,
+                            CreatedAt = kind == "overdue" ? DateTime.UtcNow.AddHours(-13) : DateTime.UtcNow
                         });
                         updated.Add($"session:{kind}:draft");
                     }
                     else
                     {
                         skipped.Add($"session:{kind}");
+                    }
+                    if (kind == "overdue")
+                    {
+                        // 幂等：每次 seed 保持「已超时」态，便于演示 SLA 筛选
+                        session.SeedBackdateBuyerActivity(DateTime.UtcNow.AddHours(-14));
+                        updated.Add($"session:{kind}:sla");
                     }
                 }
                 else if (kind == "normal" && session.AssignedAgentId == null
