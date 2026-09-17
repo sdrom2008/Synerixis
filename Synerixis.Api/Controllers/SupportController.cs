@@ -212,7 +212,11 @@ namespace Synerixis.Api.Controllers
 
             if (session == null) return NotFound("Session not found");
 
-            // 权限：Agent 只能看分配到自己的会话；Supervisor 可看本店所有
+            // 强制同店：杜绝跨店 IDOR（Supervisor/Admin 亦不可凭 SessionId 读他店）
+            if (session.ShopId != agent.ShopId)
+                return Forbid("Not authorized to view this session");
+
+            // 权限：Agent 只能看分配到自己的会话；Supervisor/Admin 可看本店所有
             if (agent.Role == AgentRole.Agent && session.AssignedAgentId != agent.Id)
             {
                 return Forbid("Not authorized to view this session");

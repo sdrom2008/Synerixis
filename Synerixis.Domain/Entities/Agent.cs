@@ -18,7 +18,8 @@ namespace Synerixis.Domain.Entities
         public string PasswordHash { get; private set; } = string.Empty;
         public string Name { get; private set; } = string.Empty;      // 客服姓名
         public string? AvatarUrl { get; private set; }                // 头像
-        public AgentRole Role { get; private set; } = AgentRole.Agent; // Agent / Supervisor / Admin
+        // Role=Admin = PLATFORM 运营（可进 /api/admin/*）；实体仍挂 ShopId，非「店铺店长」
+        public AgentRole Role { get; private set; } = AgentRole.Agent; // Agent / Supervisor / Admin(platform)
         public bool IsActive { get; private set; } = true;            // 是否在线可用
         public bool IsOnline { get; private set; } = false;           // 当前在线状态
         public int MaxConcurrentSessions { get; private set; } = 5;   // 最大同时处理会话数
@@ -122,8 +123,10 @@ namespace Synerixis.Domain.Entities
 
     public enum AgentRole
     {
-        Agent = 1,        // 普通客服
-        Supervisor = 2,   // 客服主管
-        Admin = 3         // 系统管理员（跨店铺）
+        Agent = 1,        // 普通客服（shop seat）
+        Supervisor = 2,   // 客服主管（shop）
+        /// <summary>PLATFORM 运营账号：JWT Role=Admin → [Authorize(Roles="Admin")] /api/admin/*。
+        /// 非店铺「店长」；商家团队 API 禁止创建/升格。跨店能力来自平台 API，不是 merchant 多店切换。</summary>
+        Admin = 3
     }
 }

@@ -452,7 +452,8 @@ namespace Synerixis.Api.Controllers
         }
 
         // ============================================
-        // 客服团队管理（Seller 本人 + 同店 Supervisor/Admin）
+        // 客服团队管理（Seller 本人 + 同店 Supervisor/平台 Admin JWT 挂靠本店）
+        // 可选角色仅 Agent|Supervisor；AgentRole.Admin 为平台运营，禁止商家侧创建/升格
         // ============================================
         [HttpGet("team")]
         public async Task<IActionResult> GetTeam()
@@ -498,12 +499,9 @@ namespace Synerixis.Api.Controllers
                     return BadRequest(new { message = "邮箱、姓名、初始密码不能为空" });
 
                 var role = ParseAgentRole(dto.Role, dto.RoleName) ?? AgentRole.Agent;
+                // AgentRole.Admin is PLATFORM-only (JWT → /api/admin/*). Merchant team APIs must never create it.
                 if (role == AgentRole.Admin)
-                {
-                    var current = GetCurrentUser();
-                    if (!current.IsSeller && !current.IsAdmin)
-                        return Forbid();
-                }
+                    return BadRequest(new { message = "不能通过商家团队接口创建平台 Admin；仅 Agent / Supervisor 可选" });
 
                 var existing = await _db.Agents.FirstOrDefaultAsync(a => a.Email == dto.Email);
                 if (existing != null)
@@ -566,12 +564,9 @@ namespace Synerixis.Api.Controllers
                 var newRole = ParseAgentRole(dto.Role, dto.RoleName);
                 if (newRole.HasValue)
                 {
+                    // AgentRole.Admin is PLATFORM-only; merchant team cannot promote to Admin.
                     if (newRole.Value == AgentRole.Admin)
-                    {
-                        var current = GetCurrentUser();
-                        if (!current.IsSeller && !current.IsAdmin)
-                            return Forbid();
-                    }
+                        return BadRequest(new { message = "不能通过商家团队接口升为平台 Admin；仅 Agent / Supervisor 可选" });
                     agent.UpdateRole(newRole.Value);
                 }
 
@@ -680,14 +675,16 @@ namespace Synerixis.Api.Controllers
         public string Password { get; set; } = null!;
         public string Name { get; set; } = null!;
         public AgentRole? Role { get; set; }
-        /// <summary>前端可传 "Agent" | "Supervisor"</summary>
+        /// <summary>仅 "Agent" | "Supervisor"；Admin 为平台角色，商家侧拒绝</summary>
         public string? RoleName { get; set; }
     }
 
     public class UpdateAgentDto
     {
         public string? Name { get; set; }
+        /// <summary>仅 Agent|Supervisor；拒绝 Admin</summary>
         public AgentRole? Role { get; set; }
+        /// <summary>仅 "Agent" | "Supervisor"；Admin 为平台角色，商家侧拒绝</summary>
         public string? RoleName { get; set; }
         public int? MaxConcurrentSessions { get; set; }
         public bool? IsActive { get; set; }

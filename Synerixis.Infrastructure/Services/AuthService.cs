@@ -16,6 +16,9 @@ namespace Synerixis.Infrastructure.Services
             _config = config;
         }
 
+        /// <param name="userType">Seller | Agent | Supervisor | Admin。
+        /// Admin 仅表示 PLATFORM Agents.Role=Admin（[Authorize(Roles="Admin")]），
+        /// 与商家工作台「店长」无关；商家团队不得签发此角色。</param>
         public string GenerateJwt(Guid userId, string userType, Guid? shopId = null)
         {
             Console.WriteLine($"GenerateJwt: userId={userId}, userType={userType}, shopId={shopId}");
@@ -26,7 +29,7 @@ namespace Synerixis.Infrastructure.Services
                 new Claim("userId", userId.ToString()),
                 new Claim("uid", userId.ToString()),
                 new Claim("userType", userType),
-                // ASP.NET [Authorize(Roles=...)] 默认读 ClaimTypes.Role
+                // ASP.NET [Authorize(Roles=...)] 默认读 ClaimTypes.Role；Admin → 平台 /api/admin/*
                 new Claim(ClaimTypes.Role, userType),
                 new Claim("role", userType),
             };

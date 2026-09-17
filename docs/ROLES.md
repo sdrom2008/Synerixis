@@ -19,11 +19,13 @@
 ```csharp
 public enum AgentRole
 {
-    Agent = 1,        // 普通客服
-    Supervisor = 2,   // 客服主管
-    Admin = 3         // 系统管理员（跨店铺）— 注释如此；实体仍挂 ShopId
+    Agent = 1,        // 普通客服（shop seat）
+    Supervisor = 2,   // 客服主管（shop）
+    Admin = 3         // PLATFORM 运营（JWT → /api/admin/*）；实体仍挂 ShopId；商家团队禁止创建
 }
 ```
+
+> **语义收口**：`AgentRole.Admin` / JWT `role=Admin` **仅表示平台运营**，不是商家「店长」。merchant-web 团队 UI 只提供 Agent|Supervisor；平台 Admin 账号由 seed / `POST /api/auth/init-agent`（Development）/ Dev 路径创建。同一 JWT 进 merchant-web 时仍按挂靠 `ShopId`，**不会**自动跨店。
 
 `CurrentUser`（`Synerixis.Api/Helpers/CurrentUser.cs`）把四者映射为：
 
@@ -97,7 +99,7 @@ public enum AgentRole
 | | |
 |--|--|
 | **范围** | **platform**：`[Authorize(Roles = "Admin")]` → `/api/admin/*`（商家/连接/会话监控/全站用量/审计/运营设置）。**shop**：同一 JWT 进 merchant-web 时仍按挂靠 `ShopId` 走 `GetMerchantShopId` |
-| **能** | admin-console 全页；同店商家工作台全菜单；团队里创建/升为 Admin |
+| **能** | admin-console 全页；同店商家工作台全菜单；**不可**经商家团队 API 创建/升为 Admin（仅 seed / `init-agent` / Dev 路径） |
 | **不能** | 用 Admin JWT 调 `/api/reports/dashboard`（角色分支只认 Seller/Agent/Supervisor → **Forbid**）；注释写「跨店铺」但 **merchant API 不会自动跨店** |
 | **前端** | admin-console：登录校验 Admin；路由守卫**只查 token 是否存在** |
 
@@ -111,7 +113,7 @@ public enum AgentRole
 | `AgentController` | `Roles = "Supervisor,Admin"` | 操作者本店 `currentAgent.ShopId` |
 | `MerchantController` | `[Authorize]` | 多数 `GetMerchantShopId`；业主资源 `GetShopOwner*`；assign 禁纯 Agent |
 | `SellerController` | `[Authorize]` | profile/config/team 业主或主管；商品等路径偏 Seller |
-| `SupportController` | `[Authorize]` | Staff；列表按角色 seat/shop；**部分读接口未校验 ShopId**（见下） |
+| `SupportController` | `[Authorize]` | Staff；列表按角色 seat/shop；`messages` 强制同店 ShopId |
 | `ReportsController` | `[Authorize]` | 按角色过滤店；**Admin 被 dashboard Forbid** |
 | `ChatController` | `[Authorize]` | 注释写 Seller；实现未强制 `IsSeller` |
 | `PayController` | `[Authorize]` | 按 JWT Id 查 `Sellers`（坐席无效） |
@@ -139,9 +141,9 @@ public enum AgentRole
 | `AgentRole.Admin` 注释「跨店铺」 | 实体必有 `ShopId`；跨店能力主要靠 `/api/admin/*`，不是 merchant 多店切换 |
 | MERCHANT_WEB「计费 API 仍可仅 Seller」 | `GET /api/merchant/usage*` 用 `GetMerchantShopId` → **Supervisor/Admin/Agent 均可读本店用量** |
 | README「Seller/Supervisor/Admin 全菜单」 | 与前端一致；**Pay 支付仍仅 Seller Id** |
-| Support 注释「Supervisor 可看全店」 | 列表按店过滤 ✓；`GET tickets/{id}/messages` 对 Supervisor/Admin **未校验 session.ShopId** |
+| Support 注释「Supervisor 可看全店」 | 列表按店过滤 ✓；`GET tickets/{id}/messages` **已修**：强制 `session.ShopId == agent.ShopId` + Agent seat 规则 |
 | Reports「Admin 可看所有店铺」 | `agent-performance` 注释如此；`dashboard` 对 Admin **Forbid** |
-| 团队 UI 文案常写 Agent\|Supervisor | API 允许 Seller/Admin **创建 Role=Admin 坐席** → 可拿到平台 Admin JWT |
+| 团队 UI 文案常写 Agent\|Supervisor | **已修**：商家 `POST/PUT /api/seller/team*` 拒绝 `Role=Admin`；仅平台种子/`init-agent` 可建 |
 | merchant Agent「只能进收件箱」 | UI ✓；默认 **全店会话列表**（非 seat），与 `/api/support` seat 模型不一致 |
 | ChatController「Seller 身份」 | 仅 `[Authorize]`，未验 `userType` |
 
@@ -149,11 +151,11 @@ public enum AgentRole
 
 ## 8. P0 / P1 权限问题（记录，不大改）
 
-### P0
+### P0（已修）
 
-1. **任意 Seller 可创建 `AgentRole.Admin` 团队成员**（`SellerController.AddTeamMember` / `UpdateTeamMember`）→ 该账号登录即能访问 `/api/admin/*`（平台禁用商家、改订阅、改运营开关）。  
-2. **`SupportController.GetTicketMessages`**：Supervisor/Admin 分支不校验 `session.ShopId == agent.ShopId`，已知 `SessionId` 可能跨店读消息。  
-3. **Admin 语义双轨**：同一 `userType=Admin` 既是平台运营又是挂靠店坐席；易误以为 merchant API 自动跨店。
+1. **~~任意 Seller 可创建 `AgentRole.Admin`~~ → 已修**：`SellerController.AddTeamMember` / `UpdateTeamMember` 对 `Role=Admin` 一律 `400`（商家侧不可创建/升格平台 Admin）。仅平台种子 / `init-agent` / Dev 可建。  
+2. **~~`GetTicketMessages` 跨店 IDOR~~ → 已修**：强制 `session.ShopId == agent.ShopId`，再套 Agent seat 规则。  
+3. **~~Admin 语义双轨~~ → 已收口（文档+注释）**：`AgentRole.Admin` = **PLATFORM-only**；JWT 仍 `Agents.Role=Admin` + `[Authorize(Roles="Admin")]`；merchant 不提供该角色；挂靠 `ShopId` 进商家台不自动跨店。
 
 ### P1
 
@@ -164,7 +166,7 @@ public enum AgentRole
 5. **`SupportController` `debug/init-db` `[AllowAnonymous]`**（生产暴露面）。  
 6. **`ChatController` 未强制 Seller**。
 
-> 本次任务仅文档化；**未做大修复**。若修 P0-1，建议一行：`if (role == AgentRole.Admin) return Forbid();`（或仅平台种子可建 Admin）。
+> P0 已于代码修复（Seller 团队拒 Admin、Support 消息同店校验、Admin 平台语义注释/ROLES 收口）。P1 仍为记录项。
 
 ---
 
