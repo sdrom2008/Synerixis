@@ -54,7 +54,7 @@ cp .env.example .env && docker compose up -d --build
 - **Agent（普通坐席）**：仅收件箱 + 只读概览 KPI；无团队/店铺/计费/AI 设置权限。
 - 开发测号：`POST /api/auth/init-agent`（仅 Development）可创建 `admin@test.com` / `Agent123!`。
 
-更多见 [`docs/MERCHANT_WEB.md`](docs/MERCHANT_WEB.md)。
+更多见 [`docs/MERCHANT_WEB.md`](docs/MERCHANT_WEB.md)。角色与权限矩阵（以代码为准）见 [`docs/ROLES.md`](docs/ROLES.md)。
 
 AI 用量：专用 Agent（order/logistics/competitor/product 等）经 `IAiUsageRecorder` 记账；无模型 Usage 时 chars/4 估算并 `IsEstimated`；商家 Overview 近 7 日图接 `GET /api/merchant/usage/daily`。
 
@@ -91,6 +91,7 @@ Synerixis.sln
 
 | 文档 | 说明 |
 |------|------|
+| [`docs/ROLES.md`](docs/ROLES.md) | 角色与权限矩阵（Seller/Agent/Supervisor/Admin，以代码为准） |
 | [`docs/MARKET_FIT_AND_POSITIONING.md`](docs/MARKET_FIT_AND_POSITIONING.md) | 市场适配与战略再定位（工作台 + AI 起草；Shopee Chat 合规） |
 | [`docs/BUSINESS_PLAN_CBEC.md`](docs/BUSINESS_PLAN_CBEC.md) | CBEC 商业计划（替代国内 SME 幻想叙事；Y1 付费店目标 30–100） |
 | [`docs/SHOPEE_CLOSED_LOOP.md`](docs/SHOPEE_CLOSED_LOOP.md) | Shopee 闭环缺口清单（OAuth→草稿→人审→handoff） |

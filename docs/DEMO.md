@@ -5,6 +5,8 @@
 
 细节 / 排障 → [`LOCAL_DEMO.md`](./LOCAL_DEMO.md) · [`DEV_SETUP_BOX.md`](./DEV_SETUP_BOX.md) · [`LOCAL_DB_RESET.md`](./LOCAL_DB_RESET.md)
 
+角色与权限（JWT / 路由 / 数据范围，以代码为准）→ [`ROLES.md`](./ROLES.md)
+
 ---
 
 ## ✅ 前置（已有本仓库）
