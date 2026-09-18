@@ -24,6 +24,12 @@
         <el-menu-item index="/inbox">
           <el-icon><ChatDotRound /></el-icon>
           <span>收件箱</span>
+          <el-badge
+            v-if="overdueBadge > 0"
+            :value="overdueBadge"
+            type="danger"
+            class="inbox-overdue-badge"
+          />
         </el-menu-item>
         <el-menu-item index="/onboarding">
           <el-icon><Guide /></el-icon>
@@ -100,7 +106,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
-import { getConnections } from '@/api/merchant'
+import { getConnections, getMerchantAlerts } from '@/api/merchant'
 
 const route = useRoute()
 const router = useRouter()
@@ -117,6 +123,7 @@ const tokenBadge = ref<{ count: number; hasExpired: boolean; needsRebind: boolea
   hasExpired: false,
   needsRebind: false,
 })
+const overdueBadge = ref(0)
 let badgeTimer: ReturnType<typeof setInterval> | null = null
 
 async function refreshTokenBadge() {
@@ -147,6 +154,26 @@ async function refreshTokenBadge() {
   }
 }
 
+async function refreshOverdueBadge() {
+  if (!auth.isAuthenticated) {
+    overdueBadge.value = 0
+    return
+  }
+  try {
+    const alerts = await getMerchantAlerts()
+    if (typeof alerts?.overdueCount === 'number') {
+      overdueBadge.value = alerts.overdueCount
+      return
+    }
+    const items = alerts?.items || []
+    overdueBadge.value = items.filter(
+      (a) => a.type !== 'connection_token' && a.slaUrgency === 'overdue',
+    ).length
+  } catch {
+    overdueBadge.value = 0
+  }
+}
+
 function logout() {
   auth.clear()
   router.push({ name: 'login' })
@@ -154,7 +181,11 @@ function logout() {
 
 onMounted(() => {
   refreshTokenBadge()
-  badgeTimer = setInterval(refreshTokenBadge, 60_000)
+  refreshOverdueBadge()
+  badgeTimer = setInterval(() => {
+    refreshTokenBadge()
+    refreshOverdueBadge()
+  }, 60_000)
 })
 onUnmounted(() => {
   if (badgeTimer) clearInterval(badgeTimer)
@@ -229,6 +260,13 @@ onUnmounted(() => {
 }
 .token-badge {
   margin-right: 4px;
+}
+.inbox-overdue-badge {
+  margin-left: 8px;
+  :deep(.el-badge__content) {
+    position: static;
+    transform: none;
+  }
 }
 .main {
   background: var(--sx-bg);

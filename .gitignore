@@ -60,3 +60,8 @@ merchant-web/dist/
 # Admin console generated
 admin-console/auto-imports.d.ts
 admin-console/components.d.ts
+
+# Local SQLite demo DBs
+*.db
+*.db-shm
+*.db-wal

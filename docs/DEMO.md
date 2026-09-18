@@ -81,6 +81,18 @@ curl -sS -X POST http://127.0.0.1:7092/api/dev/seed-demo | head
 
 ---
 
+## ✅ 3b. 多角色 + 漏回叫醒（约 2 分钟）
+
+| 角色 | 怎么验 |
+|------|--------|
+| **Agent** | `agent@demo.synerixis.local` / `Agent123!` → 收件箱默认 **我的** → 可见「演示买家·待审草稿」→ 人审发送 → 时间线 **演示·模拟出站** |
+| **Supervisor** | `supervisor@demo.synerixis.local` / `Agent123!` → **全部分配**（默认全店）→ 点 **超时告警** → 「演示买家·已超时 / 即将超时」→ 可人审发送叫醒 |
+| **Seller** | `13800138000` / `123456` → 全店收件箱 + 侧栏导航 **收件箱红点**（overdue 角标） |
+
+筛选 **「超时告警」** 或点告警条；GET `/api/merchant/alerts` 返回 `overdueCount` / `soonCount`（应用内角标，无 Push）。
+
+---
+
 ## ✅ 4. 可选（仍在 5 分钟内）
 
 | 动作 | 怎么做 |

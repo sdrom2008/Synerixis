@@ -47,9 +47,25 @@ http.interceptors.response.use(
   },
 )
 
+/** 解开 System.Text.Json ReferenceHandler.Preserve 的 $values / $id 包装 */
+function unwrapJsonPreserve<T>(data: T): T {
+  if (data == null || typeof data !== 'object') return data
+  if (Array.isArray(data)) return data.map((x) => unwrapJsonPreserve(x)) as T
+  const obj = data as Record<string, unknown>
+  if (Array.isArray(obj.$values)) {
+    return unwrapJsonPreserve(obj.$values) as T
+  }
+  const out: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(obj)) {
+    if (k === '$id' || k === '$ref') continue
+    out[k] = unwrapJsonPreserve(v)
+  }
+  return out as T
+}
+
 export async function request<T = unknown>(config: AxiosRequestConfig): Promise<T> {
   const res = await http.request<T>(config)
-  return res.data
+  return unwrapJsonPreserve(res.data)
 }
 
 export default http

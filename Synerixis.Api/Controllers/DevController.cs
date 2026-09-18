@@ -972,6 +972,19 @@ namespace Synerixis.Api.Controllers
                 }
             }
 
+            // Agent 默认 mine：待审草稿 / SLA 样例需挂演示坐席，否则收件箱「我的」看不到
+            // handoff 保持未分配，便于认领演示；normal 创建路径已 Assign
+            if (kind == "draft" || kind == "overdue" || kind == "soon" || kind == "idlang")
+            {
+                if (session.AssignedAgentId != agentId
+                    && session.Status != SessionStatus.Closed
+                    && session.Status != SessionStatus.Resolved)
+                {
+                    session.AssignToAgent(agentId);
+                    updated.Add($"session:{kind}:assign");
+                }
+            }
+
             return session;
         }
 

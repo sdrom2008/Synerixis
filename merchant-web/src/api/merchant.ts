@@ -90,6 +90,7 @@ export interface SessionsListResult {
 }
 
 export interface MerchantAlertItem {
+  type?: string
   sessionId?: string
   id?: string
   customerName?: string
@@ -102,6 +103,10 @@ export interface MerchantAlertItem {
 export interface MerchantAlertsResult {
   items?: MerchantAlertItem[]
   total?: number
+  slaCount?: number
+  overdueCount?: number
+  soonCount?: number
+  tokenAlertCount?: number
   responseSlaHours?: number
   thresholds?: number[] | string
   /** 浏览器 Notification 可用说明；无 APNs/FCM */

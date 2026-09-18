@@ -1730,11 +1730,15 @@ namespace Synerixis.Api.Controllers
                     .ThenByDescending(a => a!.hoursSinceLastBuyerMsg)
                     .ToList();
 
+                var overdueN = slaAlerts.Count(a => a.slaUrgency == "overdue");
+                var soonN = slaAlerts.Count(a => a.slaUrgency == "soon");
                 return Ok(new
                 {
                     items = alertItems,
                     total = alertItems.Count,
                     slaCount = slaAlerts.Count,
+                    overdueCount = overdueN,
+                    soonCount = soonN,
                     tokenAlertCount = tokenAlerts.Count,
                     responseSlaHours = slaHours,
                     thresholds = hoursList,

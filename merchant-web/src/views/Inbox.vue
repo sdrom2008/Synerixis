@@ -628,6 +628,11 @@ const displayAssignedAgent = computed(() => {
   return messagesMeta.value.assignedAgent || currentSession.value?.assignedAgent || null
 })
 
+function sameAgentId(a?: string | null, b?: string | null) {
+  if (!a || !b) return false
+  return String(a).replace(/-/g, '').toLowerCase() === String(b).replace(/-/g, '').toLowerCase()
+}
+
 const displaySessions = computed(() => {
   let list = sessions.value.slice()
   if (statusFilter.value === 'draft') {
@@ -640,11 +645,12 @@ const displaySessions = computed(() => {
       return u === 'soon' || u === 'overdue'
     })
   }
+  // assignment 已由 API 过滤；客户端仅做大小写兜底，避免 Guid 大小写导致「我的」空列表
   if (assignmentFilter.value === 'unassigned') {
     list = list.filter((s) => !s.assignedAgent)
   } else if (assignmentFilter.value === 'mine') {
     const uid = auth.profile?.userId
-    if (uid) list = list.filter((s) => s.assignedAgent?.id === uid)
+    if (uid) list = list.filter((s) => sameAgentId(s.assignedAgent?.id, uid))
     else list = []
   }
   // Sort: overdue first, then soon, then pending draft, then by needsResponseBy asc
@@ -907,10 +913,20 @@ function maybeNotifySla(newOverdue: number) {
 async function loadAlerts() {
   try {
     const alerts = await getMerchantAlerts()
-    alertCount.value = alerts?.total ?? alerts?.items?.length ?? 0
     const items = alerts?.items || []
-    const overdue = items.filter((a) => a.slaUrgency === 'overdue').length
+    const slaItems = items.filter((a) => a.type !== 'connection_token')
+    // 角标优先 SLA；total 含 token 时仍可用于「有告警」提示
+    const overdue =
+      typeof alerts?.overdueCount === 'number'
+        ? alerts.overdueCount
+        : slaItems.filter((a) => a.slaUrgency === 'overdue').length
+    const soon =
+      typeof alerts?.soonCount === 'number'
+        ? alerts.soonCount
+        : slaItems.filter((a) => a.slaUrgency === 'soon').length
     overdueCount.value = overdue
+    alertCount.value =
+      typeof alerts?.slaCount === 'number' ? alerts.slaCount : overdue + soon
     maybeNotifySla(overdue)
   } catch {
     alertCount.value = 0
@@ -1266,18 +1282,43 @@ async function onInjectTest() {
     } else if (res.pendingHumanHandoff || res.message === 'partial_ok_ai_degraded') {
       hint = `已注入会话，但未生成草稿（${res.warning || '可能已转人工'}）。仍可手动起草后「人审发送」。`
       ElMessage.warning(hint)
+      const sid = res.sessionId
+      if (
+        sid &&
+        auth.userType === 'Agent' &&
+        !auth.isSupport &&
+        assignmentFilter.value === 'mine'
+      ) {
+        try {
+          await claimSession(sid)
+        } catch {
+          /* ignore */
+        }
+      }
       await loadSessions()
       void loadShopOptions()
-      const sid = res.sessionId
       if (sid) await selectSession(sid)
       return
     } else {
       hint = `已注入会话 ${res.sessionNo || res.sessionId || ''}（无草稿时可手动起草）`
     }
     ElMessage.success(hint)
+    const sid = res.sessionId
+    // Agent 默认 mine：注入会话未分配时认领，避免「我的」立刻看不到新草稿
+    if (
+      sid &&
+      auth.userType === 'Agent' &&
+      !auth.isSupport &&
+      assignmentFilter.value === 'mine'
+    ) {
+      try {
+        await claimSession(sid)
+      } catch {
+        /* 已分配或其他原因：忽略，仍打开会话 */
+      }
+    }
     await loadSessions()
     void loadShopOptions()
-    const sid = res.sessionId
     if (sid) await selectSession(sid)
   } catch (e) {
     ElMessage.error(e instanceof Error ? e.message : '注入失败（仅 Development）')
