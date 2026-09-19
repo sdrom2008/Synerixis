@@ -98,6 +98,11 @@ namespace Synerixis.Infrastructure.Data
                       .HasMaxLength(32)
                       .HasDefaultValue("DraftFirst");
 
+                entity.Property(c => c.AssignmentMode)
+                      .HasColumnType("varchar(32)")
+                      .HasMaxLength(32)
+                      .HasDefaultValue("Unassigned");
+
                 entity.HasOne(c => c.Seller)
                       .WithOne(s => s.Config)
                       .HasForeignKey<SellerConfig>(c => c.SellerId)

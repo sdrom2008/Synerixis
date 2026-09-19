@@ -89,7 +89,11 @@ curl -sS -X POST http://127.0.0.1:7092/api/dev/seed-demo | head
 | **Supervisor** | `supervisor@demo.synerixis.local` / `Agent123!` → **全部分配**（默认全店）→ 点 **超时告警** → 「演示买家·已超时 / 即将超时」→ 可人审发送叫醒 |
 | **Seller** | `13800138000` / `123456` → 全店收件箱 + 侧栏导航 **收件箱红点**（overdue 角标） |
 
-筛选 **「超时告警」** 或点告警条；GET `/api/merchant/alerts` 返回 `overdueCount` / `soonCount`（应用内角标，无 Push）。
+筛选 **「超时告警」** / **「已超时」**，或点侧栏收件箱红点（带 `?filter=overdue` 并跳到首条）。GET `/api/merchant/alerts` 返回 `overdueCount` / `soonCount`（应用内红点 + 可选轻声音；**对内叫醒，不自动回复买家**）。Agent 仅看「我的」；Seller/Supervisor 全店。人审发送后 SLA 角标应下降（已出站不再计超时）。
+
+### 3c. 规则分流（最小）
+
+AI 设置 → **入站分配**：默认「未分配队列」；可选「最少负载自动分给 Agent」。收件箱详情 → **按规则分配** → 最少负载 / 升级 Supervisor。敏感词命中新会话可升 Supervisor。`POST /api/merchant/sessions/{id}/assign-by-rule`。
 
 ---
 
@@ -148,6 +152,7 @@ curl -sS -X POST http://127.0.0.1:7092/api/dev/seed-demo | head
 | PUT | `/api/merchant/sessions/{id}/draft` | 保存草稿；无草稿时创建 Pending |
 | POST | `/api/merchant/sessions/{id}/draft/edit-send` | 编辑（或新建）后发送 |
 | POST | `/api/merchant/sessions/{id}/draft/approve` | 人审发送（SIM 店 mock） |
+| POST | `/api/merchant/sessions/{id}/assign-by-rule` | 规则分配：least_loaded / supervisor |
 | POST | `/api/merchant/sessions/{sid}/messages/{mid}/translate` | 入站译工作语 |
 | POST | `/api/merchant/sessions/{id}/draft/rewrite` | 草稿按目标语重写 |
 

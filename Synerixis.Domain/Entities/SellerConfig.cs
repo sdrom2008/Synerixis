@@ -35,6 +35,11 @@ namespace Synerixis.Domain.Entities
         /// </summary>
         public string OutboundMode { get; set; } = OutboundModes.DraftFirst;
 
+        /// <summary>
+        /// 入站分配：Unassigned（默认，进未分配队列）| LeastLoaded（自动分给负载最低的有效 Agent）
+        /// </summary>
+        public string AssignmentMode { get; set; } = AssignmentModes.Unassigned;
+
         /// <summary>营业开始时间 HH:mm（本地业务约定，存字符串）</summary>
         public string BusinessHoursStart { get; set; } = "09:00";
 

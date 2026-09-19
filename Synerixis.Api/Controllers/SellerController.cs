@@ -101,6 +101,7 @@ namespace Synerixis.Api.Controllers
                         cfg.MemoryRetentionDays,
                         cfg.EnableAutoReply,
                         cfg.OutboundMode,
+                        cfg.AssignmentMode,
                         cfg.BusinessHoursStart,
                         cfg.BusinessHoursEnd,
                         cfg.ResponseSlaHours,
@@ -192,6 +193,8 @@ namespace Synerixis.Api.Controllers
                 config.BusinessHoursEnd = dto.BusinessHoursEnd.Trim();
             if (!string.IsNullOrWhiteSpace(dto.OutboundMode))
                 config.OutboundMode = OutboundModes.Normalize(dto.OutboundMode);
+            if (!string.IsNullOrWhiteSpace(dto.AssignmentMode))
+                config.AssignmentMode = AssignmentModes.Normalize(dto.AssignmentMode);
             if (dto.ResponseSlaHours.HasValue && dto.ResponseSlaHours.Value > 0 && dto.ResponseSlaHours.Value <= 168)
                 config.ResponseSlaHours = dto.ResponseSlaHours.Value;
             if (!string.IsNullOrWhiteSpace(dto.AlertThresholdHours))
@@ -229,7 +232,7 @@ namespace Synerixis.Api.Controllers
                 var actor = GetCurrentUser();
                 await _audit.LogAsync(actor.UserId, actor.UserType, AuditActions.AiSettingsUpdate,
                     "SellerConfig", sellerId.ToString(),
-                    new { outboundMode = config.OutboundMode, enableAutoReply = config.EnableAutoReply, llmKeyConfigured = !string.IsNullOrWhiteSpace(config.LlmApiKey) },
+                    new { outboundMode = config.OutboundMode, assignmentMode = config.AssignmentMode, enableAutoReply = config.EnableAutoReply, llmKeyConfigured = !string.IsNullOrWhiteSpace(config.LlmApiKey) },
                     sellerId);
             }
             catch { }
@@ -729,6 +732,7 @@ namespace Synerixis.Api.Controllers
         public string? BusinessHoursStart { get; set; }
         public string? BusinessHoursEnd { get; set; }
         public string? OutboundMode { get; set; }
+        public string? AssignmentMode { get; set; }
         public int? ResponseSlaHours { get; set; }
         public string? AlertThresholdHours { get; set; }
         public bool? AutoHandoffOnLowConfidence { get; set; }

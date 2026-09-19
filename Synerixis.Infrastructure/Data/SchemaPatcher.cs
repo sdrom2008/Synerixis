@@ -325,6 +325,25 @@ CREATE TABLE IF NOT EXISTS `system_settings` (
                 logger?.LogDebug(ex, "[SchemaPatcher] system_settings.Value widen skipped");
             }
 
+            // AssignmentMode (rule-based session routing)
+            try
+            {
+                await db.Database.ExecuteSqlRawAsync(@"
+SET @db := DATABASE();
+SET @col := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = @db AND TABLE_NAME = 'seller_configs' AND COLUMN_NAME = 'AssignmentMode');
+SET @ddl := IF(@col = 0,
+  'ALTER TABLE `seller_configs` ADD COLUMN `AssignmentMode` VARCHAR(32) NOT NULL DEFAULT ''Unassigned''',
+  'SELECT 1');
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+");
+                logger?.LogInformation("[SchemaPatcher] seller_configs.AssignmentMode ensured (MySQL)");
+            }
+            catch (Exception ex)
+            {
+                logger?.LogDebug(ex, "[SchemaPatcher] AssignmentMode patch skipped");
+            }
+
         }
 
         private static async Task TrySqliteAsync(AppDbContext db, ILogger? logger)
@@ -384,6 +403,7 @@ CREATE TABLE IF NOT EXISTS `system_settings` (
                 @"CREATE INDEX IF NOT EXISTS IX_ai_usage_logs_SellerId_CreatedAt ON ai_usage_logs (SellerId, CreatedAt)",
                 "ALTER TABLE ai_usage_logs ADD COLUMN IsEstimated INTEGER NOT NULL DEFAULT 0",
                 "ALTER TABLE seller_configs ADD COLUMN SupportedLanguages TEXT NOT NULL DEFAULT 'ID,TH,VN,EN,ZH'",
+                "ALTER TABLE seller_configs ADD COLUMN AssignmentMode TEXT NOT NULL DEFAULT 'Unassigned'",
                 @"CREATE UNIQUE INDEX IF NOT EXISTS IX_processed_webhook_events_Platform_EventKey ON processed_webhook_events (Platform, EventKey)",
                 @"CREATE TABLE IF NOT EXISTS audit_logs (
                     Id BLOB NOT NULL PRIMARY KEY,

@@ -49,9 +49,19 @@
           type="warning"
           :closable="false"
           show-icon
-          title="合规风险：AutoSend 可能触发平台对 chatbot / 促销广播的限制，请确认业务确需自动出站。"
+          title="合规风险：AutoSend 可能触发平台对 chatbot / 促销广播的限制（Shopee 等禁全自动 chatbot），请确认业务确需自动出站。默认请保持 DraftFirst 人审。"
           style="margin-bottom: 16px"
         />
+
+        <el-form-item label="入站分配">
+          <el-radio-group v-model="form.assignmentMode">
+            <el-radio label="Unassigned">未分配队列（默认）</el-radio>
+            <el-radio label="LeastLoaded">最少负载自动分给 Agent</el-radio>
+          </el-radio-group>
+          <div class="field-hint">
+            规则分流（非 AI）。默认进未分配，由主管/商家点「分配」或「按规则分配」；LeastLoaded 新会话自动分给本店负载最低的有效 Agent（在线优先）。敏感词命中可升 Supervisor。不自动回复买家。
+          </div>
+        </el-form-item>
 
         <el-form-item label="启用 AI 草稿">
           <el-switch v-model="form.enableAutoReply" />
@@ -95,7 +105,7 @@
             :rows="2"
             placeholder="退款,律师,投诉,police,..."
           />
-          <div class="field-hint">逗号分隔；命中则转人工，不生成新 AI 草稿</div>
+          <div class="field-hint">逗号分隔；命中则转人工且不生成新 AI 草稿；新会话还可规则升 Supervisor</div>
         </el-form-item>
 
         <el-divider content-position="left">LLM API Key</el-divider>
@@ -178,6 +188,7 @@ const form = reactive({
   workingLanguage: 'ZH',
   supportedLanguages: ['ID', 'TH', 'VN', 'EN', 'ZH'] as string[],
   outboundMode: 'DraftFirst',
+  assignmentMode: 'Unassigned',
   enableAutoReply: true,
   businessHoursStart: '09:00',
   businessHoursEnd: '22:00',
@@ -233,6 +244,8 @@ onMounted(async () => {
     }
     const mode = pick(cfg, 'OutboundMode', 'outboundMode')
     if (mode) form.outboundMode = String(mode) === 'AutoSend' ? 'AutoSend' : 'DraftFirst'
+    const am = pick(cfg, 'AssignmentMode', 'assignmentMode')
+    if (am) form.assignmentMode = String(am) === 'LeastLoaded' ? 'LeastLoaded' : 'Unassigned'
     const auto = pick(cfg, 'EnableAutoReply', 'enableAutoReply', 'AutoReplyEnabled', 'autoReplyEnabled')
     if (typeof auto === 'boolean') form.enableAutoReply = auto
     const start = pick(cfg, 'BusinessHoursStart', 'businessHoursStart')
@@ -290,6 +303,8 @@ async function save() {
       supportedLanguages: form.supportedLanguages.join(','),
       OutboundMode: form.outboundMode,
       outboundMode: form.outboundMode,
+      AssignmentMode: form.assignmentMode,
+      assignmentMode: form.assignmentMode,
       EnableAutoReply: form.enableAutoReply,
       enableAutoReply: form.enableAutoReply,
       BusinessHoursStart: form.businessHoursStart,

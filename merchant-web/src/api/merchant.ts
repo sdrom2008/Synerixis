@@ -270,6 +270,22 @@ export function claimSession(sessionId: string) {
   })
 }
 
+/** 规则预设分配：least_loaded | supervisor（不自动回复买家） */
+export function assignSessionByRule(sessionId: string, preset: 'least_loaded' | 'supervisor' = 'least_loaded') {
+  return request<{
+    message?: string
+    preset?: string
+    assignedAgent?: { id: string; name: string; role?: string }
+    assignedAt?: string
+    status?: string
+    pendingHumanHandoff?: boolean
+  }>({
+    url: `/api/merchant/sessions/${sessionId}/assign-by-rule`,
+    method: 'POST',
+    data: { preset, Preset: preset },
+  })
+}
+
 /** SLA / timeout wake alerts（应用内 + 浏览器 Notification；无 Push） */
 export function getMerchantAlerts(params: { thresholds?: string } = {}) {
   const q = params.thresholds ? `?thresholds=${encodeURIComponent(params.thresholds)}` : ''

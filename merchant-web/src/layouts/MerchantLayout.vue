@@ -21,7 +21,7 @@
           <el-icon><Odometer /></el-icon>
           <span>概览</span>
         </el-menu-item>
-        <el-menu-item index="/inbox">
+        <el-menu-item :index="inboxMenuIndex">
           <el-icon><ChatDotRound /></el-icon>
           <span>收件箱</span>
           <el-badge
@@ -29,6 +29,7 @@
             :value="overdueBadge"
             type="danger"
             class="inbox-overdue-badge"
+            title="已超时 · 点击筛选叫醒"
           />
         </el-menu-item>
         <el-menu-item index="/onboarding">
@@ -179,6 +180,15 @@ function logout() {
   router.push({ name: 'login' })
 }
 
+/** 有超时红点时点收件箱直达「已超时」筛选（对内叫醒，非自动回复买家） */
+const inboxMenuIndex = computed(() =>
+  overdueBadge.value > 0 ? '/inbox?filter=overdue' : '/inbox',
+)
+
+function onAlertsChanged() {
+  void refreshOverdueBadge()
+}
+
 onMounted(() => {
   refreshTokenBadge()
   refreshOverdueBadge()
@@ -186,9 +196,11 @@ onMounted(() => {
     refreshTokenBadge()
     refreshOverdueBadge()
   }, 60_000)
+  window.addEventListener('sx-alerts-changed', onAlertsChanged)
 })
 onUnmounted(() => {
   if (badgeTimer) clearInterval(badgeTimer)
+  window.removeEventListener('sx-alerts-changed', onAlertsChanged)
 })
 </script>
 

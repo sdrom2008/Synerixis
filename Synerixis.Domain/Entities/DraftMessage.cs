@@ -52,4 +52,20 @@ namespace Synerixis.Domain.Entities
         public static string Normalize(string? mode) =>
             IsAutoSend(mode) ? AutoSend : DraftFirst;
     }
+
+    /// <summary>
+    /// 入站会话分配策略（规则分流，非 AI）。默认 Unassigned：进线进未分配队列，由主管/商家「分配」或坐席认领。
+    /// LeastLoaded：新会话自动分给本店负载最低的有效 Agent（在线优先）。
+    /// </summary>
+    public static class AssignmentModes
+    {
+        public const string Unassigned = "Unassigned";
+        public const string LeastLoaded = "LeastLoaded";
+
+        public static bool IsLeastLoaded(string? mode) =>
+            string.Equals(mode, LeastLoaded, StringComparison.OrdinalIgnoreCase);
+
+        public static string Normalize(string? mode) =>
+            IsLeastLoaded(mode) ? LeastLoaded : Unassigned;
+    }
 }

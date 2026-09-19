@@ -202,3 +202,18 @@ public enum AgentRole
 - 未配置支付证书 / 商户密钥：返回 **400**「未配置支付证书」（`PAYMENT_CERT_MISSING`），不抛裸 500
 - merchant-web 计费菜单：`canViewBilling` = Seller | Supervisor（非 Agent、非 support）
 - **DEMO**：`seed-demo` 预置 `supervisor@demo.synerixis.local` / `Agent123!`；商家团队 UI 亦可创建角色 Supervisor
+
+
+---
+
+## 11. 规则分流（本轮最小可用）
+
+| 项 | 行为 |
+|----|------|
+| `SellerConfig.AssignmentMode` | `Unassigned`（默认，进未分配队列）\| `LeastLoaded`（新会话自动分给负载最低的有效 Agent，在线优先） |
+| 敏感词 | 新会话内容命中 `SensitiveKeywords` → 尝试分配本店 Supervisor |
+| 手动 | 收件箱「分配」选人；「按规则分配」→ `least_loaded` / `supervisor` |
+| API | `POST /api/merchant/sessions/{id}/assign-by-rule` `{ preset }` |
+| **不是** | AI 智能路由；**不会** AutoSend / 自动回复买家 |
+
+对内 SLA 叫醒：Seller/Supervisor 全店；Agent 仅 `AssignedAgentId == 自己`。已对买家出站回复的会话不再计入 overdue/soon。

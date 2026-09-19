@@ -40,6 +40,7 @@ namespace Synerixis.Api.Controllers
         private readonly IAuditLogger _audit;
         private readonly ICbecI18nService _i18n;
         private readonly LlmRuntime _llm;
+        private readonly ISessionAssignmentService _assign;
 
         public MerchantController(
             AppDbContext db, 
@@ -52,7 +53,8 @@ namespace Synerixis.Api.Controllers
             ILogger<MerchantController> logger,
             IAuditLogger audit,
             ICbecI18nService i18n,
-            LlmRuntime llm)
+            LlmRuntime llm,
+            ISessionAssignmentService assign)
         {
             _db = db;
             _sessionRepo = sessionRepo;
@@ -65,6 +67,7 @@ namespace Synerixis.Api.Controllers
             _audit = audit;
             _i18n = i18n;
             _llm = llm;
+            _assign = assign;
         }
 
         /// <summary>
@@ -591,14 +594,28 @@ namespace Synerixis.Api.Controllers
                 }
 
                 var now = DateTime.UtcNow;
+                // 已对买家最后一条消息做出站回复的会话不再计入 SLA 叫醒
+                var rawIds = raw.Select(s => s.id).ToList();
+                var lastOutbound = rawIds.Count == 0
+                    ? new Dictionary<Guid, DateTime>()
+                    : await _db.ChatMessages.AsNoTracking()
+                        .Where(m => rawIds.Contains(m.ChatSessionId) && m.SenderType != 1)
+                        .GroupBy(m => m.ChatSessionId)
+                        .Select(g => new { Id = g.Key, At = g.Max(x => x.CreatedAt) })
+                        .ToDictionaryAsync(x => x.Id, x => x.At);
+
                 var items = raw
                     .Select(s =>
                     {
                         var anchor = s.lastBuyerMessageAt ?? s.lastActiveAt ?? s.createdAt;
                         var hours = Math.Max(0, (now - anchor).TotalHours);
                         var needsBy = anchor.AddHours(slaHours);
+                        var awaiting = !s.lastBuyerMessageAt.HasValue
+                            || !lastOutbound.TryGetValue(s.id, out var outAt)
+                            || outAt < s.lastBuyerMessageAt.Value;
                         string slaUrgency;
-                        if (now >= needsBy) slaUrgency = "overdue";
+                        if (!awaiting) slaUrgency = "ok";
+                        else if (now >= needsBy) slaUrgency = "overdue";
                         else if ((needsBy - now).TotalHours <= Math.Max(0.5, slaHours * 0.25)) slaUrgency = "soon";
                         else slaUrgency = "ok";
 
@@ -725,8 +742,20 @@ namespace Synerixis.Api.Controllers
                 var anchor = session.LastBuyerMessageAt ?? session.LastActiveAt ?? session.CreatedAt;
                 var now = DateTime.UtcNow;
                 var needsBy = anchor.AddHours(slaHours);
+                DateTime? lastOut = null;
+                if (await _db.ChatMessages.AsNoTracking()
+                    .AnyAsync(m => m.ChatSessionId == id && m.SenderType != 1))
+                {
+                    lastOut = await _db.ChatMessages.AsNoTracking()
+                        .Where(m => m.ChatSessionId == id && m.SenderType != 1)
+                        .MaxAsync(m => m.CreatedAt);
+                }
+                var awaiting = !session.LastBuyerMessageAt.HasValue
+                    || !lastOut.HasValue
+                    || lastOut.Value < session.LastBuyerMessageAt.Value;
                 string slaUrgency;
-                if (now >= needsBy) slaUrgency = "overdue";
+                if (!awaiting) slaUrgency = "ok";
+                else if (now >= needsBy) slaUrgency = "overdue";
                 else if ((needsBy - now).TotalHours <= Math.Max(0.5, slaHours * 0.25)) slaUrgency = "soon";
                 else slaUrgency = "ok";
 
@@ -1141,6 +1170,59 @@ namespace Synerixis.Api.Controllers
         /// 当前坐席认领自己（Agent / Supervisor）。Seller 请用 assign。
         /// </summary>
         [HttpPost("sessions/{id:guid}/claim")]
+
+        /// <summary>
+        /// 按规则预设分配：least_loaded（负载最低 Agent）| supervisor（升级主管）。
+        /// Seller / Supervisor / Admin；不自动回复买家。
+        /// </summary>
+        [HttpPost("sessions/{id:guid}/assign-by-rule")]
+        public async Task<IActionResult> AssignSessionByRule(Guid id, [FromBody] MerchantAssignByRuleDto? dto = null)
+        {
+            try
+            {
+                var current = GetCurrentUser();
+                if (!current.IsSeller && !current.IsSupervisor && !current.IsAdmin)
+                    return Forbid();
+
+                var shopId = GetMerchantShopId();
+                var preset = (dto?.Preset ?? "least_loaded").Trim();
+                var session = await _db.ChatSessions
+                    .FirstOrDefaultAsync(s => s.Id == id && s.ShopId == shopId);
+                if (session == null)
+                    return NotFound(new { message = "会话不存在" });
+                if (session.Status == SessionStatus.Closed || session.Status == SessionStatus.Resolved)
+                    return BadRequest(new { message = "已结束的会话不能分配" });
+
+                var agent = await _assign.AssignByPresetAsync(session, preset);
+                if (agent == null)
+                    return BadRequest(new { message = $"规则「{preset}」无可用坐席，请手动分配或保持未分配" });
+
+                try
+                {
+                    await _audit.LogAsync(current.UserId, current.UserType, AuditActions.SessionAssign,
+                        "ChatSession", session.Id.ToString(),
+                        new { agentId = agent.Id, agentName = agent.Name, preset, rule = true },
+                        shopId);
+                }
+                catch { /* ignore */ }
+
+                return Ok(new
+                {
+                    message = $"已按规则分配：{preset}",
+                    sessionId = session.Id,
+                    preset,
+                    assignedAgent = new { id = agent.Id, name = agent.Name, role = agent.Role.ToString() },
+                    assignedAt = session.AssignedAt,
+                    status = session.Status.ToString(),
+                    pendingHumanHandoff = session.PendingHumanHandoff
+                });
+            }
+            catch (Exception ex)
+            {
+                return HandleError(ex);
+            }
+        }
+
         public async Task<IActionResult> ClaimSession(Guid id)
         {
             try
@@ -1646,15 +1728,34 @@ namespace Synerixis.Api.Controllers
                         s.PendingHumanHandoff,
                         s.LastBuyerMessageAt,
                         s.LastActiveAt,
-                        s.CreatedAt
+                        s.CreatedAt,
+                        s.AssignedAgentId
                     })
                     .ToListAsync();
+
+                // Agent：仅「我的」会话叫醒；Seller/Supervisor 全店
+                var alertUser = GetCurrentUser();
+                if (alertUser.IsAgent && !alertUser.IsSupport)
+                    sessions = sessions.Where(s => s.AssignedAgentId == alertUser.UserId).ToList();
+
+                var alertSessionIds = sessions.Select(s => s.Id).ToList();
+                var alertOutbound = alertSessionIds.Count == 0
+                    ? new Dictionary<Guid, DateTime>()
+                    : await _db.ChatMessages.AsNoTracking()
+                        .Where(m => alertSessionIds.Contains(m.ChatSessionId) && m.SenderType != 1)
+                        .GroupBy(m => m.ChatSessionId)
+                        .Select(g => new { Id = g.Key, At = g.Max(x => x.CreatedAt) })
+                        .ToDictionaryAsync(x => x.Id, x => x.At);
 
                 var slaAlerts = sessions
                     .Select(s =>
                     {
                         var msgAnchor = s.LastBuyerMessageAt ?? s.LastActiveAt ?? s.CreatedAt;
                         var hours = Math.Max(0, (now - msgAnchor).TotalHours);
+                        var awaiting = !s.LastBuyerMessageAt.HasValue
+                            || !alertOutbound.TryGetValue(s.Id, out var outAt)
+                            || outAt < s.LastBuyerMessageAt.Value;
+                        if (!awaiting) return null;
                         var crossed = hoursList.Where(t => hours >= t).ToList();
                         if (crossed.Count == 0) return null;
                         var highest = crossed.Max();
@@ -2228,6 +2329,18 @@ namespace Synerixis.Api.Controllers
                 draft.SentMessageId = agentMsg.Id;
                 draft.UpdatedAt = DateTime.UtcNow;
 
+                // 同会话其他待审/停用草稿一并丢弃，避免列表角标残留
+                var siblings = await _db.DraftMessages
+                    .Where(d => d.ChatSessionId == sessionId
+                        && d.Id != draft.Id
+                        && (d.Status == DraftStatuses.Pending || d.Status == DraftStatuses.Superseded))
+                    .ToListAsync();
+                foreach (var sib in siblings)
+                {
+                    sib.Status = DraftStatuses.Discarded;
+                    sib.UpdatedAt = DateTime.UtcNow;
+                }
+
                 await _db.SaveChangesAsync();
 
                 try
@@ -2557,6 +2670,12 @@ namespace Synerixis.Api.Controllers
         public string? Keywords { get; set; }
         public int? SortOrder { get; set; }
         public bool? IsActive { get; set; }
+    }
+
+    public class MerchantAssignByRuleDto
+    {
+        /// <summary>least_loaded | supervisor</summary>
+        public string? Preset { get; set; }
     }
 
     public class MerchantAssignDto

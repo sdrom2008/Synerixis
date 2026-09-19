@@ -81,6 +81,10 @@
             超时告警
             <span v-if="alertCount > 0" class="chip-n">{{ alertCount }}</span>
           </el-radio-button>
+          <el-radio-button label="overdue">
+            已超时
+            <span v-if="overdueCount > 0" class="chip-n">{{ overdueCount }}</span>
+          </el-radio-button>
           <el-radio-button label="handoff">待人工</el-radio-button>
           <el-radio-button label="Active">进行中</el-radio-button>
           <el-radio-button label="Pending">待处理</el-radio-button>
@@ -193,6 +197,15 @@
               >
                 分配
               </el-button>
+              <el-dropdown v-if="canAssign" trigger="click" @command="onAssignByRule">
+                <el-button size="small" plain :loading="assigning">按规则分配</el-button>
+                <template #dropdown>
+                  <el-dropdown-menu>
+                    <el-dropdown-item command="least_loaded">最少负载 Agent</el-dropdown-item>
+                    <el-dropdown-item command="supervisor">升级 Supervisor</el-dropdown-item>
+                  </el-dropdown-menu>
+                </template>
+              </el-dropdown>
               <el-button
                 v-if="canClaim"
                 size="small"
@@ -482,7 +495,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { Refresh } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import EmptyState from '@/components/EmptyState.vue'
@@ -499,6 +513,7 @@ import {
   getShopOptions,
   getShopAgents,
   assignSession,
+  assignSessionByRule,
   claimSession,
   transferSession,
   updateDraft,
@@ -530,6 +545,7 @@ const agentsLoading = ref(false)
 const shopAgents = ref<ShopAgentItem[]>([])
 const assignAgentId = ref<string>('')
 const auth = useAuthStore()
+const route = useRoute()
 /** Agent 默认「我的」；Seller/Supervisor/Admin/support 默认全店 */
 const assignmentFilter = ref(auth.userType === 'Agent' && !auth.isSupport ? 'mine' : '')
 const statusFilter = ref('')
@@ -644,6 +660,8 @@ const displaySessions = computed(() => {
       const u = computeUrgency(s)
       return u === 'soon' || u === 'overdue'
     })
+  } else if (statusFilter.value === 'overdue') {
+    list = list.filter((s) => computeUrgency(s) === 'overdue')
   }
   // assignment 已由 API 过滤；客户端仅做大小写兜底，避免 Guid 大小写导致「我的」空列表
   if (assignmentFilter.value === 'unassigned') {
@@ -675,6 +693,7 @@ const displaySessions = computed(() => {
 const listEmptyTitle = computed(() => {
   if (statusFilter.value === 'draft') return '当前无待发草稿'
   if (statusFilter.value === 'alerts') return '当前无超时告警'
+  if (statusFilter.value === 'overdue') return '当前无已超时会话'
   if (statusFilter.value === 'handoff') return '当前无待人工会话'
   if (statusFilter.value === 'Active') return '当前无进行中会话'
   if (statusFilter.value === 'Pending') return '当前无待处理会话'
@@ -962,7 +981,7 @@ async function loadOrders(sessionId: string) {
 async function loadSessions() {
   listLoading.value = true
   try {
-    const clientOnly = ['draft', 'alerts', 'handoff']
+    const clientOnly = ['draft', 'alerts', 'overdue', 'handoff']
     const apiStatus =
       statusFilter.value && !clientOnly.includes(statusFilter.value)
         ? statusFilter.value
@@ -979,13 +998,7 @@ async function loadSessions() {
     pendingDraftCount.value =
       res.pendingDraftCount ?? sessions.value.filter((s) => s.hasPendingDraft).length
     responseSlaHours.value = res.responseSlaHours || 12
-    if (selectedId.value && !sessions.value.some((s) => s.id === selectedId.value)) {
-      selectedId.value = null
-      messages.value = []
-      draft.value = null
-      draftContent.value = ''
-      messagesMeta.value = {}
-    }
+    // 筛选变化后会话可能不在当前列表：保留已打开的详情，避免人审发送后详情被清空
   } catch {
     sessions.value = []
     pendingDraftCount.value = 0
@@ -1164,6 +1177,27 @@ async function onAssign() {
   }
 }
 
+
+async function onAssignByRule(preset: string) {
+  if (!selectedId.value) return
+  assigning.value = true
+  try {
+    const res = await assignSessionByRule(
+      selectedId.value,
+      preset === 'supervisor' ? 'supervisor' : 'least_loaded',
+    )
+    ElMessage.success(res?.message || '已按规则分配')
+    await selectSession(selectedId.value)
+    await loadSessions()
+    void loadShopOptions()
+  } catch (e) {
+    ElMessage.error(apiErrMsg(e, '规则分配失败'))
+  } finally {
+    assigning.value = false
+  }
+}
+
+
 async function onClaim() {
   if (!selectedId.value || !canClaim.value) return
   claiming.value = true
@@ -1254,9 +1288,31 @@ async function onSend() {
       res = await approveDraft(selectedId.value)
     }
     applySendResult(res, '人审发送成功')
-    await selectSession(selectedId.value)
+    const keepId = selectedId.value
+    // 乐观更新：草稿角标/待发筛选立刻一致
+    draft.value = null
+    draftContent.value = ''
+    const row = sessions.value.find((s) => s.id === keepId)
+    if (row) {
+      row.hasPendingDraft = false
+      row.slaUrgency = 'ok'
+      row.status = row.status === 'Pending' ? 'Active' : row.status
+    }
+    pendingDraftCount.value = Math.max(0, pendingDraftCount.value - 1)
+    // 若当前在「待发草稿 / 已超时」筛选，发送后切回全部以免列表空、详情仍在
+    if (statusFilter.value === 'draft' || statusFilter.value === 'overdue') {
+      statusFilter.value = ''
+    }
     await loadSessions()
+    if (keepId) {
+      selectedId.value = keepId
+      await selectSession(keepId)
+    }
     void loadShopOptions()
+    void loadAlerts()
+    try {
+      window.dispatchEvent(new CustomEvent('sx-alerts-changed'))
+    } catch { /* ignore */ }
   } catch (e) {
     ElMessage.error(apiErrMsg(e, '人审发送失败'))
   } finally {
@@ -1363,17 +1419,51 @@ async function loadLlmStatus() {
 }
 
 onMounted(() => {
+  const q = route.query
+  const f = String(q.filter || q.sla || '')
+  if (f === 'alerts' || f === 'overdue' || f === 'draft' || f === 'handoff') {
+    statusFilter.value = f
+  }
   loadShopOptions()
   loadShopAgents()
   void loadLlmStatus()
-  refreshAll()
+  refreshAll().then(async () => {
+    const jump = String(q.session || q.sessionId || '')
+    if (jump) await selectSession(jump)
+    else if ((f === 'alerts' || f === 'overdue') && displaySessions.value[0]) {
+      await selectSession(displaySessions.value[0].id)
+    }
+  })
   alertPollTimer = setInterval(() => {
     loadAlerts()
   }, 45000)
+  window.addEventListener('sx-alerts-changed', onExternalAlerts)
 })
+
+function onExternalAlerts() {
+  void loadAlerts()
+  void loadSessions()
+}
+
+watch(
+  () => [route.query.filter, route.query.sla, route.query.session, route.query.sessionId],
+  async () => {
+    const f = String(route.query.filter || route.query.sla || '')
+    if (f === 'alerts' || f === 'overdue' || f === 'draft' || f === 'handoff') {
+      statusFilter.value = f
+      await loadSessions()
+      const jump = String(route.query.session || route.query.sessionId || '')
+      if (jump) await selectSession(jump)
+      else if ((f === 'alerts' || f === 'overdue') && displaySessions.value[0]) {
+        await selectSession(displaySessions.value[0].id)
+      }
+    }
+  },
+)
 
 onUnmounted(() => {
   if (alertPollTimer) clearInterval(alertPollTimer)
+  window.removeEventListener('sx-alerts-changed', onExternalAlerts)
 })
 </script>
 
